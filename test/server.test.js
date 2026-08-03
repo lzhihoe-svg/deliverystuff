@@ -197,33 +197,68 @@ console.log('\n== updateStatus ==');
   check(files[orphan].trashed === true, 'orphaned proof photo is trashed');
 }
 
-console.log('\n== editJob ==');
+console.log('\n== editJob (multi-photo spec) ==');
 {
   const { ctx, files } = makeEnv();
-  const j = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'old note', photos: [B64] });
-  const oldPhoto = j.photoIds[0];
+  const j = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'old note', photos: [B64, B64] });
+  const [pA, pB] = j.photoIds;
 
-  const e1 = ctx.editJob(j.id, { note: 'new note', category: 'pickup', photo1: null, photo2: null }, PIN);
-  check(e1.note === 'new note' && e1.category === 'pickup', 'edit note + category without touching photos');
-  check(e1.photoIds[0] === oldPhoto && !files[oldPhoto].trashed, 'existing photo untouched when photo1 is null');
+  // keep both photos, change text only
+  const e1 = ctx.editJob(j.id, { note: 'new note', category: 'pickup', photos: [{ id: pA }, { id: pB }] }, PIN);
+  check(e1.note === 'new note' && e1.category === 'pickup', 'edit note + category');
+  check(e1.photoIds[0] === pA && e1.photoIds[1] === pB && !files[pA].trashed, 'kept photos untouched');
 
-  const e2 = ctx.editJob(j.id, { note: 'new note', category: 'pickup', photo1: B64, photo2: null }, PIN);
-  check(e2.photoIds[0] !== oldPhoto, 'photo replaced when new photo1 given');
-  check(files[oldPhoto].trashed === true, 'old photo moved to trash');
-  check(ctx.getJobs('delivery')[0].note === 'new note', 'edit persisted in sheet');
+  // reorder photos
+  const e2 = ctx.editJob(j.id, { note: 'new note', category: 'pickup', photos: [{ id: pB }, { id: pA }] }, PIN);
+  check(e2.photoIds[0] === pB && e2.photoIds[1] === pA, 'photos can be reordered');
+  check(!files[pA].trashed && !files[pB].trashed, 'reordering trashes nothing');
 
-  // postage second photo
-  const p = ctx.addJob({ tab: 'postage', category: '', note: '', photos: [B64, B64] });
-  const oldAwb = p.photoIds[1];
-  const e3 = ctx.editJob(p.id, { note: '', category: '', photo1: null, photo2: B64 }, PIN);
-  check(e3.photoIds[1] !== oldAwb && files[oldAwb].trashed, 'postage airway-bill photo replaceable');
-  check(e3.photoIds[0] === p.photoIds[0], 'first photo kept');
+  // remove one, add two new
+  const e3 = ctx.editJob(j.id, { note: 'n', category: 'bus', photos: [{ id: pA }, { b64: B64 }, { b64: B64 }] }, PIN);
+  check(e3.photoIds.length === 3 && e3.photoIds[0] === pA, 'removed + added photos applied');
+  check(files[pB].trashed === true, 'removed photo moved to trash');
+  check(!files[e3.photoIds[1]].trashed && !files[e3.photoIds[2]].trashed, 'new photos alive');
+  check(ctx.getJobs('delivery')[0].photoIds.length === 3, 'persisted in sheet');
+
+  throws(() => ctx.editJob(j.id, { note: '', category: '', photos: [] }, PIN), 'edit with zero photos throws');
+  throws(() => ctx.editJob(j.id, { note: '', category: '',
+    photos: [{b64:B64},{b64:B64},{b64:B64},{b64:B64},{b64:B64},{b64:B64},{b64:B64}] }, PIN), 'edit with 7 photos throws');
 
   // editing a missing job must clean up freshly uploaded photos
   const before = Object.keys(files).length;
-  throws(() => ctx.editJob('ghost', { note: '', category: '', photo1: B64, photo2: B64 }, PIN), 'edit on missing job throws');
+  throws(() => ctx.editJob('ghost', { note: '', category: '', photos: [{ b64: B64 }] }, PIN), 'edit on missing job throws');
   const ids = Object.keys(files);
-  check(files[ids[before]].trashed && files[ids[before + 1]].trashed, 'uploaded photos for failed edit are trashed');
+  check(files[ids[before]].trashed === true, 'uploaded photo for failed edit is trashed');
+}
+
+console.log('\n== multi-photo addJob ==');
+{
+  const { ctx } = makeEnv();
+  const j = ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64, B64, B64, B64] });
+  check(j.photoIds.length === 4, 'addJob stores 4 photos');
+  check(ctx.getJobs('want')[0].photoIds.length === 4, 'all 4 persisted');
+  throws(() => ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64,B64,B64,B64,B64,B64,B64] }), '7 photos rejected (max 6)');
+}
+
+console.log('\n== resetAll (new day) ==');
+{
+  const { ctx } = makeEnv();
+  ctx.addJob({ tab: 'want', category: '', note: 'a', photos: [B64] });
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'b', photos: [B64] });
+  ctx.addJob({ tab: 'postage', category: '', note: 'c', photos: [B64, B64] });
+  ctx.updateStatus(d.id, 'done', B64, null);
+
+  throws(() => ctx.resetAll(''), 'staff cannot reset');
+  throws(() => ctx.resetAll('9999'), 'wrong PIN cannot reset');
+  check(ctx.getJobs('want').length === 1, 'nothing cleared by failed attempts');
+
+  const res = ctx.resetAll(PIN);
+  check(res.ok === true && res.archived === 3, 'admin reset archives all 3 jobs');
+  check(ctx.getJobs('want').length === 0 && ctx.getJobs('delivery').length === 0 && ctx.getJobs('postage').length === 0,
+    'all tabs empty after reset');
+  const c = ctx.getCounts();
+  check(c.want === 0 && c.delivery === 0 && c.postage === 0, 'badges all zero');
+  check(ctx.resetAll(PIN).archived === 0, 'second reset archives nothing (idempotent)');
 }
 
 console.log('\n== deleteJob ==');
@@ -258,8 +293,8 @@ console.log('\n== admin PIN enforcement ==');
   check(ctx.checkPin('') === false, 'checkPin rejects empty PIN');
 
   const j = ctx.addJob({ tab: 'want', category: '', note: 'x', photos: [B64] });
-  throws(() => ctx.editJob(j.id, { note: 'hack', category: '', photo1: null, photo2: null }, ''), 'staff (no PIN) cannot edit');
-  throws(() => ctx.editJob(j.id, { note: 'hack', category: '', photo1: null, photo2: null }, '9999'), 'wrong PIN cannot edit');
+  throws(() => ctx.editJob(j.id, { note: 'hack', category: '', photos: [{ id: j.photoIds[0] }] }, ''), 'staff (no PIN) cannot edit');
+  throws(() => ctx.editJob(j.id, { note: 'hack', category: '', photos: [{ id: j.photoIds[0] }] }, '9999'), 'wrong PIN cannot edit');
   throws(() => ctx.deleteJob(j.id, ''), 'staff (no PIN) cannot delete');
   throws(() => ctx.deleteJob(j.id, '9999'), 'wrong PIN cannot delete');
   throws(() => ctx.updateStatus(j.id, 'archived', null, ''), 'staff (no PIN) cannot archive');
@@ -271,7 +306,7 @@ console.log('\n== admin PIN enforcement ==');
   ctx.updateStatus(d.id, 'done', B64, null);
   check(ctx.getJobs('delivery')[0].status === 'done', 'staff CAN complete with proof photo without PIN');
 
-  const e = ctx.editJob(j.id, { note: 'fixed', category: '', photo1: null, photo2: null }, PIN);
+  const e = ctx.editJob(j.id, { note: 'fixed', category: '', photos: [{ id: j.photoIds[0] }] }, PIN);
   check(e.note === 'fixed', 'admin with PIN can edit');
   check(ctx.deleteJob(j.id, PIN).ok === true, 'admin with PIN can delete');
 }
@@ -295,7 +330,7 @@ console.log('\n== lock hygiene ==');
   const env = makeEnv();
   const j = env.ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64] });
   env.ctx.updateStatus(j.id, 'got', null, null);
-  env.ctx.editJob(j.id, { note: 'x', category: '', photo1: B64, photo2: null }, PIN);
+  env.ctx.editJob(j.id, { note: 'x', category: '', photos: [{ b64: B64 }] }, PIN);
   env.ctx.deleteJob(j.id, PIN);
   try { env.ctx.deleteJob('ghost', PIN); } catch (e) {}
   const l = env.locks();

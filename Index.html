@@ -23,13 +23,14 @@
   header {
     position: sticky; top: 0; z-index: 20;
     background: #0f172a; color: #fff;
-    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
-  header h1 { font-size: 18px; }
+  header h1 { font-size: 18px; margin-right: auto; }
   .role-btn {
     border: 1px solid rgba(255,255,255,.4); background: none; color: #fff;
     border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
   }
+  #reset-btn { border-color: #f87171; color: #fca5a5; display: none; }
 
   /* ---------- bottom nav ---------- */
   nav {
@@ -70,11 +71,47 @@
     box-shadow: 0 1px 4px rgba(15,23,42,.08);
     display: flex; flex-direction: column;
   }
-  .card img.job { width: 100%; display: block; background: #e2e8f0; min-height: 120px; max-height: 340px; object-fit: contain; cursor: pointer; }
   .card .body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; }
   .card .note { font-size: 16px; margin-bottom: 8px; white-space: pre-wrap; }
   .card .meta { font-size: 12px; color: var(--muted); }
   .card .spacer { flex: 1; }
+
+  /* ---------- photo carousel (swipe left/right between photos) ---------- */
+  .carousel { position: relative; background: #e2e8f0; }
+  .car-track {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .car-track::-webkit-scrollbar { display: none; }
+  .car-slide { flex: 0 0 100%; scroll-snap-align: center; }
+  .car-slide img {
+    width: 100%; display: block; min-height: 120px; max-height: 340px;
+    object-fit: contain; background: #e2e8f0; cursor: pointer;
+  }
+  .car-dots {
+    position: absolute; bottom: 8px; left: 0; right: 0;
+    text-align: center; pointer-events: none;
+  }
+  .car-dots span, .stack-dots span {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: rgba(15,23,42,.35); margin: 0 3px;
+    border: 1px solid rgba(255,255,255,.8);
+  }
+  .car-dots span.on, .stack-dots span.on { background: var(--blue); }
+  .car-count {
+    position: absolute; top: 8px; right: 8px; background: rgba(15,23,42,.7);
+    color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px;
+    padding: 3px 10px; pointer-events: none;
+  }
+  .car-btn {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px; border-radius: 50%; border: 0;
+    background: rgba(15,23,42,.55); color: #fff; font-size: 22px; font-weight: 700;
+    cursor: pointer; display: none; line-height: 40px;
+  }
+  .car-btn.prev { left: 8px; }
+  .car-btn.next { right: 8px; }
+  @media (min-width: 700px) { .carousel:hover .car-btn { display: block; } .car-btn { display: block; } }
 
   .chip {
     display: inline-block; font-size: 13px; font-weight: 700;
@@ -119,6 +156,14 @@
   .swipe-card img { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #0f172a; pointer-events: none; }
   .swipe-card .foot { padding: 8px 12px; background: #fff; }
   .swipe-card .foot .cap { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .stack-dots {
+    position: absolute; top: 10px; left: 0; right: 0; text-align: center; pointer-events: none;
+  }
+  .stack-hint {
+    position: absolute; top: 26px; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,.85); font-size: 12px; font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none;
+  }
   .stamp {
     position: absolute; top: 24px; font-size: 40px; font-weight: 900;
     padding: 6px 18px; border: 5px solid; border-radius: 12px; opacity: 0;
@@ -136,15 +181,6 @@
     white-space: nowrap; cursor: pointer;
   }
   .pills button.active { border-color: var(--blue); background: var(--blue); color: #fff; }
-
-  /* ---------- two-photo layout (tab 3) ---------- */
-  .photo-pair { display: flex; gap: 2px; background: #e2e8f0; }
-  .photo-pair > div { flex: 1; position: relative; }
-  .photo-pair img { width: 100%; display: block; min-height: 120px; max-height: 260px; object-fit: contain; background: #e2e8f0; cursor: pointer; }
-  .photo-pair .lbl {
-    position: absolute; top: 6px; left: 6px; background: rgba(15,23,42,.75);
-    color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
-  }
 
   .proof { display: flex; align-items: center; gap: 10px; background: #f0fdf4; border-radius: 10px; padding: 8px; margin-top: 10px; }
   .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: pointer; }
@@ -180,9 +216,21 @@
     padding: 14px; font-size: 16px; font-weight: 700; color: var(--muted);
     background: #f8fafc; cursor: pointer;
   }
-  .photo-btn.hasphoto { border-style: solid; border-color: var(--green); color: var(--green); background: #f0fdf4; }
-  .photo-btn img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }
   input[type=file] { display: none; }
+
+  /* photo thumbnails in the post/edit form */
+  .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .thumb { position: relative; width: 76px; height: 76px; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; border: 2px solid #cbd5e1; }
+  .thumb .thumb-x {
+    position: absolute; top: -8px; right: -8px; width: 24px; height: 24px;
+    border-radius: 50%; border: 2px solid #fff; background: var(--red); color: #fff;
+    font-size: 12px; font-weight: 800; cursor: pointer; line-height: 20px; padding: 0;
+  }
+  .thumb .thumb-n {
+    position: absolute; bottom: 2px; left: 2px; background: rgba(15,23,42,.7);
+    color: #fff; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 6px;
+  }
 
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
@@ -235,10 +283,11 @@
 
 <header>
   <h1>🏭 Kilang App</h1>
+  <button class="role-btn" id="reset-btn" onclick="askReset()">🔄 Reset</button>
   <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
 </header>
 
-<!-- ================= TAB 1 : SEWING (Kilang Want) ================= -->
+<!-- ================= TAB 1 : CHECKING (Kilang Want) ================= -->
 <div class="page" id="page-want">
   <div id="want-stack-area"></div>
   <div id="want-responded"></div>
@@ -263,7 +312,7 @@
 <!-- ================= BOTTOM NAV ================= -->
 <nav>
   <button id="nav-want" onclick="switchTab('want')">
-    <span class="ico">🧵</span><span class="nav-lbl">Sewing</span>
+    <span class="ico">🧵</span><span class="nav-lbl">Checking</span>
     <span class="badge" id="badge-want"></span>
   </button>
   <button id="nav-delivery" onclick="switchTab('delivery')">
@@ -313,15 +362,10 @@
       </div>
     </div>
 
-    <label>Jobsheet photo 📸</label>
-    <button class="photo-btn" id="photo1-btn" onclick="document.getElementById('photo1-file').click()"></button>
-    <input type="file" id="photo1-file" accept="image/*" onchange="photoPicked(this, 1)">
-
-    <div id="photo2-wrap" style="display:none">
-      <label>Airway bill photo (J&amp;T) 📸</label>
-      <button class="photo-btn" id="photo2-btn" onclick="document.getElementById('photo2-file').click()"></button>
-      <input type="file" id="photo2-file" accept="image/*" onchange="photoPicked(this, 2)">
-    </div>
+    <label id="photos-label">Photos 📸</label>
+    <div class="thumbs" id="upload-thumbs"></div>
+    <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
+    <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
 
     <label>Instruction (optional)</label>
     <textarea id="upload-note" rows="2" placeholder="Example: Deliver before 5pm"></textarea>
@@ -333,14 +377,14 @@
   </div>
 </div>
 
-<!-- ================= DELETE CONFIRM MODAL ================= -->
+<!-- ================= CONFIRM MODAL (delete / reset) ================= -->
 <div class="overlay" id="confirm-overlay">
-  <div class="sheet" style="max-width:340px;text-align:center">
+  <div class="sheet" style="max-width:360px;text-align:center">
     <button class="x-close" onclick="closeConfirm()">✕</button>
-    <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px">Delete this job? Cannot undo!</h2>
+    <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px"></h2>
     <div class="btn-row">
       <button class="btn gray" onclick="closeConfirm()">Cancel</button>
-      <button class="btn red" id="confirm-yes" onclick="confirmYes()">🗑️ Yes, Delete</button>
+      <button class="btn red" id="confirm-yes" onclick="confirmYes()"></button>
     </div>
   </div>
 </div>
@@ -360,21 +404,21 @@
     pin: localStorage.getItem('kilangPin') || '',
     deliveryCat: '',
     jobs: { want: [], delivery: [], postage: [] },
-    upload: { photo1: null, photo2: null, cat: '' },
-    editing: null,      // job object when editing, null when posting new
+    upload: { photos: [], cat: '' },   // photos: [{b64} for new, {id} for existing]
+    editing: null,
     proofJobId: null
   };
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
+  var MAX_PHOTOS = 6;
 
   function isAdmin() { return state.role === 'admin'; }
 
   // ------------------------------------------------------------ images
   // Photos are served THROUGH the app (base64 via getImagesData), so they
-  // show on every device — no dependency on Drive link-sharing, which
-  // Google Workspace domains often block.
-  var imgCache = {};     // photoId -> data URI
-  var imgFetching = {};  // photoId -> true while a batch is in flight
+  // show on every device — no dependency on Drive link-sharing.
+  var imgCache = {};
+  var imgFetching = {};
   var PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
     '<rect width="400" height="300" fill="#e2e8f0"/>' +
@@ -408,7 +452,7 @@
           var id2 = els2[i].getAttribute('data-img');
           if (imgCache[id2] && els2[i].getAttribute('src') !== imgCache[id2]) els2[i].src = imgCache[id2];
         }
-        loadImages(); // fetch next batch if any
+        loadImages();
       })
       .withFailureHandler(function () {
         batch.forEach(function (id) { delete imgFetching[id]; });
@@ -426,6 +470,53 @@
     v.src = imgCache[id] || PLACEHOLDER;
     document.getElementById('viewer').classList.add('show');
     loadImages();
+  }
+
+  // ------------------------------------------------------------ photo carousel
+  function dotsHtml(n, cls) {
+    if (n < 2) return '';
+    var s = '<div class="' + cls + '">';
+    for (var i = 0; i < n; i++) s += '<span class="' + (i === 0 ? 'on' : '') + '"></span>';
+    return s + '</div>';
+  }
+
+  /** Swipeable photo strip for a job card (tabs 2/3 + status list). */
+  function carouselHtml(ids) {
+    if (ids.length === 1) {
+      return '<div class="carousel">' +
+        imgTag(ids[0], 'width:100%;display:block;min-height:120px;max-height:340px;object-fit:contain;cursor:pointer',
+          'onclick="viewPhoto(\'' + ids[0] + '\')"') + '</div>';
+    }
+    var s = '<div class="carousel"><div class="car-track">';
+    for (var i = 0; i < ids.length; i++) {
+      s += '<div class="car-slide">' + imgTag(ids[i], '', 'onclick="viewPhoto(\'' + ids[i] + '\')"') + '</div>';
+    }
+    s += '</div>';
+    s += '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>';
+    s += '<button class="car-btn next" onclick="carMove(this,1)">›</button>';
+    s += '<div class="car-count">' + ids.length + ' 📷</div>';
+    s += dotsHtml(ids.length, 'car-dots');
+    return s + '</div>';
+  }
+
+  function carMove(btn, dir) {
+    var track = btn.parentNode.querySelector('.car-track');
+    track.scrollBy({ left: dir * track.clientWidth, behavior: 'smooth' });
+  }
+
+  function attachCarousels() {
+    document.querySelectorAll('.car-track').forEach(function (tr) {
+      if (tr._wired) return;
+      tr._wired = true;
+      tr.addEventListener('scroll', function () {
+        clearTimeout(tr._t);
+        tr._t = setTimeout(function () {
+          var idx = Math.round(tr.scrollLeft / tr.clientWidth);
+          var dots = tr.parentNode.querySelectorAll('.car-dots span');
+          dots.forEach(function (d, i) { d.className = i === idx ? 'on' : ''; });
+        }, 80);
+      });
+    });
   }
 
   // ------------------------------------------------------------ helpers
@@ -457,6 +548,7 @@
   // ------------------------------------------------------------ roles
   function renderRoleBtn() {
     document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
+    document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -464,7 +556,6 @@
     document.getElementById('role-overlay').classList.add('show');
   }
   function closeRoleModal() {
-    // Never trap the user: X or backdrop = stay/become Staff
     if (!state.role) setRole('staff', '');
     else document.getElementById('role-overlay').classList.remove('show');
   }
@@ -521,6 +612,7 @@
 
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage();
+    attachCarousels();
     loadImages();
   }
 
@@ -536,7 +628,7 @@
     return html + '</div>';
   }
 
-  // ------------------------------------------------------------ TAB 1: sewing (swipe)
+  // ------------------------------------------------------------ TAB 1: checking (swipe)
   function renderWant() {
     var jobs = state.jobs.want;
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
@@ -547,17 +639,22 @@
       area.innerHTML = '<div class="empty"><span class="big">🎉</span>No new jobsheets!</div>';
     } else {
       var html = '<div class="stack-outer">';
-      html += '<div class="swipe-help">👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it, sewing now 👉</div>';
+      html += '<div class="swipe-help">👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it 👉</div>';
       html += '<div class="stack-wrap" id="stack">';
       var show = pending.slice(0, 3).reverse();   // last in DOM = top of stack
       for (var i = 0; i < show.length; i++) {
         var j = show[i];
         var top = (i === show.length - 1);
-        html += '<div class="swipe-card" data-id="' + j.id + '" ' + (top ? 'id="topcard"' : '') + '>' +
-          imgTag(j.photoIds[0], '', 'alt="jobsheet"') +
+        var multi = j.photoIds.length > 1;
+        html += '<div class="swipe-card" data-id="' + j.id + '" data-photos="' + j.photoIds.join(',') + '" data-idx="0" ' +
+          (top ? 'id="topcard"' : '') + '>' +
+          imgTag(j.photoIds[0]) +
+          (multi ? dotsHtml(j.photoIds.length, 'stack-dots') +
+                   '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
           '<div class="foot">' +
-            '<div class="cap">📄 ' + (esc(j.note) || 'Jobsheet') + ' · ' + timeAgo(j.createdAt) +
-            ' · ' + pending.length + ' left</div>' +
+            '<div class="cap">📄 ' + (esc(j.note) || 'Jobsheet') +
+            (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
+            ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
             toolBtns(j, false) +
           '</div>' +
           '<div class="stamp yes">❤️</div><div class="stamp no">❌</div>' +
@@ -577,17 +674,33 @@
     var html2 = '<div class="section-title">📋 Jobsheet Status</div><div class="grid">';
     responded.forEach(function (j) {
       var got = j.status === 'got';
-      html2 += '<div class="card"><div style="display:flex;flex:1">' +
-        imgTag(j.photoIds[0], 'width:90px;object-fit:cover;cursor:pointer', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') +
-        '<div class="body" style="flex:1">' +
-        '<div class="note" style="font-size:15px">' + (got ? '❤️ Sewing now' : '❌ Not seen yet') + '</div>' +
+      html2 += '<div class="card">' + carouselHtml(j.photoIds) +
+        '<div class="body">' +
+        '<div class="note" style="font-size:15px">' + (got ? '❤️ Got it' : '❌ Not seen yet') + '</div>' +
         '<div class="meta">' + timeAgo(j.doneAt) + '</div>' +
-        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it, sewing now</button>' : '') +
+        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         '<div class="spacer"></div>' +
         toolBtns(j, true) +
-        '</div></div></div>';
+        '</div></div>';
     });
     r.innerHTML = html2 + '</div>';
+  }
+
+  /** Tap left/right side of the top swipe card to flip between its photos. */
+  function stackTap(card, clientX) {
+    var ids = (card.getAttribute('data-photos') || '').split(',');
+    if (ids.length < 2) return;
+    var idx = parseInt(card.getAttribute('data-idx') || '0', 10);
+    var rect = card.getBoundingClientRect();
+    var dir = (clientX - rect.left) > rect.width / 2 ? 1 : -1;
+    idx = (idx + dir + ids.length) % ids.length;
+    card.setAttribute('data-idx', idx);
+    var img = card.querySelector('img[data-img]');
+    img.setAttribute('data-img', ids[idx]);
+    img.src = imgCache[ids[idx]] || PLACEHOLDER;
+    var dots = card.querySelectorAll('.stack-dots span');
+    dots.forEach(function (d, i) { d.className = i === idx ? 'on' : ''; });
+    loadImages();
   }
 
   function attachSwipe() {
@@ -607,8 +720,12 @@
       dragging = false;
       if (dx > 110) flyOut(card, 1, 'got');
       else if (dx < -110) flyOut(card, -1, 'notseen');
-      else { card.style.transition = 'transform .2s'; card.style.transform = ''; yes.style.opacity = 0; no.style.opacity = 0;
-             setTimeout(function () { card.style.transition = ''; }, 220); }
+      else {
+        card.style.transition = 'transform .2s'; card.style.transform = '';
+        yes.style.opacity = 0; no.style.opacity = 0;
+        setTimeout(function () { card.style.transition = ''; }, 220);
+        if (Math.abs(dx) < 8) stackTap(card, startX); // it was a tap, not a swipe
+      }
     }
     card.addEventListener('touchstart', function (e) {
       if (e.target.closest('button')) return;
@@ -643,23 +760,23 @@
     state.deliveryCat = b.getAttribute('data-cat');
     this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
     b.classList.add('active');
-    renderDelivery(); loadImages();
+    renderDelivery(); attachCarousels(); loadImages();
   });
 
   function renderDelivery() {
     var jobs = state.jobs.delivery.filter(function (j) {
       return !state.deliveryCat || j.category === state.deliveryCat;
     });
-    document.getElementById('delivery-list').innerHTML = renderJobList(jobs, false);
+    document.getElementById('delivery-list').innerHTML = renderJobList(jobs);
   }
 
   // ------------------------------------------------------------ TAB 3: postage
   function renderPostage() {
-    document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage, true);
+    document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage);
   }
 
   // shared card list for tabs 2 & 3
-  function renderJobList(jobs, twoPhotos) {
+  function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
     var html = '';
@@ -670,29 +787,20 @@
 
     if (pending.length) {
       html += '<div class="section-title">⏳ To Do (' + pending.length + ')</div><div class="grid">';
-      pending.forEach(function (j) { html += jobCard(j, twoPhotos, false); });
+      pending.forEach(function (j) { html += jobCard(j, false); });
       html += '</div>';
     }
     if (done.length) {
       html += '<div class="section-title">✅ Done (' + done.length + ')</div><div class="grid">';
-      done.forEach(function (j) { html += jobCard(j, twoPhotos, true); });
+      done.forEach(function (j) { html += jobCard(j, true); });
       html += '</div>';
     }
     return html;
   }
 
-  function jobCard(j, twoPhotos, isDone) {
+  function jobCard(j, isDone) {
     var old = !isDone && (Date.now() - j.createdAt > DAY);
-    var html = '<div class="card">';
-
-    if (twoPhotos && j.photoIds.length > 1) {
-      html += '<div class="photo-pair">' +
-        '<div><span class="lbl">📄 Jobsheet</span>' + imgTag(j.photoIds[0], '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>' +
-        '<div><span class="lbl">🏷️ Airway Bill</span>' + imgTag(j.photoIds[1], '', 'onclick="viewPhoto(\'' + j.photoIds[1] + '\')"') + '</div>' +
-        '</div>';
-    } else {
-      html += imgTag(j.photoIds[0], '', 'class="job" onclick="viewPhoto(\'' + j.photoIds[0] + '\')"');
-    }
+    var html = '<div class="card">' + carouselHtml(j.photoIds);
 
     html += '<div class="body">';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
@@ -714,10 +822,7 @@
     return html;
   }
 
-  // ------------------------------------------------------------ status updates / delete
-  // Mutations are OPTIMISTIC: the screen updates instantly and the server
-  // call runs in the background. On failure we toast and re-sync.
-
+  // ------------------------------------------------------------ status updates / delete / reset
   function bgFail(e) { toast('⚠️ ' + e.message); refresh(state.tab); }
 
   function updateBadgeLocal() {
@@ -737,17 +842,19 @@
       }
       renderAll(); updateBadgeLocal();
     }
-    if (status === 'got') toast('❤️ Great! Sewing now.');
+    if (status === 'got') toast('❤️ Great!');
     if (status === 'notseen') toast('❌ Office will follow up.');
     if (status === 'archived') toast('🗄️ Hidden.');
     google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null, state.pin);
   }
 
-  // custom confirm modal — window.confirm() can be silently blocked
+  // generic confirm modal — window.confirm() can be silently blocked
   // inside the Apps Script sandbox iframe
   var confirmCb = null;
-  function askConfirm(cb) {
+  function askConfirm(msg, yesLabel, cb) {
     confirmCb = cb;
+    document.getElementById('confirm-msg').textContent = msg;
+    document.getElementById('confirm-yes').textContent = yesLabel;
     document.getElementById('confirm-overlay').classList.add('show');
   }
   function closeConfirm() {
@@ -761,12 +868,25 @@
   }
 
   function removeJob(id) {
-    askConfirm(function () {
+    askConfirm('Delete this job? Cannot undo!', '🗑️ Yes, Delete', function () {
       state.jobs[state.tab] = state.jobs[state.tab].filter(function (j) { return j.id !== id; });
       renderAll(); updateBadgeLocal();
       toast('🗑️ Deleted.');
       google.script.run.withFailureHandler(bgFail).deleteJob(id, state.pin);
     });
+  }
+
+  function askReset() {
+    askConfirm('Start a new day? ALL jobs in ALL tabs will be cleared. Records stay safe in the Google Sheet.',
+      '🔄 Yes, Reset', function () {
+        state.jobs = { want: [], delivery: [], postage: [] };
+        renderAll();
+        renderBadges({ want: 0, delivery: 0, postage: 0 });
+        toast('🔄 Fresh day! All tabs cleared.');
+        google.script.run
+          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(state.tab); })
+          .resetAll(state.pin);
+      });
   }
 
   function startProof(jobId) {
@@ -798,7 +918,10 @@
     if (editId && !job) return;
     if (job && !isAdmin()) { toast('Admin only'); return; }
     state.editing = job;
-    state.upload = { photo1: null, photo2: null, cat: job ? (job.category || '') : '' };
+    state.upload = {
+      photos: job ? job.photoIds.map(function (id) { return { id: id }; }) : [],
+      cat: job ? (job.category || '') : ''
+    };
 
     var titles = {
       want: '🧵 Post New Jobsheet',
@@ -807,7 +930,8 @@
     };
     document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    document.getElementById('photo2-wrap').style.display = state.tab === 'postage' ? 'block' : 'none';
+    document.getElementById('photos-label').textContent =
+      state.tab === 'postage' ? 'Photos 📸 (jobsheet + airway bill)' : 'Photos 📸';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
 
@@ -815,9 +939,7 @@
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
     });
 
-    setPhotoBtn(1, job && job.photoIds[0] ? job.photoIds[0] : null);
-    setPhotoBtn(2, job && job.photoIds[1] ? job.photoIds[1] : null);
-
+    renderUploadThumbs();
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
@@ -829,43 +951,62 @@
     btn.classList.add('active');
   }
 
-  /** existingId: show current photo (edit mode); null: empty "take photo" state */
-  function setPhotoBtn(n, existingId) {
-    var b = document.getElementById('photo' + n + '-btn');
-    if (existingId) {
-      b.classList.add('hasphoto');
-      b.innerHTML = imgTag(existingId) + ' 📷 Current photo — change?';
-    } else {
-      b.classList.remove('hasphoto');
-      b.innerHTML = '📷 Take / Choose Photo';
-    }
-  }
-  function photoPicked(input, n) {
-    if (!input.files || !input.files[0]) return;
-    busy(true);
-    compressImage(input.files[0], function (b64) {
-      busy(false);
-      state.upload['photo' + n] = b64;
-      var b = document.getElementById('photo' + n + '-btn');
-      b.classList.add('hasphoto');
-      b.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '"> ✅ Photo OK — change?';
+  function renderUploadThumbs() {
+    var html = '';
+    state.upload.photos.forEach(function (p, i) {
+      html += '<div class="thumb">' +
+        (p.b64 ? '<img src="data:image/jpeg;base64,' + p.b64 + '">' : imgTag(p.id)) +
+        '<button class="thumb-x" onclick="removeUploadPhoto(' + i + ')">✕</button>' +
+        '<span class="thumb-n">' + (i + 1) + '</span>' +
+        '</div>';
     });
+    document.getElementById('upload-thumbs').innerHTML = html;
+  }
+  function removeUploadPhoto(i) {
+    state.upload.photos.splice(i, 1);
+    renderUploadThumbs(); loadImages();
+  }
+
+  function photosPicked(input) {
+    if (!input.files || !input.files.length) return;
+    var files = Array.prototype.slice.call(input.files);
     input.value = '';
+    if (state.upload.photos.length + files.length > MAX_PHOTOS) {
+      toast('Max ' + MAX_PHOTOS + ' photos per job');
+      files = files.slice(0, MAX_PHOTOS - state.upload.photos.length);
+      if (!files.length) return;
+    }
+    busy(true);
+    var remaining = files.length;
+    files.forEach(function (f) {
+      compressImage(f, function (b64) {
+        state.upload.photos.push({ b64: b64 });
+        remaining--;
+        if (remaining === 0) { busy(false); renderUploadThumbs(); loadImages(); }
+      });
+    });
   }
 
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
+    var photos = state.upload.photos;
+
+    if (!photos.length) { toast('Please add a photo first 📸'); return; }
+    if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
+    if (state.tab === 'postage' && photos.length < 2 && !state.editing) {
+      toast('Need at least 2 photos: jobsheet + airway bill 📸'); return;
+    }
 
     if (state.editing) {
-      if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
       busy(true); // photos may need uploading — keep spinner during transfer
-      var up = state.upload;
+      var spec = photos.map(function (p) { return p.b64 ? { b64: p.b64 } : { id: p.id }; });
       google.script.run
         .withSuccessHandler(function (job) {
-          if (up.photo1) seedImage(job.photoIds[0], up.photo1);
-          if (up.photo2) seedImage(job.photoIds[1], up.photo2);
+          for (var i = 0; i < spec.length; i++) {
+            if (spec[i].b64) seedImage(job.photoIds[i], spec[i].b64);
+          }
           var list = state.jobs[state.tab];
-          for (var i = 0; i < list.length; i++) if (list[i].id === job.id) { list[i] = job; break; }
+          for (var k = 0; k < list.length; k++) if (list[k].id === job.id) { list[k] = job; break; }
           busy(false); closeUpload(); renderAll(); updateBadgeLocal();
           toast('💾 Saved!');
         })
@@ -873,21 +1014,16 @@
         .editJob(state.editing.id, {
           note: note,
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
-          photo1: state.upload.photo1,
-          photo2: state.upload.photo2
+          photos: spec
         }, state.pin);
       return;
     }
 
-    if (!state.upload.photo1) { toast('Please take a photo first 📸'); return; }
-    if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
-    if (state.tab === 'postage' && !state.upload.photo2) { toast('Need 2 photos: jobsheet + airway bill 📸'); return; }
-    var photos = [state.upload.photo1];
-    if (state.upload.photo2) photos.push(state.upload.photo2);
+    var b64s = photos.map(function (p) { return p.b64; });
     busy(true); // real upload — keep the spinner while photos transfer
     google.script.run
       .withSuccessHandler(function (job) {
-        for (var i = 0; i < photos.length; i++) seedImage(job.photoIds[i], photos[i]);
+        for (var i = 0; i < b64s.length; i++) seedImage(job.photoIds[i], b64s[i]);
         state.jobs[state.tab].unshift(job);
         busy(false); closeUpload(); renderAll(); updateBadgeLocal();
         toast('📤 Posted!');
@@ -897,7 +1033,7 @@
         tab: state.tab,
         category: state.upload.cat,
         note: note,
-        photos: photos
+        photos: b64s
       });
   }
 

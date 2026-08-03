@@ -8,8 +8,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.evaluate(() => {
       const api = window.__mockapi;
       api.addJob({ tab: 'want', category: '', note: 'Baju kurung biru 30pcs', photos: ['x'] });
-      api.addJob({ tab: 'want', category: '', note: 'Baju batik 50pcs', photos: ['x'] });
+      api.addJob({ tab: 'want', category: '', note: 'Baju batik 50pcs', photos: ['x','y','z'] });
       const d1 = api.addJob({ tab: 'delivery', category: 'lalamove', note: 'Deliver before 5pm', photos: ['x'] });
+      api.addJob({ tab: 'delivery', category: 'lalamove', note: 'Multi angle photos', photos: ['x','y','z'] });
       api.addJob({ tab: 'delivery', category: 'bus', note: 'Bus to Kuantan, counter 7', photos: ['x'] });
       api.addJob({ tab: 'delivery', category: 'pickup', note: 'Customer pickup tomorrow morning', photos: ['x'] });
       api.updateStatus(d1.id, 'done', 'proofdata');

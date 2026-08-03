@@ -4,9 +4,9 @@ One simple web app that replaces your 3 WhatsApp groups:
 
 | WhatsApp Group | App Tab | What happens |
 |---|---|---|
-| **Kilang Want** | 🧵 **Jahit** | Boss posts jobsheet photo → Amin **swipes right ❤️** (got it, sewing) or **swipes left ❌** (haven't seen it) — like Tinder |
-| **Kilang Packing** | 🚚 **Hantar** | Boss posts jobsheet + instruction under **🛵 Lalamove / 🚌 Bus / 🤝 Pickup**. Staff must **take a photo of the parcel** to mark it done ✅ |
-| **Kilang Postage** | 📦 **Pos** | Boss posts **airway bill + jobsheet** photos side by side. Staff sticks the right sticker, then **takes a photo of the parcel** to confirm ✅ |
+| **Kilang Want** | 🧵 **Checking** | Post jobsheet photos → factory **swipes right ❤️** (got it) or **swipes left ❌** (haven't seen it) — like Tinder |
+| **Kilang Packing** | 🚚 **Delivery** | Boss posts jobsheet + instruction under **🛵 Lalamove / 🚌 Bus / 🤝 Pickup**. Staff must **take a photo of the parcel** to mark it done ✅ |
+| **Kilang Postage** | 📦 **Postage** | Boss posts **airway bill + jobsheet** photos side by side. Staff sticks the right sticker, then **takes a photo of the parcel** to confirm ✅ |
 
 Runs on **Google Apps Script** — free, no server, no monthly fee. Data is saved in a
 Google Sheet (your audit log) and photos in a Google Drive folder, both created
@@ -63,6 +63,17 @@ staff can post jobs from their desk.
 not through Google Drive share-links (which company Google accounts often
 block). Nobody needs a Google login to see the pictures.
 
+**Multiple photos per job (up to 6)**: pick several photos at once when posting.
+On a job card, swipe the photo left/right to see the others (dots show which one
+you're on; on a computer there are ‹ › arrows). On the Tinder-style card in
+Checking, tap the left/right side of the photo to flip through, and swipe the
+whole card to answer ❤️/❌.
+
+**🔄 Reset for a new day (Admin only)**: the red Reset button at the top clears
+ALL jobs in ALL tabs so the factory starts fresh tomorrow. Nothing is deleted —
+every job, timestamp, and photo stays in the Google Sheet and Drive folder as
+your permanent record.
+
 ---
 
 ## 👀 Where your data lives
@@ -90,7 +101,7 @@ The app isn't just "WhatsApp with tabs". It fixes the real problems:
 
 **1. Nothing gets lost in chat scroll.**
 In WhatsApp, an unanswered jobsheet disappears upward. In the app, a job stays
-in **⏳ Belum Siap** until someone physically acts on it. The red badge on each
+in **⏳ To Do** until someone physically acts on it. The red badge on each
 tab shows exactly how many jobs are waiting — for everyone to see.
 
 **2. Proof of work is forced, not requested.**
@@ -100,7 +111,7 @@ ends the "sudah hantar ke belum?" conversations.
 
 **3. One glance = full factory status.**
 - ❤️ = Amin is sewing it. ❌ = Amin hasn't seen it → follow up now.
-- **⚠️ Lebih 1 hari!** appears automatically on any job pending more than 24
+- **⚠️ Over 1 day!** appears automatically on any job pending more than 24
   hours — your late-delivery early warning, with zero effort.
 
 **4. Works for everyone, educated or not.**
@@ -119,10 +130,10 @@ slowest? That's how you find your bottleneck.
 
 | Time | Who | Action |
 |---|---|---|
-| Morning | Boss | Post the day's jobsheets in 🧵 Jahit |
-| Within 1 hour | Amin | Swipe every card — zero cards left in the stack |
-| Midday | Boss | Check ❌ items and follow up; post 🚚 Hantar and 📦 Pos jobs |
+| Morning | Admin | Tap 🔄 Reset to clear yesterday, then post the day's jobsheets in 🧵 Checking |
+| Within 1 hour | Factory | Swipe every card — zero cards left in the stack |
+| Midday | Admin | Check ❌ items and follow up; post 🚚 Delivery and 📦 Postage jobs |
 | Before closing | Staff | Every parcel out the door = proof photo taken |
-| Before closing | Boss | Badges should be zero; archive done jobs; anything ⚠️ red gets a phone call |
+| Before closing | Admin | Badges should be zero; anything ⚠️ red gets a phone call |
 
 **Golden rule to announce to the team:** *"If it's not in the app with a photo, it didn't happen."*

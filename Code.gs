@@ -152,8 +152,9 @@ function rowToJob_(r) {
  */
 function addJob(payload) {
   if (!payload || !payload.photos || !payload.photos.length) {
-    throw new Error('Photo required / Gambar diperlukan');
+    throw new Error('Photo required');
   }
+  if (payload.photos.length > 6) throw new Error('Max 6 photos per job');
   var id = Utilities.getUuid();
   var photoIds = [];
   for (var i = 0; i < payload.photos.length; i++) {
@@ -182,14 +183,23 @@ function addJob(payload) {
 /**
  * Edit a job's note / category / photos. ADMIN ONLY (needs the PIN).
  * Returns the updated job object.
- * changes = { note, category, photo1: base64|null, photo2: base64|null }
- * A null photo means "keep the existing one".
+ * changes = { note, category, photos: [ {id:'existingFileId'} | {b64:'newBase64'} , ... ] }
+ * The photos array is the job's FULL new photo list, in order:
+ *  - {id}  keeps an existing photo
+ *  - {b64} uploads a new one
+ * Any existing photo missing from the list is moved to the Drive trash.
  */
 function editJob(id, changes, pin) {
   requireAdmin_(pin);
+  var spec = changes.photos || [];
+  if (!spec.length) throw new Error('Photo required');
+  if (spec.length > 6) throw new Error('Max 6 photos per job');
+
   // Save new photos BEFORE taking the lock (Drive is the slow part).
-  var newP1 = changes.photo1 ? savePhoto_(changes.photo1, 'edit-' + id + '-0') : null;
-  var newP2 = changes.photo2 ? savePhoto_(changes.photo2, 'edit-' + id + '-1') : null;
+  var newIds = [];
+  for (var i = 0; i < spec.length; i++) {
+    newIds.push(spec[i].b64 ? savePhoto_(spec[i].b64, 'edit-' + id + '-' + i) : null);
+  }
 
   var toTrash = [];
   var job;
@@ -199,26 +209,58 @@ function editJob(id, changes, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) {
-      trashFile_(newP1); trashFile_(newP2);
+      for (var k = 0; k < newIds.length; k++) trashFile_(newIds[k]);
       throw new Error('Job not found');
     }
     var vals = sh.getRange(row, 1, 1, 11).getValues()[0];
-    var photoIds = JSON.parse(vals[4] || '[]');
-    if (newP1) { if (photoIds[0]) toTrash.push(photoIds[0]); photoIds[0] = newP1; }
-    if (newP2) { if (photoIds[1]) toTrash.push(photoIds[1]); photoIds[1] = newP2; }
+    var oldIds = JSON.parse(vals[4] || '[]');
 
-    sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(photoIds)]]);
+    var finalIds = [];
+    for (var p = 0; p < spec.length; p++) {
+      finalIds.push(spec[p].b64 ? newIds[p] : spec[p].id);
+    }
+    for (var o = 0; o < oldIds.length; o++) {
+      if (finalIds.indexOf(oldIds[o]) < 0) toTrash.push(oldIds[o]);
+    }
+
+    sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
-    vals[4] = JSON.stringify(photoIds);
+    vals[4] = JSON.stringify(finalIds);
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
   }
-  // Trash replaced photos AFTER releasing the lock.
-  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  // Trash removed photos AFTER releasing the lock.
+  for (var t = 0; t < toTrash.length; t++) trashFile_(toTrash[t]);
   return job;
+}
+
+/**
+ * ADMIN ONLY. Start a new day: archive EVERY job in every tab.
+ * Nothing is deleted — all records and photos stay in the Google Sheet
+ * and Drive folder; the app simply starts empty again.
+ */
+function resetAll(pin) {
+  requireAdmin_(pin);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: true, archived: 0 };
+    var range = sh.getRange(2, 6, last - 1, 1); // status column
+    var vals = range.getValues();
+    var n = 0;
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i][0] !== 'archived') { vals[i][0] = 'archived'; n++; }
+    }
+    range.setValues(vals);
+    return { ok: true, archived: n };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Delete a job's row, then move its photos to the Drive trash. ADMIN ONLY. */

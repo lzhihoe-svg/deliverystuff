@@ -48,10 +48,16 @@
       requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
+      if (!ch.photos || !ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
-      if (ch.photo1) j.photoIds[0] = 'phnew-' + id + '-0';
-      if (ch.photo2) j.photoIds[1] = 'phnew-' + id + '-1';
+      j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
       return JSON.parse(JSON.stringify(j));
+    },
+    resetAll: function (pin) {
+      requireAdmin(pin);
+      var n = 0;
+      db.jobs.forEach(function (j) { if (j.status !== 'archived') { j.status = 'archived'; n++; } });
+      return { ok: true, archived: n };
     },
     deleteJob: function (id, pin) {
       requireAdmin(pin);
