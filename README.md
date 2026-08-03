@@ -43,15 +43,25 @@ so it looks like a real app:
 - **Android (Chrome):** open the link → tap **⋮** → **Add to Home screen**
 - **iPhone (Safari):** open the link → tap **Share** → **Add to Home Screen**
 
-First time they open it, the app asks one thing only: **🇲🇾 Bahasa Melayu or 🇬🇧 English**.
-They can switch language anytime with the 🌐 button at the top right.
+First time they open it, the app asks one thing only: **👷 Staff or 👔 Admin**.
 
-No names, no logins, no passwords, no training manual needed. Everyone can post
-(➕ button), and every card has **✏️ Edit** and **🗑️ Delete** buttons if a wrong
-photo or instruction was posted.
+- **👷 Staff** (default — just tap it): can post jobs, swipe jobsheets, and take
+  proof photos. Cannot edit or delete anything.
+- **👔 Admin** (needs the PIN): everything staff can do, plus **✏️ Edit**,
+  **🗑️ Delete**, and **🗄️ Hide** buttons on every card. Switch role anytime
+  with the button at the top right.
 
-The app also works nicely on a **computer** — cards show in a grid, and all
-forms open centered on screen — so your office staff can post jobs from their desk.
+⚠️ **Change the Admin PIN before you deploy!** Open `Code.gs`, find
+`var ADMIN_PIN = '1234';` near the top, and change it to your own secret number.
+The PIN is checked on the server too, so staff cannot bypass it.
+
+No names to type, no logins. The app also works nicely on a **computer** —
+cards show in a grid, and all forms open centered on screen — so your office
+staff can post jobs from their desk.
+
+**Photos work on every device**: images are delivered through the app itself,
+not through Google Drive share-links (which company Google accounts often
+block). Nobody needs a Google login to see the pictures.
 
 ---
 
@@ -94,9 +104,10 @@ ends the "sudah hantar ke belum?" conversations.
   hours — your late-delivery early warning, with zero effort.
 
 **4. Works for everyone, educated or not.**
-No reading required to operate it: photos first, big colored buttons, emoji,
-Malay + English. Swipe right good, swipe left bad — everyone understands Tinder
-mechanics. If a worker can use WhatsApp, they can use this.
+No reading required to operate it: photos first, big colored buttons, emoji.
+Swipe right good, swipe left bad — everyone understands Tinder mechanics.
+If a worker can use WhatsApp, they can use this. And because staff have no
+edit/delete buttons, nothing can be removed by accident on the factory floor.
 
 **5. You get free management data.**
 The Google Sheet quietly records every job with exact timestamps for when it was

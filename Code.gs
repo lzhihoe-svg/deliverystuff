@@ -16,6 +16,20 @@
 
 var APP_TITLE = 'Kilang App';
 
+/**
+ * ADMIN PIN — CHANGE THIS before you deploy!
+ * Admins (with the PIN) can edit, delete and hide jobs. Staff cannot.
+ */
+var ADMIN_PIN = '1234';
+
+function checkPin(pin) {
+  return String(pin) === ADMIN_PIN;
+}
+
+function requireAdmin_(pin) {
+  if (String(pin) !== ADMIN_PIN) throw new Error('Admin only — wrong PIN');
+}
+
 // ---------------------------------------------------------------- web entry
 
 function doGet() {
@@ -86,6 +100,28 @@ function trashFile_(fileId) {
   try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
 }
 
+/**
+ * Serves image bytes through the app as data URIs.
+ * This is how every device sees the photos: it does NOT depend on Drive
+ * link-sharing, which Google Workspace domains often block (that's why
+ * photos used to appear only on the uploader's own device).
+ * Max 6 images per call; the page requests them in batches.
+ */
+function getImagesData(ids) {
+  var out = {};
+  var n = Math.min(ids.length, 6);
+  for (var i = 0; i < n; i++) {
+    var id = ids[i];
+    try {
+      var blob = DriveApp.getFileById(id).getBlob();
+      out[id] = 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+    } catch (e) {
+      out[id] = null; // deleted or inaccessible — the page shows a placeholder
+    }
+  }
+  return out;
+}
+
 /** Finds the sheet row (>=2) for a job id, or -1. */
 function findRow_(sh, id) {
   var last = sh.getLastRow();
@@ -144,11 +180,13 @@ function addJob(payload) {
 }
 
 /**
- * Edit a job's note / category / photos. Returns the updated job object.
+ * Edit a job's note / category / photos. ADMIN ONLY (needs the PIN).
+ * Returns the updated job object.
  * changes = { note, category, photo1: base64|null, photo2: base64|null }
  * A null photo means "keep the existing one".
  */
-function editJob(id, changes) {
+function editJob(id, changes, pin) {
+  requireAdmin_(pin);
   // Save new photos BEFORE taking the lock (Drive is the slow part).
   var newP1 = changes.photo1 ? savePhoto_(changes.photo1, 'edit-' + id + '-0') : null;
   var newP2 = changes.photo2 ? savePhoto_(changes.photo2, 'edit-' + id + '-1') : null;
@@ -183,8 +221,9 @@ function editJob(id, changes) {
   return job;
 }
 
-/** Delete a job's row, then move its photos to the Drive trash. */
-function deleteJob(id) {
+/** Delete a job's row, then move its photos to the Drive trash. ADMIN ONLY. */
+function deleteJob(id, pin) {
+  requireAdmin_(pin);
   var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -224,11 +263,12 @@ function getJobs(tab) {
  * Update a job's status. Returns { id, status, doneAt, proofPhotoId }.
  * Tab 1 (want)            : status 'got' (❤️) or 'notseen' (❌) — no photo needed.
  * Tab 2/3 (delivery/post) : status 'done' — proofBase64 photo REQUIRED.
- * Any tab                 : status 'archived' (hides the job, keeps the record).
+ * Any tab                 : status 'archived' — ADMIN ONLY (hides the job, keeps the record).
  */
-function updateStatus(id, status, proofBase64) {
+function updateStatus(id, status, proofBase64, pin) {
   var allowed = { got: 1, notseen: 1, done: 1, archived: 1 };
   if (!allowed[status]) throw new Error('Bad status');
+  if (status === 'archived') requireAdmin_(pin);
   if (status === 'done' && !proofBase64) {
     throw new Error('Proof photo required / Gambar bukti diperlukan');
   }

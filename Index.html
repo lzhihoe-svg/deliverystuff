@@ -14,7 +14,7 @@
   body {
     font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     background: var(--bg); color: var(--ink);
-    /* enough room to scroll the last card's buttons clear of the nav + floating Post button */
+    /* enough room to scroll the last card's buttons clear of the nav bar */
     padding-bottom: 180px;
     overscroll-behavior-y: contain;
   }
@@ -26,7 +26,7 @@
     padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
   }
   header h1 { font-size: 18px; }
-  .lang-btn {
+  .role-btn {
     border: 1px solid rgba(255,255,255,.4); background: none; color: #fff;
     border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
   }
@@ -48,6 +48,12 @@
     background: var(--red); color: #fff; border-radius: 999px;
     font-size: 11px; font-weight: 700; min-width: 18px; height: 18px;
     line-height: 18px; padding: 0 4px; display: none;
+  }
+  /* Post button lives INSIDE the nav bar so it can never cover card buttons */
+  #nav-post { color: var(--blue); font-weight: 800; }
+  #nav-post .post-circle {
+    display: block; width: 31px; height: 31px; margin: 0 auto; border-radius: 50%;
+    background: var(--blue); color: #fff; font-size: 24px; line-height: 30px; font-weight: 700;
   }
 
   /* ---------- generic ---------- */
@@ -92,7 +98,7 @@
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
   .btn-row .btn { flex: 1; }
 
-  /* small outline edit/delete buttons on every card */
+  /* small outline edit/delete buttons (admin only) */
   .tools { display: flex; gap: 8px; margin-top: 10px; }
   .tools button {
     flex: 1; background: #fff; border-radius: 10px; padding: 8px;
@@ -144,13 +150,6 @@
   .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: pointer; }
   .proof .txt { font-size: 13px; color: #166534; font-weight: 600; }
 
-  /* ---------- Post button lives INSIDE the nav bar so it can never cover card buttons ---------- */
-  #nav-post { color: var(--blue); font-weight: 800; }
-  #nav-post .post-circle {
-    display: block; width: 31px; height: 31px; margin: 0 auto; border-radius: 50%;
-    background: var(--blue); color: #fff; font-size: 24px; line-height: 30px; font-weight: 700;
-  }
-
   /* ---------- modals (always centered) ---------- */
   .overlay {
     position: fixed; inset: 0; background: rgba(15,23,42,.6); z-index: 50;
@@ -163,7 +162,7 @@
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea {
+  .sheet textarea, .sheet input[type=password] {
     width: 100%; border: 2px solid #cbd5e1; border-radius: 12px;
     padding: 12px; font-size: 16px; font-family: inherit;
   }
@@ -236,19 +235,19 @@
 
 <header>
   <h1>🏭 Kilang App</h1>
-  <button class="lang-btn" id="lang-toggle" onclick="toggleLang()">🌐 BM</button>
+  <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
 </header>
 
-<!-- ================= TAB 1 : KILANG WANT ================= -->
+<!-- ================= TAB 1 : SEWING (Kilang Want) ================= -->
 <div class="page" id="page-want">
   <div id="want-stack-area"></div>
   <div id="want-responded"></div>
 </div>
 
-<!-- ================= TAB 2 : DELIVERY ================= -->
+<!-- ================= TAB 2 : DELIVERY (Kilang Packing) ================= -->
 <div class="page" id="page-delivery">
   <div class="pills" id="delivery-pills">
-    <button data-cat="" class="active" id="pill-all">Semua</button>
+    <button data-cat="" class="active">All</button>
     <button data-cat="lalamove">🛵 Lalamove</button>
     <button data-cat="bus">🚌 Bus</button>
     <button data-cat="pickup">🤝 Pickup</button>
@@ -264,30 +263,37 @@
 <!-- ================= BOTTOM NAV ================= -->
 <nav>
   <button id="nav-want" onclick="switchTab('want')">
-    <span class="ico">🧵</span><span class="nav-lbl" id="navlbl-want">Jahit</span>
+    <span class="ico">🧵</span><span class="nav-lbl">Sewing</span>
     <span class="badge" id="badge-want"></span>
   </button>
   <button id="nav-delivery" onclick="switchTab('delivery')">
-    <span class="ico">🚚</span><span class="nav-lbl" id="navlbl-delivery">Hantar</span>
+    <span class="ico">🚚</span><span class="nav-lbl">Delivery</span>
     <span class="badge" id="badge-delivery"></span>
   </button>
   <button id="nav-postage" onclick="switchTab('postage')">
-    <span class="ico">📦</span><span class="nav-lbl" id="navlbl-postage">Pos</span>
+    <span class="ico">📦</span><span class="nav-lbl">Postage</span>
     <span class="badge" id="badge-postage"></span>
   </button>
   <button id="nav-post" onclick="openUpload(null)">
-    <span class="post-circle">＋</span><span class="nav-lbl" id="navlbl-post">Post</span>
+    <span class="post-circle">＋</span><span class="nav-lbl">Post</span>
   </button>
 </nav>
 
-<!-- ================= LANGUAGE MODAL (first launch) ================= -->
-<div class="overlay" id="lang-overlay">
+<!-- ================= ROLE MODAL ================= -->
+<div class="overlay" id="role-overlay">
   <div class="sheet" style="text-align:center">
-    <button class="x-close" onclick="closeLang()">✕</button>
-    <h2 style="padding-right:0">🌐 Pilih Bahasa / Choose Language</h2>
+    <button class="x-close" onclick="closeRoleModal()">✕</button>
+    <h2 style="padding-right:0">👋 Who are you?</h2>
     <div class="choice-row" style="margin-top:8px">
-      <button onclick="setLang('bm')"><span class="big">🇲🇾</span>Bahasa Melayu</button>
-      <button onclick="setLang('en')"><span class="big">🇬🇧</span>English</button>
+      <button onclick="chooseStaff()"><span class="big">👷</span>Staff</button>
+      <button id="role-admin-btn" onclick="showPin()"><span class="big">👔</span>Admin</button>
+    </div>
+    <div id="pin-wrap" style="display:none">
+      <label style="text-align:left">Admin PIN 🔑</label>
+      <input type="password" id="pin-input" inputmode="numeric" placeholder="Enter PIN">
+      <div style="margin-top:14px">
+        <button class="btn blue" onclick="submitPin()">✅ OK</button>
+      </div>
     </div>
   </div>
 </div>
@@ -299,7 +305,7 @@
     <h2 id="upload-title"></h2>
 
     <div id="upload-cat-wrap" style="display:none">
-      <label id="lbl-method"></label>
+      <label>Delivery method</label>
       <div class="choice-row" id="upload-cats">
         <button data-cat="lalamove" onclick="pickCat(this)"><span class="big">🛵</span>Lalamove</button>
         <button data-cat="bus" onclick="pickCat(this)"><span class="big">🚌</span>Bus</button>
@@ -307,21 +313,21 @@
       </div>
     </div>
 
-    <label id="photo1-label"></label>
+    <label>Jobsheet photo 📸</label>
     <button class="photo-btn" id="photo1-btn" onclick="document.getElementById('photo1-file').click()"></button>
     <input type="file" id="photo1-file" accept="image/*" onchange="photoPicked(this, 1)">
 
     <div id="photo2-wrap" style="display:none">
-      <label id="photo2-label"></label>
+      <label>Airway bill photo (J&amp;T) 📸</label>
       <button class="photo-btn" id="photo2-btn" onclick="document.getElementById('photo2-file').click()"></button>
       <input type="file" id="photo2-file" accept="image/*" onchange="photoPicked(this, 2)">
     </div>
 
-    <label id="lbl-note"></label>
-    <textarea id="upload-note" rows="2"></textarea>
+    <label>Instruction (optional)</label>
+    <textarea id="upload-note" rows="2" placeholder="Example: Deliver before 5pm"></textarea>
 
     <div class="btn-row">
-      <button class="btn gray" id="btn-cancel" onclick="closeUpload()"></button>
+      <button class="btn gray" onclick="closeUpload()">Cancel</button>
       <button class="btn blue" id="btn-submit" onclick="submitUpload()"></button>
     </div>
   </div>
@@ -331,10 +337,10 @@
 <div class="overlay" id="confirm-overlay">
   <div class="sheet" style="max-width:340px;text-align:center">
     <button class="x-close" onclick="closeConfirm()">✕</button>
-    <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px"></h2>
+    <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px">Delete this job? Cannot undo!</h2>
     <div class="btn-row">
-      <button class="btn gray" id="confirm-no" onclick="closeConfirm()"></button>
-      <button class="btn red" id="confirm-yes" onclick="confirmYes()"></button>
+      <button class="btn gray" onclick="closeConfirm()">Cancel</button>
+      <button class="btn red" id="confirm-yes" onclick="confirmYes()">🗑️ Yes, Delete</button>
     </div>
   </div>
 </div>
@@ -347,83 +353,11 @@
 <div id="spinner"><div class="ring"></div></div>
 
 <script>
-  // ------------------------------------------------------------ translations
-  var STR = {
-    bm: {
-      nav_want: 'Jahit', nav_delivery: 'Hantar', nav_postage: 'Pos',
-      pill_all: 'Semua', fab: 'Post',
-      swipe_help: '👈 ❌ Belum nampak &nbsp;|&nbsp; ❤️ Dah ambil, tengah jahit 👉',
-      empty_want: 'Tiada jobsheet baru!', empty_list: 'Tiada kerja lagi.',
-      btn_notseen: '❌ Belum Nampak', btn_got: '❤️ Dah Ambil',
-      sec_status: '📋 Status Jobsheet',
-      st_sewing: '❤️ Tengah jahit', st_notseen: '❌ Belum nampak',
-      btn_found: '❤️ Dah jumpa, tengah jahit',
-      btn_edit: '✏️ Edit', btn_delete: '🗑️ Padam', btn_archive: '🗄️ Sorok',
-      btn_confirm: '🗑️ Ya, Padam',
-      sec_todo: '⏳ Belum Siap', sec_done: '✅ Siap',
-      chip_old: '⚠️ Lebih 1 hari!',
-      lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
-      btn_proof: '📸 Siap! Ambil Gambar Bukti',
-      proof_done: '✅ Siap', posted: 'Dipos', remaining: 'baki',
-      up_want: '🧵 Post Jobsheet Baru', up_delivery: '🚚 Post Arahan Penghantaran',
-      up_postage: '📦 Post Airway Bill + Jobsheet', edit_title: '✏️ Edit Job',
-      lbl_method: 'Cara hantar',
-      lbl_photo_job: 'Gambar Jobsheet 📸', lbl_photo_awb: 'Gambar Airway Bill (J&T) 📸',
-      btn_takephoto: '📷 Ambil / Pilih Gambar', photo_ok: '✅ Gambar OK — tukar?',
-      photo_keep: '📷 Gambar sedia ada — tukar?',
-      lbl_note: 'Arahan (tak wajib)', note_ph: 'Contoh: Hantar sebelum 5pm',
-      btn_cancel: 'Batal', btn_post: '📤 Post', btn_save: '💾 Simpan',
-      toast_posted: '📤 Sudah post!', toast_saved: '💾 Sudah simpan!',
-      toast_deleted: '🗑️ Sudah padam.', toast_archived: '🗄️ Disorok.',
-      toast_got: '❤️ Bagus! Tengah jahit.', toast_notseen: '❌ Office akan follow-up.',
-      toast_done: '✅ Siap! Terima kasih 🙏',
-      toast_needphoto: 'Sila ambil gambar dulu 📸',
-      toast_needcat: 'Pilih cara hantar dulu 🛵🚌🤝',
-      toast_need2: 'Perlu 2 gambar: jobsheet + airway bill 📸',
-      confirm_delete: 'Padam job ini? Tidak boleh undo!',
-      ago_now: 'baru sahaja', ago_min: ' min lalu', ago_hour: ' jam lalu', ago_day: ' hari lalu'
-    },
-    en: {
-      nav_want: 'Sewing', nav_delivery: 'Delivery', nav_postage: 'Postage',
-      pill_all: 'All', fab: 'Post',
-      swipe_help: '👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it, sewing now 👉',
-      empty_want: 'No new jobsheets!', empty_list: 'Nothing here yet.',
-      btn_notseen: '❌ Not Seen', btn_got: '❤️ Got It',
-      sec_status: '📋 Jobsheet Status',
-      st_sewing: '❤️ Sewing now', st_notseen: '❌ Not seen yet',
-      btn_found: '❤️ Found it, sewing now',
-      btn_edit: '✏️ Edit', btn_delete: '🗑️ Delete', btn_archive: '🗄️ Hide',
-      btn_confirm: '🗑️ Yes, Delete',
-      sec_todo: '⏳ To Do', sec_done: '✅ Done',
-      chip_old: '⚠️ Over 1 day!',
-      lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
-      btn_proof: '📸 Done! Take Proof Photo',
-      proof_done: '✅ Done', posted: 'Posted', remaining: 'left',
-      up_want: '🧵 Post New Jobsheet', up_delivery: '🚚 Post Delivery Instruction',
-      up_postage: '📦 Post Airway Bill + Jobsheet', edit_title: '✏️ Edit Job',
-      lbl_method: 'Delivery method',
-      lbl_photo_job: 'Jobsheet Photo 📸', lbl_photo_awb: 'Airway Bill Photo (J&T) 📸',
-      btn_takephoto: '📷 Take / Choose Photo', photo_ok: '✅ Photo OK — change?',
-      photo_keep: '📷 Current photo — change?',
-      lbl_note: 'Instruction (optional)', note_ph: 'Example: Deliver before 5pm',
-      btn_cancel: 'Cancel', btn_post: '📤 Post', btn_save: '💾 Save',
-      toast_posted: '📤 Posted!', toast_saved: '💾 Saved!',
-      toast_deleted: '🗑️ Deleted.', toast_archived: '🗄️ Hidden.',
-      toast_got: '❤️ Great! Sewing now.', toast_notseen: '❌ Office will follow up.',
-      toast_done: '✅ Done! Thank you 🙏',
-      toast_needphoto: 'Please take a photo first 📸',
-      toast_needcat: 'Choose delivery method first 🛵🚌🤝',
-      toast_need2: 'Need 2 photos: jobsheet + airway bill 📸',
-      confirm_delete: 'Delete this job? Cannot undo!',
-      ago_now: 'just now', ago_min: ' min ago', ago_hour: ' hr ago', ago_day: ' days ago'
-    }
-  };
-  function t(k) { return STR[state.lang][k] || k; }
-
   // ------------------------------------------------------------ state
   var state = {
     tab: 'want',
-    lang: localStorage.getItem('kilangLang') || '',
+    role: localStorage.getItem('kilangRole') || '',
+    pin: localStorage.getItem('kilangPin') || '',
     deliveryCat: '',
     jobs: { want: [], delivery: [], postage: [] },
     upload: { photo1: null, photo2: null, cat: '' },
@@ -433,9 +367,68 @@
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
 
-  function imgUrl(id, w) {
-    return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 1200);
+  function isAdmin() { return state.role === 'admin'; }
+
+  // ------------------------------------------------------------ images
+  // Photos are served THROUGH the app (base64 via getImagesData), so they
+  // show on every device — no dependency on Drive link-sharing, which
+  // Google Workspace domains often block.
+  var imgCache = {};     // photoId -> data URI
+  var imgFetching = {};  // photoId -> true while a batch is in flight
+  var PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
+    '<rect width="400" height="300" fill="#e2e8f0"/>' +
+    '<text x="200" y="160" font-size="48" text-anchor="middle">⏳</text></svg>');
+
+  function imgTag(id, style, extra) {
+    return '<img data-img="' + id + '" src="' + (imgCache[id] || PLACEHOLDER) + '" ' +
+      (style ? 'style="' + style + '" ' : '') + (extra || '') + '>';
   }
+
+  function loadImages() {
+    var want = [];
+    var els = document.querySelectorAll('img[data-img]');
+    for (var i = 0; i < els.length; i++) {
+      var id = els[i].getAttribute('data-img');
+      if (imgCache[id]) {
+        if (els[i].getAttribute('src') !== imgCache[id]) els[i].src = imgCache[id];
+      } else if (!imgFetching[id] && want.indexOf(id) < 0) {
+        want.push(id);
+      }
+    }
+    if (!want.length) return;
+    var batch = want.slice(0, 6);
+    batch.forEach(function (id) { imgFetching[id] = true; });
+    google.script.run
+      .withSuccessHandler(function (map) {
+        for (var k in map) { if (map[k]) imgCache[k] = map[k]; }
+        batch.forEach(function (id) { delete imgFetching[id]; });
+        var els2 = document.querySelectorAll('img[data-img]');
+        for (var i = 0; i < els2.length; i++) {
+          var id2 = els2[i].getAttribute('data-img');
+          if (imgCache[id2] && els2[i].getAttribute('src') !== imgCache[id2]) els2[i].src = imgCache[id2];
+        }
+        loadImages(); // fetch next batch if any
+      })
+      .withFailureHandler(function () {
+        batch.forEach(function (id) { delete imgFetching[id]; });
+      })
+      .getImagesData(batch);
+  }
+
+  function seedImage(id, base64jpeg) {
+    if (id && base64jpeg) imgCache[id] = 'data:image/jpeg;base64,' + base64jpeg;
+  }
+
+  function viewPhoto(id) {
+    var v = document.getElementById('viewer-img');
+    v.setAttribute('data-img', id);
+    v.src = imgCache[id] || PLACEHOLDER;
+    document.getElementById('viewer').classList.add('show');
+    loadImages();
+  }
+
+  // ------------------------------------------------------------ helpers
   function esc(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -444,10 +437,10 @@
   function timeAgo(ms) {
     if (!ms) return '';
     var d = Date.now() - ms;
-    if (d < 60000) return t('ago_now');
-    if (d < 3600000) return Math.floor(d / 60000) + t('ago_min');
-    if (d < DAY) return Math.floor(d / 3600000) + t('ago_hour');
-    return Math.floor(d / DAY) + t('ago_day');
+    if (d < 60000) return 'just now';
+    if (d < 3600000) return Math.floor(d / 60000) + ' min ago';
+    if (d < DAY) return Math.floor(d / 3600000) + ' hr ago';
+    return Math.floor(d / DAY) + ' days ago';
   }
   function toast(msg) {
     var el = document.getElementById('toast');
@@ -455,42 +448,50 @@
     clearTimeout(el._h); el._h = setTimeout(function () { el.style.display = 'none'; }, 2600);
   }
   function busy(on) { document.getElementById('spinner').style.display = on ? 'flex' : 'none'; }
-  function viewPhoto(id) {
-    document.getElementById('viewer-img').src = imgUrl(id, 1600);
-    document.getElementById('viewer').classList.add('show');
-  }
   function findJob(id) {
     var list = state.jobs[state.tab];
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
 
-  // ------------------------------------------------------------ language
-  function setLang(l) {
-    state.lang = l;
-    localStorage.setItem('kilangLang', l);
-    document.getElementById('lang-overlay').classList.remove('show');
-    applyLang(); renderAll();
+  // ------------------------------------------------------------ roles
+  function renderRoleBtn() {
+    document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
   }
-  function closeLang() {
-    // X or backdrop pressed: keep current language (BM default) — never trap the user
-    setLang(state.lang);
+  function openRoleModal() {
+    document.getElementById('pin-wrap').style.display = 'none';
+    document.getElementById('pin-input').value = '';
+    document.getElementById('role-overlay').classList.add('show');
   }
-  function toggleLang() {
-    setLang(state.lang === 'bm' ? 'en' : 'bm');
+  function closeRoleModal() {
+    // Never trap the user: X or backdrop = stay/become Staff
+    if (!state.role) setRole('staff', '');
+    else document.getElementById('role-overlay').classList.remove('show');
   }
-  function applyLang() {
-    document.getElementById('lang-toggle').textContent = state.lang === 'bm' ? '🌐 English' : '🌐 BM';
-    document.getElementById('navlbl-want').textContent = t('nav_want');
-    document.getElementById('navlbl-delivery').textContent = t('nav_delivery');
-    document.getElementById('navlbl-postage').textContent = t('nav_postage');
-    document.getElementById('pill-all').textContent = t('pill_all');
-    document.getElementById('navlbl-post').textContent = t('fab');
-    document.getElementById('lbl-method').textContent = t('lbl_method');
-    document.getElementById('photo2-label').textContent = t('lbl_photo_awb');
-    document.getElementById('lbl-note').textContent = t('lbl_note');
-    document.getElementById('upload-note').placeholder = t('note_ph');
-    document.getElementById('btn-cancel').textContent = t('btn_cancel');
+  function chooseStaff() { setRole('staff', ''); }
+  function showPin() {
+    document.getElementById('pin-wrap').style.display = 'block';
+    document.getElementById('pin-input').focus();
+  }
+  function submitPin() {
+    var p = document.getElementById('pin-input').value.trim();
+    if (!p) { toast('Enter the PIN 🔑'); return; }
+    busy(true);
+    google.script.run
+      .withSuccessHandler(function (ok) {
+        busy(false);
+        if (ok) { setRole('admin', p); toast('👔 Admin mode on'); }
+        else { toast('❌ Wrong PIN'); }
+      })
+      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+      .checkPin(p);
+  }
+  function setRole(role, pin) {
+    state.role = role; state.pin = pin;
+    localStorage.setItem('kilangRole', role);
+    localStorage.setItem('kilangPin', pin);
+    document.getElementById('role-overlay').classList.remove('show');
+    renderRoleBtn(); renderAll();
   }
 
   // ------------------------------------------------------------ tabs
@@ -520,20 +521,22 @@
 
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage();
+    loadImages();
   }
 
-  // small edit/delete/(archive) button row used on every card
+  // admin-only edit/delete/(hide) button row
   function toolBtns(j, withArchive) {
+    if (!isAdmin()) return '';
     var html = '<div class="tools">' +
-      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">' + t('btn_edit') + '</button>' +
-      '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">' + t('btn_delete') + '</button>';
+      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
+      '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">🗑️ Delete</button>';
     if (withArchive) {
-      html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">' + t('btn_archive') + '</button>';
+      html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Hide</button>';
     }
     return html + '</div>';
   }
 
-  // ------------------------------------------------------------ TAB 1: want (swipe)
+  // ------------------------------------------------------------ TAB 1: sewing (swipe)
   function renderWant() {
     var jobs = state.jobs.want;
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
@@ -541,20 +544,20 @@
     var area = document.getElementById('want-stack-area');
 
     if (pending.length === 0) {
-      area.innerHTML = '<div class="empty"><span class="big">🎉</span>' + t('empty_want') + '</div>';
+      area.innerHTML = '<div class="empty"><span class="big">🎉</span>No new jobsheets!</div>';
     } else {
       var html = '<div class="stack-outer">';
-      html += '<div class="swipe-help">' + t('swipe_help') + '</div>';
+      html += '<div class="swipe-help">👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it, sewing now 👉</div>';
       html += '<div class="stack-wrap" id="stack">';
       var show = pending.slice(0, 3).reverse();   // last in DOM = top of stack
       for (var i = 0; i < show.length; i++) {
         var j = show[i];
         var top = (i === show.length - 1);
         html += '<div class="swipe-card" data-id="' + j.id + '" ' + (top ? 'id="topcard"' : '') + '>' +
-          '<img src="' + imgUrl(j.photoIds[0]) + '" alt="jobsheet">' +
+          imgTag(j.photoIds[0], '', 'alt="jobsheet"') +
           '<div class="foot">' +
             '<div class="cap">📄 ' + (esc(j.note) || 'Jobsheet') + ' · ' + timeAgo(j.createdAt) +
-            ' · ' + t('remaining') + ' ' + pending.length + '</div>' +
+            ' · ' + pending.length + ' left</div>' +
             toolBtns(j, false) +
           '</div>' +
           '<div class="stamp yes">❤️</div><div class="stamp no">❌</div>' +
@@ -562,8 +565,8 @@
       }
       html += '</div>';
       html += '<div class="btn-row">' +
-        '<button class="btn red" onclick="swipeAction(\'notseen\')">' + t('btn_notseen') + '</button>' +
-        '<button class="btn green" onclick="swipeAction(\'got\')">' + t('btn_got') + '</button></div>';
+        '<button class="btn red" onclick="swipeAction(\'notseen\')">❌ Not Seen</button>' +
+        '<button class="btn green" onclick="swipeAction(\'got\')">❤️ Got It</button></div>';
       html += '</div>';
       area.innerHTML = html;
       attachSwipe();
@@ -571,15 +574,15 @@
 
     var r = document.getElementById('want-responded');
     if (responded.length === 0) { r.innerHTML = ''; return; }
-    var html2 = '<div class="section-title">' + t('sec_status') + '</div><div class="grid">';
+    var html2 = '<div class="section-title">📋 Jobsheet Status</div><div class="grid">';
     responded.forEach(function (j) {
       var got = j.status === 'got';
       html2 += '<div class="card"><div style="display:flex;flex:1">' +
-        '<img src="' + imgUrl(j.photoIds[0], 300) + '" style="width:90px;object-fit:cover;cursor:pointer" onclick="viewPhoto(\'' + j.photoIds[0] + '\')">' +
+        imgTag(j.photoIds[0], 'width:90px;object-fit:cover;cursor:pointer', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') +
         '<div class="body" style="flex:1">' +
-        '<div class="note" style="font-size:15px">' + (got ? t('st_sewing') : t('st_notseen')) + '</div>' +
+        '<div class="note" style="font-size:15px">' + (got ? '❤️ Sewing now' : '❌ Not seen yet') + '</div>' +
         '<div class="meta">' + timeAgo(j.doneAt) + '</div>' +
-        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">' + t('btn_found') + '</button>' : '') +
+        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it, sewing now</button>' : '') +
         '<div class="spacer"></div>' +
         toolBtns(j, true) +
         '</div></div></div>';
@@ -640,7 +643,7 @@
     state.deliveryCat = b.getAttribute('data-cat');
     this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
     b.classList.add('active');
-    renderDelivery();
+    renderDelivery(); loadImages();
   });
 
   function renderDelivery() {
@@ -662,16 +665,16 @@
     var html = '';
 
     if (pending.length === 0 && done.length === 0) {
-      return '<div class="empty"><span class="big">📭</span>' + t('empty_list') + '</div>';
+      return '<div class="empty"><span class="big">📭</span>Nothing here yet.</div>';
     }
 
     if (pending.length) {
-      html += '<div class="section-title">' + t('sec_todo') + ' (' + pending.length + ')</div><div class="grid">';
+      html += '<div class="section-title">⏳ To Do (' + pending.length + ')</div><div class="grid">';
       pending.forEach(function (j) { html += jobCard(j, twoPhotos, false); });
       html += '</div>';
     }
     if (done.length) {
-      html += '<div class="section-title">' + t('sec_done') + ' (' + done.length + ')</div><div class="grid">';
+      html += '<div class="section-title">✅ Done (' + done.length + ')</div><div class="grid">';
       done.forEach(function (j) { html += jobCard(j, twoPhotos, true); });
       html += '</div>';
     }
@@ -684,27 +687,27 @@
 
     if (twoPhotos && j.photoIds.length > 1) {
       html += '<div class="photo-pair">' +
-        '<div><span class="lbl">' + t('lbl_jobsheet') + '</span><img src="' + imgUrl(j.photoIds[0], 600) + '" onclick="viewPhoto(\'' + j.photoIds[0] + '\')"></div>' +
-        '<div><span class="lbl">' + t('lbl_awb') + '</span><img src="' + imgUrl(j.photoIds[1], 600) + '" onclick="viewPhoto(\'' + j.photoIds[1] + '\')"></div>' +
+        '<div><span class="lbl">📄 Jobsheet</span>' + imgTag(j.photoIds[0], '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>' +
+        '<div><span class="lbl">🏷️ Airway Bill</span>' + imgTag(j.photoIds[1], '', 'onclick="viewPhoto(\'' + j.photoIds[1] + '\')"') + '</div>' +
         '</div>';
     } else {
-      html += '<img class="job" src="' + imgUrl(j.photoIds[0], 900) + '" onclick="viewPhoto(\'' + j.photoIds[0] + '\')">';
+      html += imgTag(j.photoIds[0], '', 'class="job" onclick="viewPhoto(\'' + j.photoIds[0] + '\')"');
     }
 
     html += '<div class="body">';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
-    if (old) html += '<span class="chip old">' + t('chip_old') + '</span>';
+    if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
-    html += '<div class="meta">' + t('posted') + ' ' + timeAgo(j.createdAt) + '</div>';
+    html += '<div class="meta">Posted ' + timeAgo(j.createdAt) + '</div>';
 
     if (isDone) {
       html += '<div class="proof">' +
-        (j.proofPhotoId ? '<img src="' + imgUrl(j.proofPhotoId, 300) + '" onclick="viewPhoto(\'' + j.proofPhotoId + '\')">' : '') +
-        '<div class="txt">' + t('proof_done') + ' · ' + timeAgo(j.doneAt) + '</div></div>';
+        (j.proofPhotoId ? imgTag(j.proofPhotoId, '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\')"') : '') +
+        '<div class="txt">✅ Done · ' + timeAgo(j.doneAt) + '</div></div>';
       html += '<div class="spacer"></div>' + toolBtns(j, true);
     } else {
       html += '<div class="spacer"></div>';
-      html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">' + t('btn_proof') + '</button>';
+      html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>';
       html += toolBtns(j, false);
     }
     html += '</div></div>';
@@ -712,8 +715,8 @@
   }
 
   // ------------------------------------------------------------ status updates / delete
-  // All mutations are OPTIMISTIC: the screen updates instantly and the server
-  // call runs in the background. On failure we toast and re-sync from server.
+  // Mutations are OPTIMISTIC: the screen updates instantly and the server
+  // call runs in the background. On failure we toast and re-sync.
 
   function bgFail(e) { toast('⚠️ ' + e.message); refresh(state.tab); }
 
@@ -734,20 +737,17 @@
       }
       renderAll(); updateBadgeLocal();
     }
-    if (status === 'got') toast(t('toast_got'));
-    if (status === 'notseen') toast(t('toast_notseen'));
-    if (status === 'archived') toast(t('toast_archived'));
-    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null);
+    if (status === 'got') toast('❤️ Great! Sewing now.');
+    if (status === 'notseen') toast('❌ Office will follow up.');
+    if (status === 'archived') toast('🗄️ Hidden.');
+    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null, state.pin);
   }
 
   // custom confirm modal — window.confirm() can be silently blocked
   // inside the Apps Script sandbox iframe
   var confirmCb = null;
-  function askConfirm(msg, cb) {
+  function askConfirm(cb) {
     confirmCb = cb;
-    document.getElementById('confirm-msg').textContent = msg;
-    document.getElementById('confirm-no').textContent = t('btn_cancel');
-    document.getElementById('confirm-yes').textContent = t('btn_confirm');
     document.getElementById('confirm-overlay').classList.add('show');
   }
   function closeConfirm() {
@@ -761,11 +761,11 @@
   }
 
   function removeJob(id) {
-    askConfirm(t('confirm_delete'), function () {
+    askConfirm(function () {
       state.jobs[state.tab] = state.jobs[state.tab].filter(function (j) { return j.id !== id; });
       renderAll(); updateBadgeLocal();
-      toast(t('toast_deleted'));
-      google.script.run.withFailureHandler(bgFail).deleteJob(id);
+      toast('🗑️ Deleted.');
+      google.script.run.withFailureHandler(bgFail).deleteJob(id, state.pin);
     });
   }
 
@@ -782,11 +782,12 @@
         .withSuccessHandler(function (res) {
           var j = findJob(id);
           if (j) { j.status = 'done'; j.doneAt = res.doneAt; j.proofPhotoId = res.proofPhotoId; }
+          seedImage(res.proofPhotoId, b64);
           busy(false); renderAll(); updateBadgeLocal();
-          toast(t('toast_done'));
+          toast('✅ Done! Thank you 🙏');
         })
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
-        .updateStatus(id, 'done', b64);
+        .updateStatus(id, 'done', b64, null);
     });
     input.value = '';
   }
@@ -794,25 +795,31 @@
   // ------------------------------------------------------------ upload & edit modal
   function openUpload(editId) {
     var job = editId ? findJob(editId) : null;
+    if (editId && !job) return;
+    if (job && !isAdmin()) { toast('Admin only'); return; }
     state.editing = job;
     state.upload = { photo1: null, photo2: null, cat: job ? (job.category || '') : '' };
 
-    var titles = { want: t('up_want'), delivery: t('up_delivery'), postage: t('up_postage') };
-    document.getElementById('upload-title').textContent = job ? t('edit_title') : titles[state.tab];
+    var titles = {
+      want: '🧵 Post New Jobsheet',
+      delivery: '🚚 Post Delivery Instruction',
+      postage: '📦 Post Airway Bill + Jobsheet'
+    };
+    document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
     document.getElementById('photo2-wrap').style.display = state.tab === 'postage' ? 'block' : 'none';
-    document.getElementById('photo1-label').textContent = t('lbl_photo_job');
-    document.getElementById('btn-submit').textContent = job ? t('btn_save') : t('btn_post');
+    document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
 
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
     });
 
-    setPhotoBtn(1, job && job.photoIds[0] ? imgUrl(job.photoIds[0], 300) : null);
-    setPhotoBtn(2, job && job.photoIds[1] ? imgUrl(job.photoIds[1], 300) : null);
+    setPhotoBtn(1, job && job.photoIds[0] ? job.photoIds[0] : null);
+    setPhotoBtn(2, job && job.photoIds[1] ? job.photoIds[1] : null);
 
     document.getElementById('upload-overlay').classList.add('show');
+    loadImages();
   }
   function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
 
@@ -822,15 +829,15 @@
     btn.classList.add('active');
   }
 
-  /** existingUrl: show current photo (edit mode); null: empty "take photo" state */
-  function setPhotoBtn(n, existingUrl) {
+  /** existingId: show current photo (edit mode); null: empty "take photo" state */
+  function setPhotoBtn(n, existingId) {
     var b = document.getElementById('photo' + n + '-btn');
-    if (existingUrl) {
+    if (existingId) {
       b.classList.add('hasphoto');
-      b.innerHTML = '<img src="' + existingUrl + '"> ' + t('photo_keep');
+      b.innerHTML = imgTag(existingId) + ' 📷 Current photo — change?';
     } else {
       b.classList.remove('hasphoto');
-      b.innerHTML = t('btn_takephoto');
+      b.innerHTML = '📷 Take / Choose Photo';
     }
   }
   function photoPicked(input, n) {
@@ -841,7 +848,7 @@
       state.upload['photo' + n] = b64;
       var b = document.getElementById('photo' + n + '-btn');
       b.classList.add('hasphoto');
-      b.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '"> ' + t('photo_ok');
+      b.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '"> ✅ Photo OK — change?';
     });
     input.value = '';
   }
@@ -850,14 +857,17 @@
     var note = document.getElementById('upload-note').value.trim();
 
     if (state.editing) {
-      if (state.tab === 'delivery' && !state.upload.cat) { toast(t('toast_needcat')); return; }
+      if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
       busy(true); // photos may need uploading — keep spinner during transfer
+      var up = state.upload;
       google.script.run
         .withSuccessHandler(function (job) {
+          if (up.photo1) seedImage(job.photoIds[0], up.photo1);
+          if (up.photo2) seedImage(job.photoIds[1], up.photo2);
           var list = state.jobs[state.tab];
           for (var i = 0; i < list.length; i++) if (list[i].id === job.id) { list[i] = job; break; }
           busy(false); closeUpload(); renderAll(); updateBadgeLocal();
-          toast(t('toast_saved'));
+          toast('💾 Saved!');
         })
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
         .editJob(state.editing.id, {
@@ -865,21 +875,22 @@
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
           photo1: state.upload.photo1,
           photo2: state.upload.photo2
-        });
+        }, state.pin);
       return;
     }
 
-    if (!state.upload.photo1) { toast(t('toast_needphoto')); return; }
-    if (state.tab === 'delivery' && !state.upload.cat) { toast(t('toast_needcat')); return; }
-    if (state.tab === 'postage' && !state.upload.photo2) { toast(t('toast_need2')); return; }
+    if (!state.upload.photo1) { toast('Please take a photo first 📸'); return; }
+    if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
+    if (state.tab === 'postage' && !state.upload.photo2) { toast('Need 2 photos: jobsheet + airway bill 📸'); return; }
     var photos = [state.upload.photo1];
     if (state.upload.photo2) photos.push(state.upload.photo2);
     busy(true); // real upload — keep the spinner while photos transfer
     google.script.run
       .withSuccessHandler(function (job) {
+        for (var i = 0; i < photos.length; i++) seedImage(job.photoIds[i], photos[i]);
         state.jobs[state.tab].unshift(job);
         busy(false); closeUpload(); renderAll(); updateBadgeLocal();
-        toast(t('toast_posted'));
+        toast('📤 Posted!');
       })
       .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
       .addJob({
@@ -891,10 +902,10 @@
   }
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'lang-overlay', 'confirm-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
-      if (id === 'lang-overlay') closeLang();
+      if (id === 'role-overlay') closeRoleModal();
       else if (id === 'confirm-overlay') closeConfirm();
       else closeUpload();
     });
@@ -924,10 +935,10 @@
   }
 
   // ------------------------------------------------------------ boot
-  var storedLang = localStorage.getItem('kilangLang');
-  state.lang = (storedLang === 'en' || storedLang === 'bm') ? storedLang : 'bm';
-  applyLang();
-  if (!storedLang) document.getElementById('lang-overlay').classList.add('show');
+  renderRoleBtn();
+  if (state.role !== 'admin' && state.role !== 'staff') {
+    document.getElementById('role-overlay').classList.add('show');
+  }
   switchTab('want');
   window.__kilang = state; // debugging/test hook
   setInterval(function () {

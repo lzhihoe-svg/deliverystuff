@@ -1,10 +1,27 @@
 // Simulates the Google Apps Script backend (google.script.run) with realistic latency.
 (function () {
   var LAT = 150; // ms simulated server latency
+  var PIN = '1234';
   var db = { jobs: [] };
   var uid = 0;
 
+  function requireAdmin(pin) {
+    if (String(pin) !== PIN) throw new Error('Admin only — wrong PIN');
+  }
+  function svg(id) {
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
+      '<rect width="400" height="300" fill="#64748b"/>' +
+      '<text x="200" y="150" font-size="28" fill="#fff" text-anchor="middle" font-family="sans-serif">' + id + '</text></svg>';
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
+  }
+
   var api = {
+    checkPin: function (pin) { return String(pin) === PIN; },
+    getImagesData: function (ids) {
+      var out = {};
+      ids.slice(0, 6).forEach(function (id) { out[id] = id.indexOf('missing') >= 0 ? null : svg(id); });
+      return out;
+    },
     getJobs: function (tab) {
       return db.jobs
         .filter(function (j) { return j.tab === tab && j.status !== 'archived'; })
@@ -27,7 +44,8 @@
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
     },
-    editJob: function (id, ch) {
+    editJob: function (id, ch, pin) {
+      requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       j.note = ch.note || ''; j.category = ch.category || '';
@@ -35,13 +53,15 @@
       if (ch.photo2) j.photoIds[1] = 'phnew-' + id + '-1';
       return JSON.parse(JSON.stringify(j));
     },
-    deleteJob: function (id) {
+    deleteJob: function (id, pin) {
+      requireAdmin(pin);
       var i = db.jobs.findIndex(function (x) { return x.id === id; });
       if (i < 0) throw new Error('Job not found');
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
     },
-    updateStatus: function (id, status, proof) {
+    updateStatus: function (id, status, proof, pin) {
+      if (status === 'archived') requireAdmin(pin);
       if (status === 'done' && !proof) throw new Error('Proof photo required');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');

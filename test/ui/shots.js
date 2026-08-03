@@ -9,18 +9,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const api = window.__mockapi;
       api.addJob({ tab: 'want', category: '', note: 'Baju kurung biru 30pcs', photos: ['x'] });
       api.addJob({ tab: 'want', category: '', note: 'Baju batik 50pcs', photos: ['x'] });
-      const d1 = api.addJob({ tab: 'delivery', category: 'lalamove', note: 'Hantar sebelum 5pm', photos: ['x'] });
-      api.addJob({ tab: 'delivery', category: 'bus', note: 'Bas ke Kuantan, counter 7', photos: ['x'] });
-      api.addJob({ tab: 'delivery', category: 'pickup', note: 'Customer ambil esok pagi', photos: ['x'] });
+      const d1 = api.addJob({ tab: 'delivery', category: 'lalamove', note: 'Deliver before 5pm', photos: ['x'] });
+      api.addJob({ tab: 'delivery', category: 'bus', note: 'Bus to Kuantan, counter 7', photos: ['x'] });
+      api.addJob({ tab: 'delivery', category: 'pickup', note: 'Customer pickup tomorrow morning', photos: ['x'] });
       api.updateStatus(d1.id, 'done', 'proofdata');
-      api.addJob({ tab: 'postage', category: '', note: 'J&T ke Penang', photos: ['x', 'y'] });
+      api.addJob({ tab: 'postage', category: '', note: 'J&T to Penang', photos: ['x', 'y'] });
     });
   }
 
   // mobile
   const m = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, deviceScaleFactor: 2 });
   const mp = await m.newPage();
-  await mp.addInitScript(() => localStorage.setItem('kilangLang', 'bm'));
+  await mp.addInitScript(() => { localStorage.setItem('kilangRole', 'staff'); localStorage.setItem('kilangPin', ''); });
   await mp.goto('http://127.0.0.1:8899/test.html');
   await sleep(300);
   await seed(mp);
@@ -35,7 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // desktop
   const d = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1.5 });
   const dp = await d.newPage();
-  await dp.addInitScript(() => localStorage.setItem('kilangLang', 'bm'));
+  await dp.addInitScript(() => { localStorage.setItem('kilangRole', 'admin'); localStorage.setItem('kilangPin', '1234'); });
   await dp.goto('http://127.0.0.1:8899/test.html');
   await sleep(300);
   await seed(dp);
