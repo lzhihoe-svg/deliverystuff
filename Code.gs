@@ -6,6 +6,12 @@
  *
  * Deploy: Deploy > New deployment > Web app
  *         Execute as: Me    |    Who has access: Anyone with the link
+ *
+ * Performance notes:
+ *  - Mutations return small objects (not the whole job list) so the phone
+ *    never waits for a full re-read of the sheet.
+ *  - Slow Drive work (saving/trashing photos) happens OUTSIDE the script lock
+ *    so parallel users never queue behind each other.
  */
 
 var APP_TITLE = 'Kilang App';
@@ -91,86 +97,111 @@ function findRow_(sh, id) {
   return -1;
 }
 
+function rowToJob_(r) {
+  return {
+    id: r[0], tab: r[1], category: r[2], note: r[3],
+    photoIds: JSON.parse(r[4] || '[]'), status: r[5],
+    createdAt: r[7], doneAt: r[9], proofPhotoId: r[10]
+  };
+}
+
 // ---------------------------------------------------------------- API called from the page
 
 /**
- * Add a job.
+ * Add a job. Returns the created job object.
  * payload = { tab: 'want'|'delivery'|'postage',
  *             category: ''|'lalamove'|'bus'|'pickup',
  *             note: string,
  *             photos: [base64jpeg, ...] }   // 1 photo for want/delivery, 2 for postage
  */
 function addJob(payload) {
+  if (!payload || !payload.photos || !payload.photos.length) {
+    throw new Error('Photo required / Gambar diperlukan');
+  }
   var id = Utilities.getUuid();
   var photoIds = [];
   for (var i = 0; i < payload.photos.length; i++) {
     photoIds.push(savePhoto_(payload.photos[i], payload.tab + '-' + id + '-' + i));
   }
+  var createdAt = new Date().getTime();
+
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     getSheet_().appendRow([
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
-      '', new Date().getTime(), '', '', ''
+      '', createdAt, '', '', ''
     ]);
   } finally {
     lock.releaseLock();
   }
-  return getJobs(payload.tab);
+  return {
+    id: id, tab: payload.tab, category: payload.category || '',
+    note: payload.note || '', photoIds: photoIds, status: 'pending',
+    createdAt: createdAt, doneAt: '', proofPhotoId: ''
+  };
 }
 
 /**
- * Edit a job's note / category / photos.
+ * Edit a job's note / category / photos. Returns the updated job object.
  * changes = { note, category, photo1: base64|null, photo2: base64|null }
  * A null photo means "keep the existing one".
  */
 function editJob(id, changes) {
+  // Save new photos BEFORE taking the lock (Drive is the slow part).
+  var newP1 = changes.photo1 ? savePhoto_(changes.photo1, 'edit-' + id + '-0') : null;
+  var newP2 = changes.photo2 ? savePhoto_(changes.photo2, 'edit-' + id + '-1') : null;
+
+  var toTrash = [];
+  var job;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
-    if (row < 0) throw new Error('Job not found');
-    var tab = sh.getRange(row, 2).getValue();
-    var photoIds = JSON.parse(sh.getRange(row, 5).getValue() || '[]');
-
-    if (changes.photo1) {
-      trashFile_(photoIds[0]);
-      photoIds[0] = savePhoto_(changes.photo1, tab + '-' + id + '-0');
+    if (row < 0) {
+      trashFile_(newP1); trashFile_(newP2);
+      throw new Error('Job not found');
     }
-    if (changes.photo2) {
-      trashFile_(photoIds[1]);
-      photoIds[1] = savePhoto_(changes.photo2, tab + '-' + id + '-1');
-    }
+    var vals = sh.getRange(row, 1, 1, 11).getValues()[0];
+    var photoIds = JSON.parse(vals[4] || '[]');
+    if (newP1) { if (photoIds[0]) toTrash.push(photoIds[0]); photoIds[0] = newP1; }
+    if (newP2) { if (photoIds[1]) toTrash.push(photoIds[1]); photoIds[1] = newP2; }
 
-    sh.getRange(row, 3).setValue(changes.category || '');
-    sh.getRange(row, 4).setValue(changes.note || '');
-    sh.getRange(row, 5).setValue(JSON.stringify(photoIds));
-    return getJobs(tab);
+    sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(photoIds)]]);
+
+    vals[2] = changes.category || '';
+    vals[3] = changes.note || '';
+    vals[4] = JSON.stringify(photoIds);
+    job = rowToJob_(vals);
   } finally {
-    try { lock.releaseLock(); } catch (e) {}
+    lock.releaseLock();
   }
+  // Trash replaced photos AFTER releasing the lock.
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  return job;
 }
 
-/** Permanently delete a job and move its photos to the Drive trash. */
+/** Delete a job's row, then move its photos to the Drive trash. */
 function deleteJob(id) {
+  var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var tab = sh.getRange(row, 2).getValue();
-    var photoIds = JSON.parse(sh.getRange(row, 5).getValue() || '[]');
-    var proofId = sh.getRange(row, 11).getValue();
+    var vals = sh.getRange(row, 1, 1, 11).getValues()[0];
+    toTrash = JSON.parse(vals[4] || '[]');
+    if (vals[10]) toTrash.push(vals[10]);
     sh.deleteRow(row);
-    for (var i = 0; i < photoIds.length; i++) trashFile_(photoIds[i]);
-    trashFile_(proofId);
-    return getJobs(tab);
   } finally {
-    try { lock.releaseLock(); } catch (e) {}
+    lock.releaseLock();
   }
+  // Slow Drive trashing happens after the row is already gone.
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  return { ok: true, id: id };
 }
 
 /** All non-archived jobs for one tab, newest first. */
@@ -183,44 +214,46 @@ function getJobs(tab) {
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (r[1] !== tab || r[5] === 'archived') continue;
-    out.push({
-      id: r[0], tab: r[1], category: r[2], note: r[3],
-      photoIds: JSON.parse(r[4] || '[]'), status: r[5],
-      createdAt: r[7], doneAt: r[9], proofPhotoId: r[10]
-    });
+    out.push(rowToJob_(r));
   }
   out.reverse();
   return out;
 }
 
 /**
- * Update a job's status.
+ * Update a job's status. Returns { id, status, doneAt, proofPhotoId }.
  * Tab 1 (want)            : status 'got' (❤️) or 'notseen' (❌) — no photo needed.
  * Tab 2/3 (delivery/post) : status 'done' — proofBase64 photo REQUIRED.
- * Any tab                 : status 'archived' (hides finished/old jobs, keeps the record).
+ * Any tab                 : status 'archived' (hides the job, keeps the record).
  */
 function updateStatus(id, status, proofBase64) {
+  var allowed = { got: 1, notseen: 1, done: 1, archived: 1 };
+  if (!allowed[status]) throw new Error('Bad status');
   if (status === 'done' && !proofBase64) {
     throw new Error('Proof photo required / Gambar bukti diperlukan');
   }
+  // Save the proof photo BEFORE taking the lock (Drive is the slow part).
   var proofId = proofBase64 ? savePhoto_(proofBase64, 'proof-' + id) : '';
+  var doneAt = new Date().getTime();
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
-    if (row < 0) throw new Error('Job not found');
+    if (row < 0) {
+      trashFile_(proofId);
+      throw new Error('Job not found');
+    }
     sh.getRange(row, 6).setValue(status);
     if (status !== 'archived') {
-      sh.getRange(row, 10).setValue(new Date().getTime());
+      sh.getRange(row, 10).setValue(doneAt);
       if (proofId) sh.getRange(row, 11).setValue(proofId);
     }
-    var tab = sh.getRange(row, 2).getValue();
-    return getJobs(tab);
   } finally {
-    try { lock.releaseLock(); } catch (e) {}
+    lock.releaseLock();
   }
+  return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */

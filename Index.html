@@ -14,7 +14,8 @@
   body {
     font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     background: var(--bg); color: var(--ink);
-    padding-bottom: 96px; /* room for bottom nav */
+    /* enough room to scroll the last card's buttons clear of the nav + floating Post button */
+    padding-bottom: 180px;
     overscroll-behavior-y: contain;
   }
 
@@ -143,15 +144,12 @@
   .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: pointer; }
   .proof .txt { font-size: 13px; color: #166534; font-weight: 600; }
 
-  /* ---------- FAB ---------- */
-  .fab {
-    position: fixed; right: 16px; bottom: 92px; z-index: 25;
-    height: 62px; min-width: 62px; border-radius: 999px; border: 0;
-    background: var(--blue); color: #fff; font-size: 32px;
-    box-shadow: 0 4px 14px rgba(37,99,235,.5); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; padding: 0 18px;
+  /* ---------- Post button lives INSIDE the nav bar so it can never cover card buttons ---------- */
+  #nav-post { color: var(--blue); font-weight: 800; }
+  #nav-post .post-circle {
+    display: block; width: 31px; height: 31px; margin: 0 auto; border-radius: 50%;
+    background: var(--blue); color: #fff; font-size: 24px; line-height: 30px; font-weight: 700;
   }
-  .fab .fab-txt { display: none; font-size: 18px; font-weight: 800; margin-left: 6px; }
 
   /* ---------- modals (always centered) ---------- */
   .overlay {
@@ -222,16 +220,14 @@
     .grid { grid-template-columns: repeat(2, 1fr); }
     nav {
       left: 50%; right: auto; transform: translateX(-50%);
-      width: 440px; bottom: 18px; border-radius: 999px;
+      width: 480px; bottom: 18px; border-radius: 999px;
       border: 1px solid #e2e8f0; box-shadow: 0 8px 28px rgba(15,23,42,.18);
       overflow: hidden; padding-bottom: 0;
     }
     nav button { padding: 10px 0 12px; }
-    .fab { right: 32px; bottom: 32px; }
-    .fab .fab-txt { display: inline; }
     .pills button { padding: 10px 22px; }
     .stack-outer { max-width: 440px; }
-    body { padding-bottom: 110px; }
+    body { padding-bottom: 160px; }
   }
   @media (min-width: 1050px) {
     .grid { grid-template-columns: repeat(3, 1fr); }
@@ -279,9 +275,10 @@
     <span class="ico">📦</span><span class="nav-lbl" id="navlbl-postage">Pos</span>
     <span class="badge" id="badge-postage"></span>
   </button>
+  <button id="nav-post" onclick="openUpload(null)">
+    <span class="post-circle">＋</span><span class="nav-lbl" id="navlbl-post">Post</span>
+  </button>
 </nav>
-
-<button class="fab" id="fab" onclick="openUpload(null)">＋<span class="fab-txt" id="fab-txt">Post</span></button>
 
 <!-- ================= LANGUAGE MODAL (first launch) ================= -->
 <div class="overlay" id="lang-overlay">
@@ -330,6 +327,18 @@
   </div>
 </div>
 
+<!-- ================= DELETE CONFIRM MODAL ================= -->
+<div class="overlay" id="confirm-overlay">
+  <div class="sheet" style="max-width:340px;text-align:center">
+    <button class="x-close" onclick="closeConfirm()">✕</button>
+    <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px"></h2>
+    <div class="btn-row">
+      <button class="btn gray" id="confirm-no" onclick="closeConfirm()"></button>
+      <button class="btn red" id="confirm-yes" onclick="confirmYes()"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= PROOF PHOTO (staff confirm) ================= -->
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 
@@ -349,7 +358,8 @@
       sec_status: '📋 Status Jobsheet',
       st_sewing: '❤️ Tengah jahit', st_notseen: '❌ Belum nampak',
       btn_found: '❤️ Dah jumpa, tengah jahit',
-      btn_edit: '✏️ Edit', btn_delete: '🗑️ Padam', btn_archive: '🗄️ Simpan',
+      btn_edit: '✏️ Edit', btn_delete: '🗑️ Padam', btn_archive: '🗄️ Sorok',
+      btn_confirm: '🗑️ Ya, Padam',
       sec_todo: '⏳ Belum Siap', sec_done: '✅ Siap',
       chip_old: '⚠️ Lebih 1 hari!',
       lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
@@ -364,7 +374,7 @@
       lbl_note: 'Arahan (tak wajib)', note_ph: 'Contoh: Hantar sebelum 5pm',
       btn_cancel: 'Batal', btn_post: '📤 Post', btn_save: '💾 Simpan',
       toast_posted: '📤 Sudah post!', toast_saved: '💾 Sudah simpan!',
-      toast_deleted: '🗑️ Sudah padam.', toast_archived: '🗄️ Disimpan.',
+      toast_deleted: '🗑️ Sudah padam.', toast_archived: '🗄️ Disorok.',
       toast_got: '❤️ Bagus! Tengah jahit.', toast_notseen: '❌ Office akan follow-up.',
       toast_done: '✅ Siap! Terima kasih 🙏',
       toast_needphoto: 'Sila ambil gambar dulu 📸',
@@ -383,6 +393,7 @@
       st_sewing: '❤️ Sewing now', st_notseen: '❌ Not seen yet',
       btn_found: '❤️ Found it, sewing now',
       btn_edit: '✏️ Edit', btn_delete: '🗑️ Delete', btn_archive: '🗄️ Hide',
+      btn_confirm: '🗑️ Yes, Delete',
       sec_todo: '⏳ To Do', sec_done: '✅ Done',
       chip_old: '⚠️ Over 1 day!',
       lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
@@ -474,7 +485,7 @@
     document.getElementById('navlbl-delivery').textContent = t('nav_delivery');
     document.getElementById('navlbl-postage').textContent = t('nav_postage');
     document.getElementById('pill-all').textContent = t('pill_all');
-    document.getElementById('fab-txt').textContent = t('fab');
+    document.getElementById('navlbl-post').textContent = t('fab');
     document.getElementById('lbl-method').textContent = t('lbl_method');
     document.getElementById('photo2-label').textContent = t('lbl_photo_awb');
     document.getElementById('lbl-note').textContent = t('lbl_note');
@@ -701,31 +712,61 @@
   }
 
   // ------------------------------------------------------------ status updates / delete
+  // All mutations are OPTIMISTIC: the screen updates instantly and the server
+  // call runs in the background. On failure we toast and re-sync from server.
+
+  function bgFail(e) { toast('⚠️ ' + e.message); refresh(state.tab); }
+
+  function updateBadgeLocal() {
+    var n = state.jobs[state.tab].filter(function (j) { return j.status === 'pending'; }).length;
+    var b = document.getElementById('badge-' + state.tab);
+    b.style.display = n > 0 ? 'block' : 'none';
+    b.textContent = n;
+  }
+
   function markJob(id, status) {
-    busy(true);
-    google.script.run
-      .withSuccessHandler(function (jobs) {
-        state.jobs[state.tab] = jobs; busy(false); renderAll();
-        google.script.run.withSuccessHandler(renderBadges).getCounts();
-        if (status === 'got') toast(t('toast_got'));
-        if (status === 'notseen') toast(t('toast_notseen'));
-        if (status === 'archived') toast(t('toast_archived'));
-      })
-      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
-      .updateStatus(id, status, null);
+    var j = findJob(id);
+    if (j) {
+      if (status === 'archived') {
+        state.jobs[state.tab] = state.jobs[state.tab].filter(function (x) { return x.id !== id; });
+      } else {
+        j.status = status; j.doneAt = Date.now();
+      }
+      renderAll(); updateBadgeLocal();
+    }
+    if (status === 'got') toast(t('toast_got'));
+    if (status === 'notseen') toast(t('toast_notseen'));
+    if (status === 'archived') toast(t('toast_archived'));
+    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null);
+  }
+
+  // custom confirm modal — window.confirm() can be silently blocked
+  // inside the Apps Script sandbox iframe
+  var confirmCb = null;
+  function askConfirm(msg, cb) {
+    confirmCb = cb;
+    document.getElementById('confirm-msg').textContent = msg;
+    document.getElementById('confirm-no').textContent = t('btn_cancel');
+    document.getElementById('confirm-yes').textContent = t('btn_confirm');
+    document.getElementById('confirm-overlay').classList.add('show');
+  }
+  function closeConfirm() {
+    confirmCb = null;
+    document.getElementById('confirm-overlay').classList.remove('show');
+  }
+  function confirmYes() {
+    var cb = confirmCb;
+    closeConfirm();
+    if (cb) cb();
   }
 
   function removeJob(id) {
-    if (!confirm(t('confirm_delete'))) return;
-    busy(true);
-    google.script.run
-      .withSuccessHandler(function (jobs) {
-        state.jobs[state.tab] = jobs; busy(false); renderAll();
-        google.script.run.withSuccessHandler(renderBadges).getCounts();
-        toast(t('toast_deleted'));
-      })
-      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
-      .deleteJob(id);
+    askConfirm(t('confirm_delete'), function () {
+      state.jobs[state.tab] = state.jobs[state.tab].filter(function (j) { return j.id !== id; });
+      renderAll(); updateBadgeLocal();
+      toast(t('toast_deleted'));
+      google.script.run.withFailureHandler(bgFail).deleteJob(id);
+    });
   }
 
   function startProof(jobId) {
@@ -735,15 +776,16 @@
   function proofPicked(input) {
     if (!input.files || !input.files[0]) return;
     var id = state.proofJobId;
-    busy(true);
+    busy(true); // real upload — keep the spinner while the photo transfers
     compressImage(input.files[0], function (b64) {
       google.script.run
-        .withSuccessHandler(function (jobs) {
-          state.jobs[state.tab] = jobs; busy(false); renderAll();
-          google.script.run.withSuccessHandler(renderBadges).getCounts();
+        .withSuccessHandler(function (res) {
+          var j = findJob(id);
+          if (j) { j.status = 'done'; j.doneAt = res.doneAt; j.proofPhotoId = res.proofPhotoId; }
+          busy(false); renderAll(); updateBadgeLocal();
           toast(t('toast_done'));
         })
-        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
         .updateStatus(id, 'done', b64);
     });
     input.value = '';
@@ -809,10 +851,12 @@
 
     if (state.editing) {
       if (state.tab === 'delivery' && !state.upload.cat) { toast(t('toast_needcat')); return; }
-      busy(true);
+      busy(true); // photos may need uploading — keep spinner during transfer
       google.script.run
-        .withSuccessHandler(function (jobs) {
-          state.jobs[state.tab] = jobs; busy(false); closeUpload(); renderAll();
+        .withSuccessHandler(function (job) {
+          var list = state.jobs[state.tab];
+          for (var i = 0; i < list.length; i++) if (list[i].id === job.id) { list[i] = job; break; }
+          busy(false); closeUpload(); renderAll(); updateBadgeLocal();
           toast(t('toast_saved'));
         })
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
@@ -830,11 +874,11 @@
     if (state.tab === 'postage' && !state.upload.photo2) { toast(t('toast_need2')); return; }
     var photos = [state.upload.photo1];
     if (state.upload.photo2) photos.push(state.upload.photo2);
-    busy(true);
+    busy(true); // real upload — keep the spinner while photos transfer
     google.script.run
-      .withSuccessHandler(function (jobs) {
-        state.jobs[state.tab] = jobs; busy(false); closeUpload(); renderAll();
-        google.script.run.withSuccessHandler(renderBadges).getCounts();
+      .withSuccessHandler(function (job) {
+        state.jobs[state.tab].unshift(job);
+        busy(false); closeUpload(); renderAll(); updateBadgeLocal();
         toast(t('toast_posted'));
       })
       .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
@@ -847,10 +891,12 @@
   }
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'lang-overlay'].forEach(function (id) {
+  ['upload-overlay', 'lang-overlay', 'confirm-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
-      if (id === 'lang-overlay') closeLang(); else closeUpload();
+      if (id === 'lang-overlay') closeLang();
+      else if (id === 'confirm-overlay') closeConfirm();
+      else closeUpload();
     });
   });
 
@@ -883,6 +929,7 @@
   applyLang();
   if (!storedLang) document.getElementById('lang-overlay').classList.add('show');
   switchTab('want');
+  window.__kilang = state; // debugging/test hook
   setInterval(function () {
     // silent background refresh every 60s
     if (!document.getElementById('upload-overlay').classList.contains('show')) refresh(state.tab);
