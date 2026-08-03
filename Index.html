@@ -3,20 +3,29 @@
     --green: #16a34a;
     --red: #dc2626;
     --blue: #2563eb;
-    --orange: #ea580c;
     --bg: #f1f5f9;
     --card: #ffffff;
     --ink: #0f172a;
     --muted: #64748b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
+
+  /* Scrolling happens inside #scroller, NOT on the page itself.
+     Apps Script serves this page inside an iframe, and iPhones/iPads
+     scroll iframe documents badly (sticky/stuck feeling). An inner
+     scroll container with momentum scrolling fixes that. */
+  html, body { height: 100%; overflow: hidden; }
   body {
     font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     background: var(--bg); color: var(--ink);
-    /* enough room to scroll the last card's buttons clear of the nav bar */
-    padding-bottom: 180px;
+  }
+  #scroller {
+    position: fixed; inset: 0;
+    overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
+    /* room to scroll the last card's buttons clear of the nav bar */
+    padding-bottom: 180px;
   }
 
   /* ---------- header ---------- */
@@ -50,7 +59,6 @@
     font-size: 11px; font-weight: 700; min-width: 18px; height: 18px;
     line-height: 18px; padding: 0 4px; display: none;
   }
-  /* Post button lives INSIDE the nav bar so it can never cover card buttons */
   #nav-post { color: var(--blue); font-weight: 800; }
   #nav-post .post-circle {
     display: block; width: 31px; height: 31px; margin: 0 auto; border-radius: 50%;
@@ -70,6 +78,9 @@
     background: var(--card); border-radius: 16px; overflow: hidden;
     box-shadow: 0 1px 4px rgba(15,23,42,.08);
     display: flex; flex-direction: column;
+    /* skip rendering offscreen cards — smoother scrolling on long lists */
+    content-visibility: auto;
+    contain-intrinsic-size: 420px;
   }
   .card .body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; }
   .card .note { font-size: 16px; margin-bottom: 8px; white-space: pre-wrap; }
@@ -84,7 +95,7 @@
   }
   .car-track::-webkit-scrollbar { display: none; }
   .car-slide { flex: 0 0 100%; scroll-snap-align: center; }
-  .car-slide img {
+  .car-slide img, .carousel > img {
     width: 100%; display: block; min-height: 120px; max-height: 340px;
     object-fit: contain; background: #e2e8f0; cursor: pointer;
   }
@@ -111,7 +122,7 @@
   }
   .car-btn.prev { left: 8px; }
   .car-btn.next { right: 8px; }
-  @media (min-width: 700px) { .carousel:hover .car-btn { display: block; } .car-btn { display: block; } }
+  @media (min-width: 700px) { .car-btn { display: block; } }
 
   .chip {
     display: inline-block; font-size: 13px; font-weight: 700;
@@ -151,14 +162,16 @@
   .swipe-card {
     position: absolute; inset: 0; background: #fff; border-radius: 18px;
     box-shadow: 0 4px 16px rgba(15,23,42,.15); overflow: hidden;
-    display: flex; flex-direction: column; touch-action: none; user-select: none;
+    display: flex; flex-direction: column;
+    /* pan-y: the browser keeps vertical scrolling; we only take over
+       when the finger clearly moves horizontally (see attachSwipe) */
+    touch-action: pan-y;
+    user-select: none; -webkit-user-select: none;
   }
   .swipe-card img { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #0f172a; pointer-events: none; }
   .swipe-card .foot { padding: 8px 12px; background: #fff; }
   .swipe-card .foot .cap { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  .stack-dots {
-    position: absolute; top: 10px; left: 0; right: 0; text-align: center; pointer-events: none;
-  }
+  .stack-dots { position: absolute; top: 10px; left: 0; right: 0; text-align: center; pointer-events: none; }
   .stack-hint {
     position: absolute; top: 26px; left: 0; right: 0; text-align: center;
     color: rgba(255,255,255,.85); font-size: 12px; font-weight: 600;
@@ -194,7 +207,8 @@
   .overlay.show { display: flex; }
   .sheet {
     position: relative; background: #fff; width: 100%; max-width: 480px;
-    border-radius: 20px; padding: 22px 18px; max-height: 92vh; overflow-y: auto;
+    border-radius: 20px; padding: 22px 18px; max-height: 92vh;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
@@ -218,7 +232,6 @@
   }
   input[type=file] { display: none; }
 
-  /* photo thumbnails in the post/edit form */
   .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .thumb { position: relative; width: 76px; height: 76px; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; border: 2px solid #cbd5e1; }
@@ -274,39 +287,41 @@
     nav button { padding: 10px 0 12px; }
     .pills button { padding: 10px 22px; }
     .stack-outer { max-width: 440px; }
-    body { padding-bottom: 160px; }
+    #scroller { padding-bottom: 160px; }
   }
   @media (min-width: 1050px) {
     .grid { grid-template-columns: repeat(3, 1fr); }
   }
 </style>
 
-<header>
-  <h1>🏭 Kilang App</h1>
-  <button class="role-btn" id="reset-btn" onclick="askReset()">🔄 Reset</button>
-  <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
-</header>
+<div id="scroller">
+  <header>
+    <h1>🏭 Kilang App</h1>
+    <button class="role-btn" id="reset-btn" onclick="askReset()">🔄 Reset</button>
+    <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
+  </header>
 
-<!-- ================= TAB 1 : CHECKING (Kilang Want) ================= -->
-<div class="page" id="page-want">
-  <div id="want-stack-area"></div>
-  <div id="want-responded"></div>
-</div>
-
-<!-- ================= TAB 2 : DELIVERY (Kilang Packing) ================= -->
-<div class="page" id="page-delivery">
-  <div class="pills" id="delivery-pills">
-    <button data-cat="" class="active">All</button>
-    <button data-cat="lalamove">🛵 Lalamove</button>
-    <button data-cat="bus">🚌 Bus</button>
-    <button data-cat="pickup">🤝 Pickup</button>
+  <!-- ================= TAB 1 : CHECKING (Kilang Want) ================= -->
+  <div class="page" id="page-want">
+    <div id="want-stack-area"></div>
+    <div id="want-responded"></div>
   </div>
-  <div id="delivery-list"></div>
-</div>
 
-<!-- ================= TAB 3 : POSTAGE ================= -->
-<div class="page" id="page-postage">
-  <div id="postage-list"></div>
+  <!-- ================= TAB 2 : DELIVERY (Kilang Packing) ================= -->
+  <div class="page" id="page-delivery">
+    <div class="pills" id="delivery-pills">
+      <button data-cat="" class="active">All</button>
+      <button data-cat="lalamove">🛵 Lalamove</button>
+      <button data-cat="bus">🚌 Bus</button>
+      <button data-cat="pickup">🤝 Pickup</button>
+    </div>
+    <div id="delivery-list"></div>
+  </div>
+
+  <!-- ================= TAB 3 : POSTAGE ================= -->
+  <div class="page" id="page-postage">
+    <div id="postage-list"></div>
+  </div>
 </div>
 
 <!-- ================= BOTTOM NAV ================= -->
@@ -404,7 +419,7 @@
     pin: localStorage.getItem('kilangPin') || '',
     deliveryCat: '',
     jobs: { want: [], delivery: [], postage: [] },
-    upload: { photos: [], cat: '' },   // photos: [{b64} for new, {id} for existing]
+    upload: { photos: [], cat: '' },   // photos: [{b64,thumb}] new, [{id,thumbId}] existing
     editing: null,
     proofJobId: null
   };
@@ -414,60 +429,105 @@
 
   function isAdmin() { return state.role === 'admin'; }
 
+  // thumbnail id for photo i of a job (falls back to full image for old jobs)
+  function thumbOf(j, i) {
+    return (j.thumbIds && j.thumbIds[i]) ? j.thumbIds[i] : j.photoIds[i];
+  }
+  function proofThumbOf(j) { return j.proofThumbId || j.proofPhotoId; }
+
   // ------------------------------------------------------------ images
-  // Photos are served THROUGH the app (base64 via getImagesData), so they
-  // show on every device — no dependency on Drive link-sharing.
+  // Photos are served THROUGH the app (base64 via getImagesData) and cached
+  // on the device (localStorage) so they never re-download on later visits.
   var imgCache = {};
   var imgFetching = {};
+  var activeLoads = 0;
+  var MAX_PARALLEL = 3, BATCH = 4;
   var PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
     '<rect width="400" height="300" fill="#e2e8f0"/>' +
     '<text x="200" y="160" font-size="48" text-anchor="middle">⏳</text></svg>');
 
+  function cachedImg(id) {
+    if (imgCache[id]) return imgCache[id];
+    var v = null;
+    try { v = localStorage.getItem('ki_' + id); } catch (e) {}
+    if (v) imgCache[id] = v;
+    return v;
+  }
+  function persistImg(id, data) {
+    if (!data || data.length > 90000) return; // persist small images (thumbs) only
+    try { localStorage.setItem('ki_' + id, data); }
+    catch (e) {
+      // storage full: clear old cached images and retry once
+      try {
+        var kill = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('ki_') === 0) kill.push(k);
+        }
+        kill.forEach(function (k) { localStorage.removeItem(k); });
+        localStorage.setItem('ki_' + id, data);
+      } catch (e2) {}
+    }
+  }
+
   function imgTag(id, style, extra) {
-    return '<img data-img="' + id + '" src="' + (imgCache[id] || PLACEHOLDER) + '" ' +
+    return '<img data-img="' + id + '" src="' + (cachedImg(id) || PLACEHOLDER) + '" ' +
       (style ? 'style="' + style + '" ' : '') + (extra || '') + '>';
   }
 
+  function applyLoaded() {
+    var els = document.querySelectorAll('img[data-img]');
+    for (var i = 0; i < els.length; i++) {
+      var id = els[i].getAttribute('data-img');
+      if (imgCache[id] && els[i].getAttribute('src') !== imgCache[id]) els[i].src = imgCache[id];
+    }
+  }
+
   function loadImages() {
+    if (activeLoads >= MAX_PARALLEL) return;
     var want = [];
     var els = document.querySelectorAll('img[data-img]');
     for (var i = 0; i < els.length; i++) {
       var id = els[i].getAttribute('data-img');
-      if (imgCache[id]) {
-        if (els[i].getAttribute('src') !== imgCache[id]) els[i].src = imgCache[id];
-      } else if (!imgFetching[id] && want.indexOf(id) < 0) {
-        want.push(id);
-      }
+      if (!cachedImg(id) && !imgFetching[id] && want.indexOf(id) < 0) want.push(id);
     }
-    if (!want.length) return;
-    var batch = want.slice(0, 6);
+    while (want.length && activeLoads < MAX_PARALLEL) {
+      var batch = want.splice(0, BATCH);
+      fireBatch_(batch);
+    }
+  }
+  function fireBatch_(batch) {
+    activeLoads++;
     batch.forEach(function (id) { imgFetching[id] = true; });
     google.script.run
       .withSuccessHandler(function (map) {
-        for (var k in map) { if (map[k]) imgCache[k] = map[k]; }
-        batch.forEach(function (id) { delete imgFetching[id]; });
-        var els2 = document.querySelectorAll('img[data-img]');
-        for (var i = 0; i < els2.length; i++) {
-          var id2 = els2[i].getAttribute('data-img');
-          if (imgCache[id2] && els2[i].getAttribute('src') !== imgCache[id2]) els2[i].src = imgCache[id2];
+        activeLoads--;
+        for (var k in map) {
+          if (map[k]) { imgCache[k] = map[k]; persistImg(k, map[k]); }
         }
+        batch.forEach(function (id) { delete imgFetching[id]; });
+        applyLoaded();
         loadImages();
       })
       .withFailureHandler(function () {
+        activeLoads--;
         batch.forEach(function (id) { delete imgFetching[id]; });
       })
       .getImagesData(batch);
   }
 
   function seedImage(id, base64jpeg) {
-    if (id && base64jpeg) imgCache[id] = 'data:image/jpeg;base64,' + base64jpeg;
+    if (id && base64jpeg) {
+      imgCache[id] = 'data:image/jpeg;base64,' + base64jpeg;
+      persistImg(id, imgCache[id]);
+    }
   }
 
   function viewPhoto(id) {
     var v = document.getElementById('viewer-img');
     v.setAttribute('data-img', id);
-    v.src = imgCache[id] || PLACEHOLDER;
+    v.src = cachedImg(id) || PLACEHOLDER;
     document.getElementById('viewer').classList.add('show');
     loadImages();
   }
@@ -480,22 +540,22 @@
     return s + '</div>';
   }
 
-  /** Swipeable photo strip for a job card (tabs 2/3 + status list). */
-  function carouselHtml(ids) {
-    if (ids.length === 1) {
+  /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens full photo. */
+  function carouselHtml(j) {
+    var n = j.photoIds.length;
+    if (n === 1) {
       return '<div class="carousel">' +
-        imgTag(ids[0], 'width:100%;display:block;min-height:120px;max-height:340px;object-fit:contain;cursor:pointer',
-          'onclick="viewPhoto(\'' + ids[0] + '\')"') + '</div>';
+        imgTag(thumbOf(j, 0), '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>';
     }
     var s = '<div class="carousel"><div class="car-track">';
-    for (var i = 0; i < ids.length; i++) {
-      s += '<div class="car-slide">' + imgTag(ids[i], '', 'onclick="viewPhoto(\'' + ids[i] + '\')"') + '</div>';
+    for (var i = 0; i < n; i++) {
+      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
     }
     s += '</div>';
     s += '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>';
     s += '<button class="car-btn next" onclick="carMove(this,1)">›</button>';
-    s += '<div class="car-count">' + ids.length + ' 📷</div>';
-    s += dotsHtml(ids.length, 'car-dots');
+    s += '<div class="car-count">' + n + ' 📷</div>';
+    s += dotsHtml(n, 'car-dots');
     return s + '</div>';
   }
 
@@ -515,7 +575,7 @@
           var dots = tr.parentNode.querySelectorAll('.car-dots span');
           dots.forEach(function (d, i) { d.className = i === idx ? 'on' : ''; });
         }, 80);
-      });
+      }, { passive: true });
     });
   }
 
@@ -543,6 +603,15 @@
     var list = state.jobs[state.tab];
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
+  }
+
+  // jobs cache: last known list per tab renders INSTANTLY on open,
+  // then the server refresh replaces it in the background
+  function saveJobsCache(tab) {
+    try { localStorage.setItem('kj_' + tab, JSON.stringify(state.jobs[tab])); } catch (e) {}
+  }
+  function readJobsCache(tab) {
+    try { return JSON.parse(localStorage.getItem('kj_' + tab) || '[]'); } catch (e) { return []; }
   }
 
   // ------------------------------------------------------------ roles
@@ -592,15 +661,21 @@
       document.getElementById('page-' + x).classList.toggle('active', x === tab);
       document.getElementById('nav-' + x).classList.toggle('active', x === tab);
     });
+    // render the cached list instantly, then refresh from the server
+    if (!state.jobs[tab].length) state.jobs[tab] = readJobsCache(tab);
+    renderAll();
     refresh(tab);
   }
 
   function refresh(tab) {
+    // one round trip for jobs + badges (was two)
     google.script.run
-      .withSuccessHandler(function (jobs) { state.jobs[tab] = jobs; renderAll(); })
+      .withSuccessHandler(function (res) {
+        state.jobs[tab] = res.jobs; saveJobsCache(tab);
+        renderAll(); renderBadges(res.counts);
+      })
       .withFailureHandler(function (e) { toast('⚠️ ' + e.message); })
-      .getJobs(tab);
-    google.script.run.withSuccessHandler(renderBadges).getCounts();
+      .getInitData(tab);
   }
   function renderBadges(c) {
     ['want', 'delivery', 'postage'].forEach(function (x) {
@@ -648,7 +723,7 @@
         var multi = j.photoIds.length > 1;
         html += '<div class="swipe-card" data-id="' + j.id + '" data-photos="' + j.photoIds.join(',') + '" data-idx="0" ' +
           (top ? 'id="topcard"' : '') + '>' +
-          imgTag(j.photoIds[0]) +
+          imgTag(j.photoIds[0]) +   // full image on the big card: must be readable
           (multi ? dotsHtml(j.photoIds.length, 'stack-dots') +
                    '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
           '<div class="foot">' +
@@ -674,7 +749,7 @@
     var html2 = '<div class="section-title">📋 Jobsheet Status</div><div class="grid">';
     responded.forEach(function (j) {
       var got = j.status === 'got';
-      html2 += '<div class="card">' + carouselHtml(j.photoIds) +
+      html2 += '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
         '<div class="note" style="font-size:15px">' + (got ? '❤️ Got it' : '❌ Not seen yet') + '</div>' +
         '<div class="meta">' + timeAgo(j.doneAt) + '</div>' +
@@ -697,49 +772,94 @@
     card.setAttribute('data-idx', idx);
     var img = card.querySelector('img[data-img]');
     img.setAttribute('data-img', ids[idx]);
-    img.src = imgCache[ids[idx]] || PLACEHOLDER;
+    img.src = cachedImg(ids[idx]) || PLACEHOLDER;
     var dots = card.querySelectorAll('.stack-dots span');
     dots.forEach(function (d, i) { d.className = i === idx ? 'on' : ''; });
     loadImages();
   }
 
+  // Direction-locked swipe: vertical finger movement scrolls the page
+  // normally; only a clearly horizontal drag moves the card.
+  var swipe = { card: null, sx: 0, sy: 0, dx: 0, mode: 'idle', yes: null, no: null };
+
+  function swipeMove(x) {
+    swipe.dx = x - swipe.sx;
+    swipe.card.style.transform = 'translateX(' + swipe.dx + 'px) rotate(' + (swipe.dx / 18) + 'deg)';
+    swipe.yes.style.opacity = swipe.dx > 30 ? Math.min(1, swipe.dx / 110) : 0;
+    swipe.no.style.opacity = swipe.dx < -30 ? Math.min(1, -swipe.dx / 110) : 0;
+  }
+  function swipeFinish() {
+    var card = swipe.card, dx = swipe.dx;
+    if (dx > 110) flyOut(card, 1, 'got');
+    else if (dx < -110) flyOut(card, -1, 'notseen');
+    else {
+      card.style.transition = 'transform .2s'; card.style.transform = '';
+      swipe.yes.style.opacity = 0; swipe.no.style.opacity = 0;
+      setTimeout(function () { card.style.transition = ''; }, 220);
+    }
+  }
+
   function attachSwipe() {
     var card = document.getElementById('topcard');
     if (!card) return;
-    var startX = 0, dx = 0, dragging = false;
-    var yes = card.querySelector('.stamp.yes'), no = card.querySelector('.stamp.no');
 
-    function move(x) {
-      dx = x - startX;
-      card.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 18) + 'deg)';
-      yes.style.opacity = dx > 30 ? Math.min(1, dx / 110) : 0;
-      no.style.opacity = dx < -30 ? Math.min(1, -dx / 110) : 0;
-    }
-    function end() {
-      if (!dragging) return;
-      dragging = false;
-      if (dx > 110) flyOut(card, 1, 'got');
-      else if (dx < -110) flyOut(card, -1, 'notseen');
-      else {
-        card.style.transition = 'transform .2s'; card.style.transform = '';
-        yes.style.opacity = 0; no.style.opacity = 0;
-        setTimeout(function () { card.style.transition = ''; }, 220);
-        if (Math.abs(dx) < 8) stackTap(card, startX); // it was a tap, not a swipe
-      }
-    }
     card.addEventListener('touchstart', function (e) {
-      if (e.target.closest('button')) return;
-      dragging = true; dx = 0; startX = e.touches[0].clientX;
+      if (e.target.closest('button')) { swipe.mode = 'idle'; return; }
+      swipe.card = card;
+      swipe.yes = card.querySelector('.stamp.yes');
+      swipe.no = card.querySelector('.stamp.no');
+      swipe.sx = e.touches[0].clientX; swipe.sy = e.touches[0].clientY;
+      swipe.dx = 0; swipe.mode = 'maybe';
     }, { passive: true });
-    card.addEventListener('touchmove', function (e) { if (dragging) move(e.touches[0].clientX); }, { passive: true });
-    card.addEventListener('touchend', end);
+
+    card.addEventListener('touchmove', function (e) {
+      if (swipe.mode === 'idle' || swipe.mode === 'scroll' || swipe.card !== card) return;
+      var x = e.touches[0].clientX, y = e.touches[0].clientY;
+      if (swipe.mode === 'maybe') {
+        var adx = Math.abs(x - swipe.sx), ady = Math.abs(y - swipe.sy);
+        if (ady > 12 && ady > adx) { swipe.mode = 'scroll'; return; } // vertical → page scrolls
+        if (adx > 12 && adx > ady) swipe.mode = 'drag';
+        else return;
+      }
+      if (swipe.mode === 'drag') {
+        if (e.cancelable) e.preventDefault(); // we own this gesture now
+        swipeMove(x);
+      }
+    }, { passive: false });
+
+    card.addEventListener('touchend', function (e) {
+      if (swipe.card !== card) return;
+      if (swipe.mode === 'drag') {
+        swipeFinish();
+        if (e.cancelable) e.preventDefault(); // stop the follow-up synthetic mouse events
+      } else if (swipe.mode === 'maybe') {
+        stackTap(card, swipe.sx); // small movement = tap
+        // browsers fire mousedown/mouseup AFTER a tap; without this the
+        // mouse path would run stackTap again and flip the photo back
+        if (e.cancelable) e.preventDefault();
+      }
+      swipe.mode = 'idle';
+    });
+
     card.addEventListener('mousedown', function (e) {
       if (e.target.closest('button')) return;
-      dragging = true; dx = 0; startX = e.clientX; e.preventDefault();
+      swipe.card = card;
+      swipe.yes = card.querySelector('.stamp.yes');
+      swipe.no = card.querySelector('.stamp.no');
+      swipe.sx = e.clientX; swipe.dx = 0; swipe.mode = 'mouse';
+      e.preventDefault();
     });
-    window.addEventListener('mousemove', function (e) { if (dragging) move(e.clientX); });
-    window.addEventListener('mouseup', end);
   }
+  // single global mouse handlers (attachSwipe runs per render; these do not stack)
+  window.addEventListener('mousemove', function (e) {
+    if (swipe.mode === 'mouse') swipeMove(e.clientX);
+  });
+  window.addEventListener('mouseup', function () {
+    if (swipe.mode !== 'mouse') return;
+    if (Math.abs(swipe.dx) < 8) stackTap(swipe.card, swipe.sx);
+    else swipeFinish();
+    swipe.mode = 'idle';
+  });
 
   function flyOut(card, dir, status) {
     var id = card.getAttribute('data-id');
@@ -775,7 +895,6 @@
     document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage);
   }
 
-  // shared card list for tabs 2 & 3
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
@@ -800,7 +919,7 @@
 
   function jobCard(j, isDone) {
     var old = !isDone && (Date.now() - j.createdAt > DAY);
-    var html = '<div class="card">' + carouselHtml(j.photoIds);
+    var html = '<div class="card">' + carouselHtml(j);
 
     html += '<div class="body">';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
@@ -810,7 +929,7 @@
 
     if (isDone) {
       html += '<div class="proof">' +
-        (j.proofPhotoId ? imgTag(j.proofPhotoId, '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\')"') : '') +
+        (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\')"') : '') +
         '<div class="txt">✅ Done · ' + timeAgo(j.doneAt) + '</div></div>';
       html += '<div class="spacer"></div>' + toolBtns(j, true);
     } else {
@@ -840,12 +959,13 @@
       } else {
         j.status = status; j.doneAt = Date.now();
       }
+      saveJobsCache(state.tab);
       renderAll(); updateBadgeLocal();
     }
     if (status === 'got') toast('❤️ Great!');
     if (status === 'notseen') toast('❌ Office will follow up.');
     if (status === 'archived') toast('🗄️ Hidden.');
-    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null, state.pin);
+    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null, null, state.pin);
   }
 
   // generic confirm modal — window.confirm() can be silently blocked
@@ -870,6 +990,7 @@
   function removeJob(id) {
     askConfirm('Delete this job? Cannot undo!', '🗑️ Yes, Delete', function () {
       state.jobs[state.tab] = state.jobs[state.tab].filter(function (j) { return j.id !== id; });
+      saveJobsCache(state.tab);
       renderAll(); updateBadgeLocal();
       toast('🗑️ Deleted.');
       google.script.run.withFailureHandler(bgFail).deleteJob(id, state.pin);
@@ -880,6 +1001,7 @@
     askConfirm('Start a new day? ALL jobs in ALL tabs will be cleared. Records stay safe in the Google Sheet.',
       '🔄 Yes, Reset', function () {
         state.jobs = { want: [], delivery: [], postage: [] };
+        ['want', 'delivery', 'postage'].forEach(saveJobsCache);
         renderAll();
         renderBadges({ want: 0, delivery: 0, postage: 0 });
         toast('🔄 Fresh day! All tabs cleared.');
@@ -897,17 +1019,19 @@
     if (!input.files || !input.files[0]) return;
     var id = state.proofJobId;
     busy(true); // real upload — keep the spinner while the photo transfers
-    compressImage(input.files[0], function (b64) {
+    compressImage(input.files[0], function (img) {
       google.script.run
         .withSuccessHandler(function (res) {
           var j = findJob(id);
-          if (j) { j.status = 'done'; j.doneAt = res.doneAt; j.proofPhotoId = res.proofPhotoId; }
-          seedImage(res.proofPhotoId, b64);
+          if (j) { j.status = 'done'; j.doneAt = res.doneAt; j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId; }
+          seedImage(res.proofPhotoId, img.full);
+          seedImage(res.proofThumbId, img.thumb);
+          saveJobsCache(state.tab);
           busy(false); renderAll(); updateBadgeLocal();
           toast('✅ Done! Thank you 🙏');
         })
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
-        .updateStatus(id, 'done', b64, null);
+        .updateStatus(id, 'done', img.full, img.thumb, null);
     });
     input.value = '';
   }
@@ -919,7 +1043,9 @@
     if (job && !isAdmin()) { toast('Admin only'); return; }
     state.editing = job;
     state.upload = {
-      photos: job ? job.photoIds.map(function (id) { return { id: id }; }) : [],
+      photos: job ? job.photoIds.map(function (id, i) {
+        return { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
+      }) : [],
       cat: job ? (job.category || '') : ''
     };
 
@@ -955,7 +1081,7 @@
     var html = '';
     state.upload.photos.forEach(function (p, i) {
       html += '<div class="thumb">' +
-        (p.b64 ? '<img src="data:image/jpeg;base64,' + p.b64 + '">' : imgTag(p.id)) +
+        (p.b64 ? '<img src="data:image/jpeg;base64,' + (p.thumb || p.b64) + '">' : imgTag(p.thumbId || p.id)) +
         '<button class="thumb-x" onclick="removeUploadPhoto(' + i + ')">✕</button>' +
         '<span class="thumb-n">' + (i + 1) + '</span>' +
         '</div>';
@@ -979,8 +1105,8 @@
     busy(true);
     var remaining = files.length;
     files.forEach(function (f) {
-      compressImage(f, function (b64) {
-        state.upload.photos.push({ b64: b64 });
+      compressImage(f, function (img) {
+        state.upload.photos.push({ b64: img.full, thumb: img.thumb });
         remaining--;
         if (remaining === 0) { busy(false); renderUploadThumbs(); loadImages(); }
       });
@@ -998,15 +1124,21 @@
     }
 
     if (state.editing) {
-      busy(true); // photos may need uploading — keep spinner during transfer
-      var spec = photos.map(function (p) { return p.b64 ? { b64: p.b64 } : { id: p.id }; });
+      busy(true);
+      var spec = photos.map(function (p) {
+        return p.b64 ? { b64: p.b64, thumb: p.thumb } : { id: p.id, thumbId: p.thumbId };
+      });
       google.script.run
         .withSuccessHandler(function (job) {
           for (var i = 0; i < spec.length; i++) {
-            if (spec[i].b64) seedImage(job.photoIds[i], spec[i].b64);
+            if (spec[i].b64) {
+              seedImage(job.photoIds[i], spec[i].b64);
+              seedImage(job.thumbIds[i], spec[i].thumb);
+            }
           }
           var list = state.jobs[state.tab];
           for (var k = 0; k < list.length; k++) if (list[k].id === job.id) { list[k] = job; break; }
+          saveJobsCache(state.tab);
           busy(false); closeUpload(); renderAll(); updateBadgeLocal();
           toast('💾 Saved!');
         })
@@ -1019,12 +1151,17 @@
       return;
     }
 
-    var b64s = photos.map(function (p) { return p.b64; });
+    var fulls = photos.map(function (p) { return p.b64; });
+    var thumbs = photos.map(function (p) { return p.thumb; });
     busy(true); // real upload — keep the spinner while photos transfer
     google.script.run
       .withSuccessHandler(function (job) {
-        for (var i = 0; i < b64s.length; i++) seedImage(job.photoIds[i], b64s[i]);
+        for (var i = 0; i < fulls.length; i++) {
+          seedImage(job.photoIds[i], fulls[i]);
+          seedImage(job.thumbIds[i], thumbs[i]);
+        }
         state.jobs[state.tab].unshift(job);
+        saveJobsCache(state.tab);
         busy(false); closeUpload(); renderAll(); updateBadgeLocal();
         toast('📤 Posted!');
       })
@@ -1033,7 +1170,8 @@
         tab: state.tab,
         category: state.upload.cat,
         note: note,
-        photos: b64s
+        photos: fulls,
+        thumbs: thumbs
       });
   }
 
@@ -1048,22 +1186,24 @@
   });
 
   // ------------------------------------------------------------ image compression
+  /** Produces BOTH sizes in one pass: full (1280px, for zoom) + thumb (480px, for cards). */
   function compressImage(file, cb) {
     var reader = new FileReader();
     reader.onload = function (e) {
       var img = new Image();
       img.onload = function () {
-        var MAX = 1280;
-        var w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else { w = Math.round(w * MAX / h); h = MAX; }
+        function scale(max, q) {
+          var w = img.width, h = img.height;
+          if (w > max || h > max) {
+            if (w > h) { h = Math.round(h * max / w); w = max; }
+            else { w = Math.round(w * max / h); h = max; }
+          }
+          var c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          return c.toDataURL('image/jpeg', q).split(',')[1];
         }
-        var c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        var dataUrl = c.toDataURL('image/jpeg', 0.8);
-        cb(dataUrl.split(',')[1]);
+        cb({ full: scale(1280, 0.8), thumb: scale(480, 0.7) });
       };
       img.src = e.target.result;
     };
@@ -1075,6 +1215,10 @@
   if (state.role !== 'admin' && state.role !== 'staff') {
     document.getElementById('role-overlay').classList.add('show');
   }
+  // instant first paint from cache, then live refresh
+  state.jobs.want = readJobsCache('want');
+  state.jobs.delivery = readJobsCache('delivery');
+  state.jobs.postage = readJobsCache('postage');
   switchTab('want');
   window.__kilang = state; // debugging/test hook
   setInterval(function () {

@@ -8,17 +8,17 @@
  *         Execute as: Me    |    Who has access: Anyone with the link
  *
  * Performance notes:
- *  - Mutations return small objects (not the whole job list) so the phone
- *    never waits for a full re-read of the sheet.
- *  - Slow Drive work (saving/trashing photos) happens OUTSIDE the script lock
- *    so parallel users never queue behind each other.
+ *  - Every photo is stored twice: full size (for zoom) and a small thumbnail
+ *    (for cards) — cards load ~10x faster.
+ *  - Mutations return small objects; slow Drive work happens outside the lock.
+ *  - getInitData() returns jobs + badge counts in ONE round trip.
  */
 
 var APP_TITLE = 'Kilang App';
 
 /**
  * ADMIN PIN — CHANGE THIS before you deploy!
- * Admins (with the PIN) can edit, delete and hide jobs. Staff cannot.
+ * Admins (with the PIN) can edit, delete, hide and reset jobs. Staff cannot.
  */
 var ADMIN_PIN = '1234';
 
@@ -54,7 +54,8 @@ function ensureSetup_() {
       var sh = ss.getSheets()[0];
       sh.setName('Jobs');
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
-                    'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId']);
+                    'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
+                    'thumbIds', 'proofThumbId']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -81,7 +82,7 @@ function getFolder_() {
 
 // ---------------------------------------------------------------- photos
 
-/** Saves a base64 JPEG to Drive, makes it viewable by link, returns the file id. */
+/** Saves a base64 JPEG to Drive, returns the file id. */
 function savePhoto_(base64Data, name) {
   var bytes = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(bytes, 'image/jpeg', name + '.jpg');
@@ -89,8 +90,8 @@ function savePhoto_(base64Data, name) {
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (e) {
-    // Some Google Workspace domains block link sharing; photos will still work
-    // for anyone signed in to an account that can see the folder.
+    // Workspace domains may block link sharing; images are served through
+    // getImagesData anyway, so this is not required.
   }
   return file.getId();
 }
@@ -101,11 +102,9 @@ function trashFile_(fileId) {
 }
 
 /**
- * Serves image bytes through the app as data URIs.
- * This is how every device sees the photos: it does NOT depend on Drive
- * link-sharing, which Google Workspace domains often block (that's why
- * photos used to appear only on the uploader's own device).
- * Max 6 images per call; the page requests them in batches.
+ * Serves image bytes through the app as data URIs — photos show on every
+ * device with no dependency on Drive link-sharing (often blocked on
+ * Google Workspace domains). Max 6 images per call; the page batches.
  */
 function getImagesData(ids) {
   var out = {};
@@ -137,7 +136,8 @@ function rowToJob_(r) {
   return {
     id: r[0], tab: r[1], category: r[2], note: r[3],
     photoIds: JSON.parse(r[4] || '[]'), status: r[5],
-    createdAt: r[7], doneAt: r[9], proofPhotoId: r[10]
+    createdAt: r[7], doneAt: r[9], proofPhotoId: r[10],
+    thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || ''
   };
 }
 
@@ -148,7 +148,8 @@ function rowToJob_(r) {
  * payload = { tab: 'want'|'delivery'|'postage',
  *             category: ''|'lalamove'|'bus'|'pickup',
  *             note: string,
- *             photos: [base64jpeg, ...] }   // 1 photo for want/delivery, 2 for postage
+ *             photos: [base64jpeg, ...],      // full size, for zoom
+ *             thumbs: [base64jpeg, ...] }     // small, for cards (same order)
  */
 function addJob(payload) {
   if (!payload || !payload.photos || !payload.photos.length) {
@@ -156,9 +157,11 @@ function addJob(payload) {
   }
   if (payload.photos.length > 6) throw new Error('Max 6 photos per job');
   var id = Utilities.getUuid();
-  var photoIds = [];
+  var photoIds = [], thumbIds = [];
   for (var i = 0; i < payload.photos.length; i++) {
     photoIds.push(savePhoto_(payload.photos[i], payload.tab + '-' + id + '-' + i));
+    var t = payload.thumbs && payload.thumbs[i];
+    thumbIds.push(t ? savePhoto_(t, payload.tab + '-' + id + '-' + i + '-t') : '');
   }
   var createdAt = new Date().getTime();
 
@@ -168,7 +171,8 @@ function addJob(payload) {
     getSheet_().appendRow([
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
-      '', createdAt, '', '', ''
+      '', createdAt, '', '', '',
+      JSON.stringify(thumbIds), ''
     ]);
   } finally {
     lock.releaseLock();
@@ -176,17 +180,15 @@ function addJob(payload) {
   return {
     id: id, tab: payload.tab, category: payload.category || '',
     note: payload.note || '', photoIds: photoIds, status: 'pending',
-    createdAt: createdAt, doneAt: '', proofPhotoId: ''
+    createdAt: createdAt, doneAt: '', proofPhotoId: '',
+    thumbIds: thumbIds, proofThumbId: ''
   };
 }
 
 /**
  * Edit a job's note / category / photos. ADMIN ONLY (needs the PIN).
- * Returns the updated job object.
- * changes = { note, category, photos: [ {id:'existingFileId'} | {b64:'newBase64'} , ... ] }
- * The photos array is the job's FULL new photo list, in order:
- *  - {id}  keeps an existing photo
- *  - {b64} uploads a new one
+ * changes = { note, category,
+ *             photos: [ {id, thumbId} | {b64, thumb} , ... ] }   // FULL new list, in order
  * Any existing photo missing from the list is moved to the Drive trash.
  */
 function editJob(id, changes, pin) {
@@ -196,9 +198,10 @@ function editJob(id, changes, pin) {
   if (spec.length > 6) throw new Error('Max 6 photos per job');
 
   // Save new photos BEFORE taking the lock (Drive is the slow part).
-  var newIds = [];
+  var newIds = [], newThumbIds = [];
   for (var i = 0; i < spec.length; i++) {
     newIds.push(spec[i].b64 ? savePhoto_(spec[i].b64, 'edit-' + id + '-' + i) : null);
+    newThumbIds.push(spec[i].b64 && spec[i].thumb ? savePhoto_(spec[i].thumb, 'edit-' + id + '-' + i + '-t') : null);
   }
 
   var toTrash = [];
@@ -209,32 +212,60 @@ function editJob(id, changes, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) {
-      for (var k = 0; k < newIds.length; k++) trashFile_(newIds[k]);
+      for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 11).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 13).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
+    var oldThumbs = JSON.parse(vals[11] || '[]');
 
-    var finalIds = [];
+    var finalIds = [], finalThumbs = [];
     for (var p = 0; p < spec.length; p++) {
       finalIds.push(spec[p].b64 ? newIds[p] : spec[p].id);
+      finalThumbs.push(spec[p].b64 ? (newThumbIds[p] || '') : (spec[p].thumbId || ''));
     }
     for (var o = 0; o < oldIds.length; o++) {
       if (finalIds.indexOf(oldIds[o]) < 0) toTrash.push(oldIds[o]);
     }
+    for (var t = 0; t < oldThumbs.length; t++) {
+      if (oldThumbs[t] && finalThumbs.indexOf(oldThumbs[t]) < 0) toTrash.push(oldThumbs[t]);
+    }
 
     sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
+    sh.getRange(row, 12).setValue(JSON.stringify(finalThumbs));
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
     vals[4] = JSON.stringify(finalIds);
+    vals[11] = JSON.stringify(finalThumbs);
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
   }
-  // Trash removed photos AFTER releasing the lock.
-  for (var t = 0; t < toTrash.length; t++) trashFile_(toTrash[t]);
+  for (var x = 0; x < toTrash.length; x++) trashFile_(toTrash[x]);
   return job;
+}
+
+/** Delete a job's row, then move its photos to the Drive trash. ADMIN ONLY. */
+function deleteJob(id, pin) {
+  requireAdmin_(pin);
+  var toTrash = [];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 1, 1, 13).getValues()[0];
+    toTrash = JSON.parse(vals[4] || '[]').concat(JSON.parse(vals[11] || '[]'));
+    if (vals[10]) toTrash.push(vals[10]);
+    if (vals[12]) toTrash.push(vals[12]);
+    sh.deleteRow(row);
+  } finally {
+    lock.releaseLock();
+  }
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  return { ok: true, id: id };
 }
 
 /**
@@ -263,34 +294,12 @@ function resetAll(pin) {
   }
 }
 
-/** Delete a job's row, then move its photos to the Drive trash. ADMIN ONLY. */
-function deleteJob(id, pin) {
-  requireAdmin_(pin);
-  var toTrash = [];
-  var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
-    var sh = getSheet_();
-    var row = findRow_(sh, id);
-    if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 11).getValues()[0];
-    toTrash = JSON.parse(vals[4] || '[]');
-    if (vals[10]) toTrash.push(vals[10]);
-    sh.deleteRow(row);
-  } finally {
-    lock.releaseLock();
-  }
-  // Slow Drive trashing happens after the row is already gone.
-  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
-  return { ok: true, id: id };
-}
-
 /** All non-archived jobs for one tab, newest first. */
 function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 11).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 13).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -301,21 +310,27 @@ function getJobs(tab) {
   return out;
 }
 
+/** Jobs for one tab + badge counts, in a single round trip (faster startup). */
+function getInitData(tab) {
+  return { jobs: getJobs(tab), counts: getCounts() };
+}
+
 /**
- * Update a job's status. Returns { id, status, doneAt, proofPhotoId }.
+ * Update a job's status. Returns { id, status, doneAt, proofPhotoId, proofThumbId }.
  * Tab 1 (want)            : status 'got' (❤️) or 'notseen' (❌) — no photo needed.
- * Tab 2/3 (delivery/post) : status 'done' — proofBase64 photo REQUIRED.
+ * Tab 2/3 (delivery/post) : status 'done' — proofBase64 photo REQUIRED (+ small thumb).
  * Any tab                 : status 'archived' — ADMIN ONLY (hides the job, keeps the record).
  */
-function updateStatus(id, status, proofBase64, pin) {
+function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
   var allowed = { got: 1, notseen: 1, done: 1, archived: 1 };
   if (!allowed[status]) throw new Error('Bad status');
   if (status === 'archived') requireAdmin_(pin);
   if (status === 'done' && !proofBase64) {
-    throw new Error('Proof photo required / Gambar bukti diperlukan');
+    throw new Error('Proof photo required');
   }
   // Save the proof photo BEFORE taking the lock (Drive is the slow part).
   var proofId = proofBase64 ? savePhoto_(proofBase64, 'proof-' + id) : '';
+  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, 'proof-' + id + '-t') : '';
   var doneAt = new Date().getTime();
 
   var lock = LockService.getScriptLock();
@@ -324,18 +339,19 @@ function updateStatus(id, status, proofBase64, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) {
-      trashFile_(proofId);
+      trashFile_(proofId); trashFile_(proofThumbId);
       throw new Error('Job not found');
     }
     sh.getRange(row, 6).setValue(status);
     if (status !== 'archived') {
       sh.getRange(row, 10).setValue(doneAt);
       if (proofId) sh.getRange(row, 11).setValue(proofId);
+      if (proofThumbId) sh.getRange(row, 13).setValue(proofThumbId);
     }
   } finally {
     lock.releaseLock();
   }
-  return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId };
+  return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId, proofThumbId: proofThumbId };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */

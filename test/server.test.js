@@ -170,29 +170,29 @@ console.log('\n== updateStatus ==');
   const w = ctx.addJob({ tab: 'want', note: '', category: '', photos: [B64] });
   const d = ctx.addJob({ tab: 'delivery', note: '', category: 'bus', photos: [B64] });
 
-  const r1 = ctx.updateStatus(w.id, 'got', null, null);
+  const r1 = ctx.updateStatus(w.id, 'got', null, null, null);
   check(r1.status === 'got' && typeof r1.doneAt === 'number', "updateStatus 'got' works without photo");
   check(ctx.getJobs('want')[0].status === 'got', 'status persisted in sheet');
 
-  ctx.updateStatus(w.id, 'notseen', null, null);
+  ctx.updateStatus(w.id, 'notseen', null, null, null);
   check(ctx.getJobs('want')[0].status === 'notseen', "can flip to 'notseen'");
 
-  throws(() => ctx.updateStatus(d.id, 'done', null, null), "'done' without proof photo throws");
+  throws(() => ctx.updateStatus(d.id, 'done', null, null, null), "'done' without proof photo throws");
 
-  const r2 = ctx.updateStatus(d.id, 'done', B64, null);
+  const r2 = ctx.updateStatus(d.id, 'done', B64, B64, null);
   check(r2.proofPhotoId && files[r2.proofPhotoId] && !files[r2.proofPhotoId].trashed, "'done' with photo saves proof to Drive");
   check(ctx.getJobs('delivery')[0].proofPhotoId === r2.proofPhotoId, 'proof id persisted in sheet');
 
-  ctx.updateStatus(d.id, 'archived', null, PIN);
+  ctx.updateStatus(d.id, 'archived', null, null, PIN);
   check(ctx.getJobs('delivery').length === 0, 'archived jobs are hidden from getJobs');
   check(ctx.getCounts().delivery === 0, 'archived jobs are not counted');
 
-  throws(() => ctx.updateStatus('no-such-id', 'got', null, null), 'unknown id throws');
-  throws(() => ctx.updateStatus(w.id, 'hacked', null, null), 'invalid status value throws');
+  throws(() => ctx.updateStatus('no-such-id', 'got', null, null, null), 'unknown id throws');
+  throws(() => ctx.updateStatus(w.id, 'hacked', null, null, null), 'invalid status value throws');
 
   // proof photo uploaded for a job that vanished must be cleaned up
   const before = Object.keys(files).length;
-  throws(() => ctx.updateStatus('ghost', 'done', B64, null), "'done' on missing job throws");
+  throws(() => ctx.updateStatus('ghost', 'done', B64, null, null), "'done' on missing job throws");
   const orphan = Object.keys(files)[before];
   check(files[orphan].trashed === true, 'orphaned proof photo is trashed');
 }
@@ -246,7 +246,7 @@ console.log('\n== resetAll (new day) ==');
   ctx.addJob({ tab: 'want', category: '', note: 'a', photos: [B64] });
   const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'b', photos: [B64] });
   ctx.addJob({ tab: 'postage', category: '', note: 'c', photos: [B64, B64] });
-  ctx.updateStatus(d.id, 'done', B64, null);
+  ctx.updateStatus(d.id, 'done', B64, B64, null);
 
   throws(() => ctx.resetAll(''), 'staff cannot reset');
   throws(() => ctx.resetAll('9999'), 'wrong PIN cannot reset');
@@ -266,7 +266,7 @@ console.log('\n== deleteJob ==');
   const { ctx, files, sheetData } = makeEnv();
   const a = ctx.addJob({ tab: 'want', category: '', note: 'A', photos: [B64] });
   const b = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'B', photos: [B64] });
-  ctx.updateStatus(b.id, 'done', B64, null);
+  ctx.updateStatus(b.id, 'done', B64, B64, null);
   const bProof = ctx.getJobs('delivery')[0].proofPhotoId;
 
   const res = ctx.deleteJob(b.id, PIN);
@@ -285,6 +285,35 @@ console.log('\n== deleteJob ==');
   check(ctx.getJobs('want').length === 0 && ctx.getCounts().want === 0, 'empty sheet handled');
 }
 
+console.log('\n== thumbnails + getInitData (speed) ==');
+{
+  const { ctx, files } = makeEnv();
+  const j = ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64, B64], thumbs: [B64, B64] });
+  check(j.thumbIds.length === 2 && j.thumbIds[0] && files[j.thumbIds[0]], 'addJob stores a thumbnail per photo');
+  check(ctx.getJobs('want')[0].thumbIds.length === 2, 'thumbIds persisted in sheet');
+
+  const noThumbs = ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64] });
+  check(noThumbs.thumbIds[0] === '', 'jobs without thumbs still work (old clients)');
+
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64], thumbs: [B64] });
+  const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
+  check(r.proofThumbId && files[r.proofThumbId], 'proof photo gets a thumbnail too');
+  check(ctx.getJobs('delivery')[0].proofThumbId === r.proofThumbId, 'proofThumbId persisted');
+
+  // edit: replaced photo trashes its thumb as well
+  const e = ctx.editJob(j.id, { note: '', category: '', photos: [{ b64: B64, thumb: B64 }] }, PIN);
+  check(files[j.photoIds[0]].trashed && files[j.thumbIds[0]].trashed, 'removed photo AND its thumb trashed');
+  check(e.thumbIds[0] && files[e.thumbIds[0]] && !files[e.thumbIds[0]].trashed, 'new thumb saved on edit');
+
+  // delete trashes thumbs + proof thumb
+  ctx.deleteJob(d.id, PIN);
+  check(files[d.thumbIds[0]].trashed && files[r.proofThumbId].trashed, 'delete trashes thumbs and proof thumb');
+
+  const init = ctx.getInitData('want');
+  check(Array.isArray(init.jobs) && init.jobs.length === 2, 'getInitData returns jobs');
+  check(init.counts.want === 2, 'getInitData returns counts in the same round trip');
+}
+
 console.log('\n== admin PIN enforcement ==');
 {
   const { ctx } = makeEnv();
@@ -297,13 +326,13 @@ console.log('\n== admin PIN enforcement ==');
   throws(() => ctx.editJob(j.id, { note: 'hack', category: '', photos: [{ id: j.photoIds[0] }] }, '9999'), 'wrong PIN cannot edit');
   throws(() => ctx.deleteJob(j.id, ''), 'staff (no PIN) cannot delete');
   throws(() => ctx.deleteJob(j.id, '9999'), 'wrong PIN cannot delete');
-  throws(() => ctx.updateStatus(j.id, 'archived', null, ''), 'staff (no PIN) cannot archive');
+  throws(() => ctx.updateStatus(j.id, 'archived', null, null, ''), 'staff (no PIN) cannot archive');
   check(ctx.getJobs('want').length === 1 && ctx.getJobs('want')[0].note === 'x', 'job untouched after failed attempts');
 
-  ctx.updateStatus(j.id, 'got', null, null);
+  ctx.updateStatus(j.id, 'got', null, null, null);
   check(ctx.getJobs('want')[0].status === 'got', 'staff CAN swipe (got) without PIN');
   const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64] });
-  ctx.updateStatus(d.id, 'done', B64, null);
+  ctx.updateStatus(d.id, 'done', B64, B64, null);
   check(ctx.getJobs('delivery')[0].status === 'done', 'staff CAN complete with proof photo without PIN');
 
   const e = ctx.editJob(j.id, { note: 'fixed', category: '', photos: [{ id: j.photoIds[0] }] }, PIN);
@@ -329,7 +358,7 @@ console.log('\n== lock hygiene ==');
 {
   const env = makeEnv();
   const j = env.ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64] });
-  env.ctx.updateStatus(j.id, 'got', null, null);
+  env.ctx.updateStatus(j.id, 'got', null, null, null);
   env.ctx.editJob(j.id, { note: 'x', category: '', photos: [{ b64: B64 }] }, PIN);
   env.ctx.deleteJob(j.id, PIN);
   try { env.ctx.deleteJob('ghost', PIN); } catch (e) {}

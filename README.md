@@ -69,6 +69,11 @@ you're on; on a computer there are ‹ › arrows). On the Tinder-style card in
 Checking, tap the left/right side of the photo to flip through, and swipe the
 whole card to answer ❤️/❌.
 
+**Fast and smooth on phones**: cards show small thumbnails (tap any photo to
+zoom to full size), photos and job lists are cached on each device so repeat
+opens are instant, and scrolling works normally everywhere — swiping a card or
+a photo strip never blocks scrolling up and down.
+
 **🔄 Reset for a new day (Admin only)**: the red Reset button at the top clears
 ALL jobs in ALL tabs so the factory starts fresh tomorrow. Nothing is deleted —
 every job, timestamp, and photo stays in the Google Sheet and Drive folder as

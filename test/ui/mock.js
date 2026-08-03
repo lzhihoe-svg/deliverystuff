@@ -39,10 +39,14 @@
       var job = {
         id: 'j' + uid, tab: p.tab, category: p.category || '', note: p.note || '',
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
-        status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: ''
+        thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
+        status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
+    },
+    getInitData: function (tab) {
+      return { jobs: api.getJobs(tab), counts: api.getCounts() };
     },
     editJob: function (id, ch, pin) {
       requireAdmin(pin);
@@ -51,6 +55,7 @@
       if (!ch.photos || !ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
+      j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
     },
     resetAll: function (pin) {
@@ -66,7 +71,7 @@
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
     },
-    updateStatus: function (id, status, proof, pin) {
+    updateStatus: function (id, status, proof, proofThumb, pin) {
       if (status === 'archived') requireAdmin(pin);
       if (status === 'done' && !proof) throw new Error('Proof photo required');
       var j = db.jobs.find(function (x) { return x.id === id; });
@@ -75,8 +80,9 @@
       if (status !== 'archived') {
         j.doneAt = Date.now();
         if (proof) j.proofPhotoId = 'proof-' + id;
+        if (proofThumb) j.proofThumbId = 'proofth-' + id;
       }
-      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '' };
+      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '', proofThumbId: j.proofThumbId || '' };
     }
   };
 
