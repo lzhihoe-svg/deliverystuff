@@ -14,7 +14,7 @@
   body {
     font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     background: var(--bg); color: var(--ink);
-    padding-bottom: 84px; /* room for bottom nav */
+    padding-bottom: 96px; /* room for bottom nav */
     overscroll-behavior-y: contain;
   }
 
@@ -25,8 +25,10 @@
     padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
   }
   header h1 { font-size: 18px; }
-  header .who { font-size: 13px; opacity: .85; }
-  header .who b { color: #fbbf24; }
+  .lang-btn {
+    border: 1px solid rgba(255,255,255,.4); background: none; color: #fff;
+    border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
 
   /* ---------- bottom nav ---------- */
   nav {
@@ -51,17 +53,21 @@
   .page { display: none; padding: 14px; max-width: 560px; margin: 0 auto; }
   .page.active { display: block; }
   .section-title { font-size: 14px; font-weight: 700; color: var(--muted); margin: 18px 0 8px; }
-  .empty { text-align: center; color: var(--muted); padding: 40px 10px; font-size: 16px; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; font-size: 16px; grid-column: 1 / -1; }
   .empty .big { font-size: 52px; display: block; margin-bottom: 10px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 6px; }
 
   .card {
     background: var(--card); border-radius: 16px; overflow: hidden;
-    box-shadow: 0 1px 4px rgba(15,23,42,.08); margin-bottom: 14px;
+    box-shadow: 0 1px 4px rgba(15,23,42,.08);
+    display: flex; flex-direction: column;
   }
-  .card img.job { width: 100%; display: block; background: #e2e8f0; min-height: 120px; object-fit: contain; }
-  .card .body { padding: 12px 14px; }
+  .card img.job { width: 100%; display: block; background: #e2e8f0; min-height: 120px; max-height: 340px; object-fit: contain; cursor: pointer; }
+  .card .body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; }
   .card .note { font-size: 16px; margin-bottom: 8px; white-space: pre-wrap; }
   .card .meta { font-size: 12px; color: var(--muted); }
+  .card .spacer { flex: 1; }
 
   .chip {
     display: inline-block; font-size: 13px; font-weight: 700;
@@ -85,15 +91,27 @@
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
   .btn-row .btn { flex: 1; }
 
+  /* small outline edit/delete buttons on every card */
+  .tools { display: flex; gap: 8px; margin-top: 10px; }
+  .tools button {
+    flex: 1; background: #fff; border-radius: 10px; padding: 8px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .tools .t-edit { border: 2px solid var(--blue); color: var(--blue); }
+  .tools .t-del  { border: 2px solid var(--red); color: var(--red); }
+  .tools .t-arch { border: 2px solid #94a3b8; color: #64748b; }
+
   /* ---------- swipe stack (tab 1) ---------- */
-  .stack-wrap { position: relative; height: 62vh; max-height: 520px; margin-bottom: 12px; }
+  .stack-outer { max-width: 420px; margin: 0 auto; }
+  .stack-wrap { position: relative; height: 58vh; max-height: 480px; margin-bottom: 12px; }
   .swipe-card {
     position: absolute; inset: 0; background: #fff; border-radius: 18px;
     box-shadow: 0 4px 16px rgba(15,23,42,.15); overflow: hidden;
     display: flex; flex-direction: column; touch-action: none; user-select: none;
   }
-  .swipe-card img { flex: 1; width: 100%; object-fit: contain; background: #0f172a; pointer-events: none; }
-  .swipe-card .foot { padding: 10px 14px; font-size: 13px; color: var(--muted); background: #fff; }
+  .swipe-card img { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #0f172a; pointer-events: none; }
+  .swipe-card .foot { padding: 8px 12px; background: #fff; }
+  .swipe-card .foot .cap { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .stamp {
     position: absolute; top: 24px; font-size: 40px; font-weight: 900;
     padding: 6px 18px; border: 5px solid; border-radius: 12px; opacity: 0;
@@ -115,40 +133,50 @@
   /* ---------- two-photo layout (tab 3) ---------- */
   .photo-pair { display: flex; gap: 2px; background: #e2e8f0; }
   .photo-pair > div { flex: 1; position: relative; }
-  .photo-pair img { width: 100%; display: block; min-height: 120px; object-fit: contain; background: #e2e8f0; }
+  .photo-pair img { width: 100%; display: block; min-height: 120px; max-height: 260px; object-fit: contain; background: #e2e8f0; cursor: pointer; }
   .photo-pair .lbl {
     position: absolute; top: 6px; left: 6px; background: rgba(15,23,42,.75);
     color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
   }
 
   .proof { display: flex; align-items: center; gap: 10px; background: #f0fdf4; border-radius: 10px; padding: 8px; margin-top: 10px; }
-  .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+  .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: pointer; }
   .proof .txt { font-size: 13px; color: #166534; font-weight: 600; }
 
   /* ---------- FAB ---------- */
   .fab {
-    position: fixed; right: 16px; bottom: 88px; z-index: 25;
-    width: 62px; height: 62px; border-radius: 50%; border: 0;
-    background: var(--blue); color: #fff; font-size: 34px; line-height: 62px;
-    box-shadow: 0 4px 14px rgba(37,99,235,.5); cursor: pointer; display: none;
+    position: fixed; right: 16px; bottom: 92px; z-index: 25;
+    height: 62px; min-width: 62px; border-radius: 999px; border: 0;
+    background: var(--blue); color: #fff; font-size: 32px;
+    box-shadow: 0 4px 14px rgba(37,99,235,.5); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0 18px;
   }
+  .fab .fab-txt { display: none; font-size: 18px; font-weight: 800; margin-left: 6px; }
 
-  /* ---------- modals ---------- */
+  /* ---------- modals (always centered) ---------- */
   .overlay {
     position: fixed; inset: 0; background: rgba(15,23,42,.6); z-index: 50;
-    display: none; align-items: flex-end; justify-content: center;
+    display: none; align-items: center; justify-content: center; padding: 16px;
   }
   .overlay.show { display: flex; }
   .sheet {
-    background: #fff; width: 100%; max-width: 560px;
-    border-radius: 20px 20px 0 0; padding: 20px 16px 30px; max-height: 92vh; overflow-y: auto;
+    position: relative; background: #fff; width: 100%; max-width: 480px;
+    border-radius: 20px; padding: 22px 18px; max-height: 92vh; overflow-y: auto;
   }
-  .sheet h2 { font-size: 19px; margin-bottom: 14px; }
+  .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea, .sheet input[type=text] {
+  .sheet textarea {
     width: 100%; border: 2px solid #cbd5e1; border-radius: 12px;
     padding: 12px; font-size: 16px; font-family: inherit;
   }
+  .x-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 38px; height: 38px; border-radius: 50%; border: 0;
+    background: #f1f5f9; color: #475569; font-size: 18px; font-weight: 700;
+    cursor: pointer; line-height: 38px;
+  }
+  .x-close:active { background: #e2e8f0; }
+
   .photo-btn {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     width: 100%; border: 2px dashed #94a3b8; border-radius: 14px;
@@ -159,17 +187,17 @@
   .photo-btn img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }
   input[type=file] { display: none; }
 
-  .rolepick { display: flex; gap: 10px; }
-  .rolepick button {
+  .choice-row { display: flex; gap: 10px; }
+  .choice-row button {
     flex: 1; border: 2px solid #cbd5e1; background: #fff; border-radius: 14px;
     padding: 16px 8px; font-size: 16px; font-weight: 700; cursor: pointer;
   }
-  .rolepick button.active { border-color: var(--blue); background: #eff6ff; color: var(--blue); }
-  .rolepick .big { display: block; font-size: 34px; margin-bottom: 4px; }
+  .choice-row button.active { border-color: var(--blue); background: #eff6ff; color: var(--blue); }
+  .choice-row .big { display: block; font-size: 34px; margin-bottom: 4px; }
 
   /* ---------- toast & spinner ---------- */
   #toast {
-    position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
+    position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
     background: #0f172a; color: #fff; padding: 12px 20px; border-radius: 999px;
     font-size: 15px; font-weight: 600; z-index: 90; display: none; max-width: 90%;
   }
@@ -187,11 +215,32 @@
   .viewer { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 70; display: none; align-items: center; justify-content: center; }
   .viewer.show { display: flex; }
   .viewer img { max-width: 100%; max-height: 100%; }
+
+  /* ================= DESKTOP ================= */
+  @media (min-width: 700px) {
+    .page { max-width: 1100px; padding: 20px 24px; }
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    nav {
+      left: 50%; right: auto; transform: translateX(-50%);
+      width: 440px; bottom: 18px; border-radius: 999px;
+      border: 1px solid #e2e8f0; box-shadow: 0 8px 28px rgba(15,23,42,.18);
+      overflow: hidden; padding-bottom: 0;
+    }
+    nav button { padding: 10px 0 12px; }
+    .fab { right: 32px; bottom: 32px; }
+    .fab .fab-txt { display: inline; }
+    .pills button { padding: 10px 22px; }
+    .stack-outer { max-width: 440px; }
+    body { padding-bottom: 110px; }
+  }
+  @media (min-width: 1050px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+  }
 </style>
 
 <header>
   <h1>🏭 Kilang App</h1>
-  <div class="who" id="whoami" onclick="openNameModal()"></div>
+  <button class="lang-btn" id="lang-toggle" onclick="toggleLang()">🌐 BM</button>
 </header>
 
 <!-- ================= TAB 1 : KILANG WANT ================= -->
@@ -203,7 +252,7 @@
 <!-- ================= TAB 2 : DELIVERY ================= -->
 <div class="page" id="page-delivery">
   <div class="pills" id="delivery-pills">
-    <button data-cat="" class="active">Semua / All</button>
+    <button data-cat="" class="active" id="pill-all">Semua</button>
     <button data-cat="lalamove">🛵 Lalamove</button>
     <button data-cat="bus">🚌 Bus</button>
     <button data-cat="pickup">🤝 Pickup</button>
@@ -219,65 +268,64 @@
 <!-- ================= BOTTOM NAV ================= -->
 <nav>
   <button id="nav-want" onclick="switchTab('want')">
-    <span class="ico">🧵</span>Jahit<span class="badge" id="badge-want"></span>
+    <span class="ico">🧵</span><span class="nav-lbl" id="navlbl-want">Jahit</span>
+    <span class="badge" id="badge-want"></span>
   </button>
   <button id="nav-delivery" onclick="switchTab('delivery')">
-    <span class="ico">🚚</span>Hantar<span class="badge" id="badge-delivery"></span>
+    <span class="ico">🚚</span><span class="nav-lbl" id="navlbl-delivery">Hantar</span>
+    <span class="badge" id="badge-delivery"></span>
   </button>
   <button id="nav-postage" onclick="switchTab('postage')">
-    <span class="ico">📦</span>Pos<span class="badge" id="badge-postage"></span>
+    <span class="ico">📦</span><span class="nav-lbl" id="navlbl-postage">Pos</span>
+    <span class="badge" id="badge-postage"></span>
   </button>
 </nav>
 
-<button class="fab" id="fab" onclick="openUpload()">＋</button>
+<button class="fab" id="fab" onclick="openUpload(null)">＋<span class="fab-txt" id="fab-txt">Post</span></button>
 
-<!-- ================= NAME / ROLE MODAL ================= -->
-<div class="overlay" id="name-overlay">
-  <div class="sheet">
-    <h2>👋 Siapa anda? / Who are you?</h2>
-    <label>Nama / Name</label>
-    <input type="text" id="name-input" placeholder="Contoh: Amin" maxlength="30">
-    <label>Peranan / Role</label>
-    <div class="rolepick">
-      <button id="role-boss" onclick="pickRole('boss')"><span class="big">👔</span>Boss</button>
-      <button id="role-staff" onclick="pickRole('staff')"><span class="big">🧵</span>Staff Kilang</button>
-    </div>
-    <div style="margin-top:20px">
-      <button class="btn blue" onclick="saveName()">✅ Mula / Start</button>
+<!-- ================= LANGUAGE MODAL (first launch) ================= -->
+<div class="overlay" id="lang-overlay">
+  <div class="sheet" style="text-align:center">
+    <button class="x-close" onclick="closeLang()">✕</button>
+    <h2 style="padding-right:0">🌐 Pilih Bahasa / Choose Language</h2>
+    <div class="choice-row" style="margin-top:8px">
+      <button onclick="setLang('bm')"><span class="big">🇲🇾</span>Bahasa Melayu</button>
+      <button onclick="setLang('en')"><span class="big">🇬🇧</span>English</button>
     </div>
   </div>
 </div>
 
-<!-- ================= UPLOAD MODAL (boss) ================= -->
+<!-- ================= UPLOAD / EDIT MODAL ================= -->
 <div class="overlay" id="upload-overlay">
   <div class="sheet">
+    <button class="x-close" onclick="closeUpload()">✕</button>
     <h2 id="upload-title"></h2>
 
     <div id="upload-cat-wrap" style="display:none">
-      <label>Cara hantar / Delivery method</label>
-      <div class="rolepick" id="upload-cats">
+      <label id="lbl-method"></label>
+      <div class="choice-row" id="upload-cats">
         <button data-cat="lalamove" onclick="pickCat(this)"><span class="big">🛵</span>Lalamove</button>
         <button data-cat="bus" onclick="pickCat(this)"><span class="big">🚌</span>Bus</button>
         <button data-cat="pickup" onclick="pickCat(this)"><span class="big">🤝</span>Pickup</button>
       </div>
     </div>
 
-    <label id="photo1-label">Gambar Jobsheet 📸</label>
-    <button class="photo-btn" id="photo1-btn" onclick="document.getElementById('photo1-file').click()">📷 Ambil / Pilih Gambar</button>
+    <label id="photo1-label"></label>
+    <button class="photo-btn" id="photo1-btn" onclick="document.getElementById('photo1-file').click()"></button>
     <input type="file" id="photo1-file" accept="image/*" onchange="photoPicked(this, 1)">
 
     <div id="photo2-wrap" style="display:none">
-      <label>Gambar Airway Bill (J&amp;T) 📸</label>
-      <button class="photo-btn" id="photo2-btn" onclick="document.getElementById('photo2-file').click()">📷 Ambil / Pilih Gambar</button>
+      <label id="photo2-label"></label>
+      <button class="photo-btn" id="photo2-btn" onclick="document.getElementById('photo2-file').click()"></button>
       <input type="file" id="photo2-file" accept="image/*" onchange="photoPicked(this, 2)">
     </div>
 
-    <label>Arahan / Instruction (optional)</label>
-    <textarea id="upload-note" rows="2" placeholder="Contoh: Hantar sebelum 5pm"></textarea>
+    <label id="lbl-note"></label>
+    <textarea id="upload-note" rows="2"></textarea>
 
     <div class="btn-row">
-      <button class="btn gray" onclick="closeUpload()">Batal</button>
-      <button class="btn blue" onclick="submitUpload()">📤 Hantar / Post</button>
+      <button class="btn gray" id="btn-cancel" onclick="closeUpload()"></button>
+      <button class="btn blue" id="btn-submit" onclick="submitUpload()"></button>
     </div>
   </div>
 </div>
@@ -290,16 +338,86 @@
 <div id="spinner"><div class="ring"></div></div>
 
 <script>
+  // ------------------------------------------------------------ translations
+  var STR = {
+    bm: {
+      nav_want: 'Jahit', nav_delivery: 'Hantar', nav_postage: 'Pos',
+      pill_all: 'Semua', fab: 'Post',
+      swipe_help: '👈 ❌ Belum nampak &nbsp;|&nbsp; ❤️ Dah ambil, tengah jahit 👉',
+      empty_want: 'Tiada jobsheet baru!', empty_list: 'Tiada kerja lagi.',
+      btn_notseen: '❌ Belum Nampak', btn_got: '❤️ Dah Ambil',
+      sec_status: '📋 Status Jobsheet',
+      st_sewing: '❤️ Tengah jahit', st_notseen: '❌ Belum nampak',
+      btn_found: '❤️ Dah jumpa, tengah jahit',
+      btn_edit: '✏️ Edit', btn_delete: '🗑️ Padam', btn_archive: '🗄️ Simpan',
+      sec_todo: '⏳ Belum Siap', sec_done: '✅ Siap',
+      chip_old: '⚠️ Lebih 1 hari!',
+      lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
+      btn_proof: '📸 Siap! Ambil Gambar Bukti',
+      proof_done: '✅ Siap', posted: 'Dipos', remaining: 'baki',
+      up_want: '🧵 Post Jobsheet Baru', up_delivery: '🚚 Post Arahan Penghantaran',
+      up_postage: '📦 Post Airway Bill + Jobsheet', edit_title: '✏️ Edit Job',
+      lbl_method: 'Cara hantar',
+      lbl_photo_job: 'Gambar Jobsheet 📸', lbl_photo_awb: 'Gambar Airway Bill (J&T) 📸',
+      btn_takephoto: '📷 Ambil / Pilih Gambar', photo_ok: '✅ Gambar OK — tukar?',
+      photo_keep: '📷 Gambar sedia ada — tukar?',
+      lbl_note: 'Arahan (tak wajib)', note_ph: 'Contoh: Hantar sebelum 5pm',
+      btn_cancel: 'Batal', btn_post: '📤 Post', btn_save: '💾 Simpan',
+      toast_posted: '📤 Sudah post!', toast_saved: '💾 Sudah simpan!',
+      toast_deleted: '🗑️ Sudah padam.', toast_archived: '🗄️ Disimpan.',
+      toast_got: '❤️ Bagus! Tengah jahit.', toast_notseen: '❌ Office akan follow-up.',
+      toast_done: '✅ Siap! Terima kasih 🙏',
+      toast_needphoto: 'Sila ambil gambar dulu 📸',
+      toast_needcat: 'Pilih cara hantar dulu 🛵🚌🤝',
+      toast_need2: 'Perlu 2 gambar: jobsheet + airway bill 📸',
+      confirm_delete: 'Padam job ini? Tidak boleh undo!',
+      ago_now: 'baru sahaja', ago_min: ' min lalu', ago_hour: ' jam lalu', ago_day: ' hari lalu'
+    },
+    en: {
+      nav_want: 'Sewing', nav_delivery: 'Delivery', nav_postage: 'Postage',
+      pill_all: 'All', fab: 'Post',
+      swipe_help: '👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it, sewing now 👉',
+      empty_want: 'No new jobsheets!', empty_list: 'Nothing here yet.',
+      btn_notseen: '❌ Not Seen', btn_got: '❤️ Got It',
+      sec_status: '📋 Jobsheet Status',
+      st_sewing: '❤️ Sewing now', st_notseen: '❌ Not seen yet',
+      btn_found: '❤️ Found it, sewing now',
+      btn_edit: '✏️ Edit', btn_delete: '🗑️ Delete', btn_archive: '🗄️ Hide',
+      sec_todo: '⏳ To Do', sec_done: '✅ Done',
+      chip_old: '⚠️ Over 1 day!',
+      lbl_jobsheet: '📄 Jobsheet', lbl_awb: '🏷️ Airway Bill',
+      btn_proof: '📸 Done! Take Proof Photo',
+      proof_done: '✅ Done', posted: 'Posted', remaining: 'left',
+      up_want: '🧵 Post New Jobsheet', up_delivery: '🚚 Post Delivery Instruction',
+      up_postage: '📦 Post Airway Bill + Jobsheet', edit_title: '✏️ Edit Job',
+      lbl_method: 'Delivery method',
+      lbl_photo_job: 'Jobsheet Photo 📸', lbl_photo_awb: 'Airway Bill Photo (J&T) 📸',
+      btn_takephoto: '📷 Take / Choose Photo', photo_ok: '✅ Photo OK — change?',
+      photo_keep: '📷 Current photo — change?',
+      lbl_note: 'Instruction (optional)', note_ph: 'Example: Deliver before 5pm',
+      btn_cancel: 'Cancel', btn_post: '📤 Post', btn_save: '💾 Save',
+      toast_posted: '📤 Posted!', toast_saved: '💾 Saved!',
+      toast_deleted: '🗑️ Deleted.', toast_archived: '🗄️ Hidden.',
+      toast_got: '❤️ Great! Sewing now.', toast_notseen: '❌ Office will follow up.',
+      toast_done: '✅ Done! Thank you 🙏',
+      toast_needphoto: 'Please take a photo first 📸',
+      toast_needcat: 'Choose delivery method first 🛵🚌🤝',
+      toast_need2: 'Need 2 photos: jobsheet + airway bill 📸',
+      confirm_delete: 'Delete this job? Cannot undo!',
+      ago_now: 'just now', ago_min: ' min ago', ago_hour: ' hr ago', ago_day: ' days ago'
+    }
+  };
+  function t(k) { return STR[state.lang][k] || k; }
+
   // ------------------------------------------------------------ state
   var state = {
     tab: 'want',
-    name: localStorage.getItem('kilangName') || '',
-    role: localStorage.getItem('kilangRole') || '',
+    lang: localStorage.getItem('kilangLang') || '',
     deliveryCat: '',
     jobs: { want: [], delivery: [], postage: [] },
     upload: { photo1: null, photo2: null, cat: '' },
-    proofJobId: null,
-    pickedRole: ''
+    editing: null,      // job object when editing, null when posting new
+    proofJobId: null
   };
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
@@ -308,65 +426,68 @@
     return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 1200);
   }
   function esc(s) {
-    return String(s || '').replace(/[&<>"]/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
   function timeAgo(ms) {
     if (!ms) return '';
     var d = Date.now() - ms;
-    if (d < 60000) return 'baru sahaja';
-    if (d < 3600000) return Math.floor(d / 60000) + ' min lalu';
-    if (d < DAY) return Math.floor(d / 3600000) + ' jam lalu';
-    return Math.floor(d / DAY) + ' hari lalu';
+    if (d < 60000) return t('ago_now');
+    if (d < 3600000) return Math.floor(d / 60000) + t('ago_min');
+    if (d < DAY) return Math.floor(d / 3600000) + t('ago_hour');
+    return Math.floor(d / DAY) + t('ago_day');
   }
   function toast(msg) {
-    var t = document.getElementById('toast');
-    t.textContent = msg; t.style.display = 'block';
-    clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, 2600);
+    var el = document.getElementById('toast');
+    el.textContent = msg; el.style.display = 'block';
+    clearTimeout(el._h); el._h = setTimeout(function () { el.style.display = 'none'; }, 2600);
   }
   function busy(on) { document.getElementById('spinner').style.display = on ? 'flex' : 'none'; }
-  function isBoss() { return state.role === 'boss'; }
   function viewPhoto(id) {
     document.getElementById('viewer-img').src = imgUrl(id, 1600);
     document.getElementById('viewer').classList.add('show');
   }
+  function findJob(id) {
+    var list = state.jobs[state.tab];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
 
-  // ------------------------------------------------------------ name / role
-  function openNameModal() {
-    document.getElementById('name-input').value = state.name;
-    state.pickedRole = state.role;
-    document.getElementById('role-boss').classList.toggle('active', state.role === 'boss');
-    document.getElementById('role-staff').classList.toggle('active', state.role === 'staff');
-    document.getElementById('name-overlay').classList.add('show');
+  // ------------------------------------------------------------ language
+  function setLang(l) {
+    state.lang = l;
+    localStorage.setItem('kilangLang', l);
+    document.getElementById('lang-overlay').classList.remove('show');
+    applyLang(); renderAll();
   }
-  function pickRole(r) {
-    state.pickedRole = r;
-    document.getElementById('role-boss').classList.toggle('active', r === 'boss');
-    document.getElementById('role-staff').classList.toggle('active', r === 'staff');
+  function closeLang() {
+    // X or backdrop pressed: keep current language (BM default) — never trap the user
+    setLang(state.lang);
   }
-  function saveName() {
-    var n = document.getElementById('name-input').value.trim();
-    if (!n) { toast('Sila isi nama / Please enter your name'); return; }
-    if (!state.pickedRole) { toast('Sila pilih peranan / Please pick a role'); return; }
-    state.name = n; state.role = state.pickedRole;
-    localStorage.setItem('kilangName', n);
-    localStorage.setItem('kilangRole', state.role);
-    document.getElementById('name-overlay').classList.remove('show');
-    renderHeader(); renderAll();
+  function toggleLang() {
+    setLang(state.lang === 'bm' ? 'en' : 'bm');
   }
-  function renderHeader() {
-    document.getElementById('whoami').innerHTML =
-      (isBoss() ? '👔 ' : '🧵 ') + '<b>' + esc(state.name) + '</b> ✏️';
-    document.getElementById('fab').style.display = isBoss() ? 'block' : 'none';
+  function applyLang() {
+    document.getElementById('lang-toggle').textContent = state.lang === 'bm' ? '🌐 English' : '🌐 BM';
+    document.getElementById('navlbl-want').textContent = t('nav_want');
+    document.getElementById('navlbl-delivery').textContent = t('nav_delivery');
+    document.getElementById('navlbl-postage').textContent = t('nav_postage');
+    document.getElementById('pill-all').textContent = t('pill_all');
+    document.getElementById('fab-txt').textContent = t('fab');
+    document.getElementById('lbl-method').textContent = t('lbl_method');
+    document.getElementById('photo2-label').textContent = t('lbl_photo_awb');
+    document.getElementById('lbl-note').textContent = t('lbl_note');
+    document.getElementById('upload-note').placeholder = t('note_ph');
+    document.getElementById('btn-cancel').textContent = t('btn_cancel');
   }
 
   // ------------------------------------------------------------ tabs
   function switchTab(tab) {
     state.tab = tab;
-    ['want', 'delivery', 'postage'].forEach(function (t) {
-      document.getElementById('page-' + t).classList.toggle('active', t === tab);
-      document.getElementById('nav-' + t).classList.toggle('active', t === tab);
+    ['want', 'delivery', 'postage'].forEach(function (x) {
+      document.getElementById('page-' + x).classList.toggle('active', x === tab);
+      document.getElementById('nav-' + x).classList.toggle('active', x === tab);
     });
     refresh(tab);
   }
@@ -379,15 +500,26 @@
     google.script.run.withSuccessHandler(renderBadges).getCounts();
   }
   function renderBadges(c) {
-    ['want', 'delivery', 'postage'].forEach(function (t) {
-      var b = document.getElementById('badge-' + t);
-      b.style.display = c[t] > 0 ? 'block' : 'none';
-      b.textContent = c[t];
+    ['want', 'delivery', 'postage'].forEach(function (x) {
+      var b = document.getElementById('badge-' + x);
+      b.style.display = c[x] > 0 ? 'block' : 'none';
+      b.textContent = c[x];
     });
   }
 
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage();
+  }
+
+  // small edit/delete/(archive) button row used on every card
+  function toolBtns(j, withArchive) {
+    var html = '<div class="tools">' +
+      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">' + t('btn_edit') + '</button>' +
+      '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">' + t('btn_delete') + '</button>';
+    if (withArchive) {
+      html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">' + t('btn_archive') + '</button>';
+    }
+    return html + '</div>';
   }
 
   // ------------------------------------------------------------ TAB 1: want (swipe)
@@ -398,46 +530,50 @@
     var area = document.getElementById('want-stack-area');
 
     if (pending.length === 0) {
-      area.innerHTML = '<div class="empty"><span class="big">🎉</span>' +
-        'Tiada jobsheet baru!<br>No new jobsheets.</div>';
+      area.innerHTML = '<div class="empty"><span class="big">🎉</span>' + t('empty_want') + '</div>';
     } else {
-      var html = '<div class="swipe-help">👈 ❌ Belum nampak &nbsp;|&nbsp; ❤️ Dah ambil, tengah jahit 👉</div>';
+      var html = '<div class="stack-outer">';
+      html += '<div class="swipe-help">' + t('swipe_help') + '</div>';
       html += '<div class="stack-wrap" id="stack">';
-      // render up to 3, last in DOM = top of stack
-      var show = pending.slice(0, 3).reverse();
+      var show = pending.slice(0, 3).reverse();   // last in DOM = top of stack
       for (var i = 0; i < show.length; i++) {
         var j = show[i];
         var top = (i === show.length - 1);
         html += '<div class="swipe-card" data-id="' + j.id + '" ' + (top ? 'id="topcard"' : '') + '>' +
           '<img src="' + imgUrl(j.photoIds[0]) + '" alt="jobsheet">' +
-          '<div class="foot">📄 ' + (esc(j.note) || 'Jobsheet') + ' · ' + timeAgo(j.createdAt) +
-          ' · baki ' + pending.length + '</div>' +
-          '<div class="stamp yes">❤️ ADA</div><div class="stamp no">❌ TIADA</div>' +
+          '<div class="foot">' +
+            '<div class="cap">📄 ' + (esc(j.note) || 'Jobsheet') + ' · ' + timeAgo(j.createdAt) +
+            ' · ' + t('remaining') + ' ' + pending.length + '</div>' +
+            toolBtns(j, false) +
+          '</div>' +
+          '<div class="stamp yes">❤️</div><div class="stamp no">❌</div>' +
           '</div>';
       }
       html += '</div>';
       html += '<div class="btn-row">' +
-        '<button class="btn red" onclick="swipeAction(\'notseen\')">❌ Belum Nampak</button>' +
-        '<button class="btn green" onclick="swipeAction(\'got\')">❤️ Dah Ambil</button></div>';
+        '<button class="btn red" onclick="swipeAction(\'notseen\')">' + t('btn_notseen') + '</button>' +
+        '<button class="btn green" onclick="swipeAction(\'got\')">' + t('btn_got') + '</button></div>';
+      html += '</div>';
       area.innerHTML = html;
       attachSwipe();
     }
 
     var r = document.getElementById('want-responded');
     if (responded.length === 0) { r.innerHTML = ''; return; }
-    var html2 = '<div class="section-title">📋 Status Jobsheet</div>';
+    var html2 = '<div class="section-title">' + t('sec_status') + '</div><div class="grid">';
     responded.forEach(function (j) {
       var got = j.status === 'got';
-      html2 += '<div class="card"><div style="display:flex">' +
-        '<img src="' + imgUrl(j.photoIds[0], 300) + '" style="width:90px;height:90px;object-fit:cover" onclick="viewPhoto(\'' + j.photoIds[0] + '\')">' +
+      html2 += '<div class="card"><div style="display:flex;flex:1">' +
+        '<img src="' + imgUrl(j.photoIds[0], 300) + '" style="width:90px;object-fit:cover;cursor:pointer" onclick="viewPhoto(\'' + j.photoIds[0] + '\')">' +
         '<div class="body" style="flex:1">' +
-        '<div class="note" style="font-size:15px">' + (got ? '❤️ Tengah jahit' : '❌ Belum nampak') + '</div>' +
-        '<div class="meta">' + esc(j.doneBy) + ' · ' + timeAgo(j.doneAt) + '</div>' +
-        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Dah jumpa, tengah jahit</button>' : '') +
-        (isBoss() ? '<button class="btn gray small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Arkib / Hide</button>' : '') +
+        '<div class="note" style="font-size:15px">' + (got ? t('st_sewing') : t('st_notseen')) + '</div>' +
+        '<div class="meta">' + timeAgo(j.doneAt) + '</div>' +
+        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">' + t('btn_found') + '</button>' : '') +
+        '<div class="spacer"></div>' +
+        toolBtns(j, true) +
         '</div></div></div>';
     });
-    r.innerHTML = html2;
+    r.innerHTML = html2 + '</div>';
   }
 
   function attachSwipe() {
@@ -460,10 +596,16 @@
       else { card.style.transition = 'transform .2s'; card.style.transform = ''; yes.style.opacity = 0; no.style.opacity = 0;
              setTimeout(function () { card.style.transition = ''; }, 220); }
     }
-    card.addEventListener('touchstart', function (e) { dragging = true; startX = e.touches[0].clientX; }, { passive: true });
+    card.addEventListener('touchstart', function (e) {
+      if (e.target.closest('button')) return;
+      dragging = true; dx = 0; startX = e.touches[0].clientX;
+    }, { passive: true });
     card.addEventListener('touchmove', function (e) { if (dragging) move(e.touches[0].clientX); }, { passive: true });
     card.addEventListener('touchend', end);
-    card.addEventListener('mousedown', function (e) { dragging = true; startX = e.clientX; e.preventDefault(); });
+    card.addEventListener('mousedown', function (e) {
+      if (e.target.closest('button')) return;
+      dragging = true; dx = 0; startX = e.clientX; e.preventDefault();
+    });
     window.addEventListener('mousemove', function (e) { if (dragging) move(e.clientX); });
     window.addEventListener('mouseup', end);
   }
@@ -509,14 +651,19 @@
     var html = '';
 
     if (pending.length === 0 && done.length === 0) {
-      return '<div class="empty"><span class="big">📭</span>Tiada kerja lagi.<br>Nothing here yet.</div>';
+      return '<div class="empty"><span class="big">📭</span>' + t('empty_list') + '</div>';
     }
 
-    if (pending.length) html += '<div class="section-title">⏳ Belum Siap / To Do (' + pending.length + ')</div>';
-    pending.forEach(function (j) { html += jobCard(j, twoPhotos, false); });
-
-    if (done.length) html += '<div class="section-title">✅ Siap / Done (' + done.length + ')</div>';
-    done.forEach(function (j) { html += jobCard(j, twoPhotos, true); });
+    if (pending.length) {
+      html += '<div class="section-title">' + t('sec_todo') + ' (' + pending.length + ')</div><div class="grid">';
+      pending.forEach(function (j) { html += jobCard(j, twoPhotos, false); });
+      html += '</div>';
+    }
+    if (done.length) {
+      html += '<div class="section-title">' + t('sec_done') + ' (' + done.length + ')</div><div class="grid">';
+      done.forEach(function (j) { html += jobCard(j, twoPhotos, true); });
+      html += '</div>';
+    }
     return html;
   }
 
@@ -526,8 +673,8 @@
 
     if (twoPhotos && j.photoIds.length > 1) {
       html += '<div class="photo-pair">' +
-        '<div><span class="lbl">📄 Jobsheet</span><img src="' + imgUrl(j.photoIds[0], 600) + '" onclick="viewPhoto(\'' + j.photoIds[0] + '\')"></div>' +
-        '<div><span class="lbl">🏷️ Airway Bill</span><img src="' + imgUrl(j.photoIds[1], 600) + '" onclick="viewPhoto(\'' + j.photoIds[1] + '\')"></div>' +
+        '<div><span class="lbl">' + t('lbl_jobsheet') + '</span><img src="' + imgUrl(j.photoIds[0], 600) + '" onclick="viewPhoto(\'' + j.photoIds[0] + '\')"></div>' +
+        '<div><span class="lbl">' + t('lbl_awb') + '</span><img src="' + imgUrl(j.photoIds[1], 600) + '" onclick="viewPhoto(\'' + j.photoIds[1] + '\')"></div>' +
         '</div>';
     } else {
       html += '<img class="job" src="' + imgUrl(j.photoIds[0], 900) + '" onclick="viewPhoto(\'' + j.photoIds[0] + '\')">';
@@ -535,37 +682,50 @@
 
     html += '<div class="body">';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
-    if (old) html += '<span class="chip old">⚠️ Lebih 1 hari!</span>';
+    if (old) html += '<span class="chip old">' + t('chip_old') + '</span>';
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
-    html += '<div class="meta">Oleh ' + esc(j.createdBy) + ' · ' + timeAgo(j.createdAt) + '</div>';
+    html += '<div class="meta">' + t('posted') + ' ' + timeAgo(j.createdAt) + '</div>';
 
     if (isDone) {
       html += '<div class="proof">' +
         (j.proofPhotoId ? '<img src="' + imgUrl(j.proofPhotoId, 300) + '" onclick="viewPhoto(\'' + j.proofPhotoId + '\')">' : '') +
-        '<div class="txt">✅ Siap oleh ' + esc(j.doneBy) + '<br>' + timeAgo(j.doneAt) + '</div></div>';
-      if (isBoss()) {
-        html += '<button class="btn gray small" style="margin-top:10px" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Arkib / Hide</button>';
-      }
+        '<div class="txt">' + t('proof_done') + ' · ' + timeAgo(j.doneAt) + '</div></div>';
+      html += '<div class="spacer"></div>' + toolBtns(j, true);
     } else {
-      html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Siap! Ambil Gambar Bukti</button>';
+      html += '<div class="spacer"></div>';
+      html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">' + t('btn_proof') + '</button>';
+      html += toolBtns(j, false);
     }
     html += '</div></div>';
     return html;
   }
 
-  // ------------------------------------------------------------ status updates
+  // ------------------------------------------------------------ status updates / delete
   function markJob(id, status) {
     busy(true);
     google.script.run
       .withSuccessHandler(function (jobs) {
         state.jobs[state.tab] = jobs; busy(false); renderAll();
         google.script.run.withSuccessHandler(renderBadges).getCounts();
-        if (status === 'got') toast('❤️ Bagus! Tengah jahit.');
-        if (status === 'notseen') toast('❌ Boss akan follow-up.');
-        if (status === 'archived') toast('🗄️ Disimpan dalam arkib.');
+        if (status === 'got') toast(t('toast_got'));
+        if (status === 'notseen') toast(t('toast_notseen'));
+        if (status === 'archived') toast(t('toast_archived'));
       })
       .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
-      .updateStatus(id, status, state.name, null);
+      .updateStatus(id, status, null);
+  }
+
+  function removeJob(id) {
+    if (!confirm(t('confirm_delete'))) return;
+    busy(true);
+    google.script.run
+      .withSuccessHandler(function (jobs) {
+        state.jobs[state.tab] = jobs; busy(false); renderAll();
+        google.script.run.withSuccessHandler(renderBadges).getCounts();
+        toast(t('toast_deleted'));
+      })
+      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
+      .deleteJob(id);
   }
 
   function startProof(jobId) {
@@ -581,42 +741,55 @@
         .withSuccessHandler(function (jobs) {
           state.jobs[state.tab] = jobs; busy(false); renderAll();
           google.script.run.withSuccessHandler(renderBadges).getCounts();
-          toast('✅ Siap! Terima kasih ' + state.name + ' 🙏');
+          toast(t('toast_done'));
         })
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
-        .updateStatus(id, 'done', state.name, b64);
+        .updateStatus(id, 'done', b64);
     });
     input.value = '';
   }
 
-  // ------------------------------------------------------------ upload (boss)
-  function openUpload() {
-    state.upload = { photo1: null, photo2: null, cat: '' };
-    var titles = {
-      want: '🧵 Post Jobsheet Baru',
-      delivery: '🚚 Post Arahan Penghantaran',
-      postage: '📦 Post Airway Bill + Jobsheet'
-    };
-    document.getElementById('upload-title').textContent = titles[state.tab];
+  // ------------------------------------------------------------ upload & edit modal
+  function openUpload(editId) {
+    var job = editId ? findJob(editId) : null;
+    state.editing = job;
+    state.upload = { photo1: null, photo2: null, cat: job ? (job.category || '') : '' };
+
+    var titles = { want: t('up_want'), delivery: t('up_delivery'), postage: t('up_postage') };
+    document.getElementById('upload-title').textContent = job ? t('edit_title') : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
     document.getElementById('photo2-wrap').style.display = state.tab === 'postage' ? 'block' : 'none';
-    document.getElementById('photo1-label').textContent =
-      state.tab === 'postage' ? 'Gambar Jobsheet 📸' : 'Gambar Jobsheet 📸';
-    resetPhotoBtn(1); resetPhotoBtn(2);
-    document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
-    document.getElementById('upload-note').value = '';
+    document.getElementById('photo1-label').textContent = t('lbl_photo_job');
+    document.getElementById('btn-submit').textContent = job ? t('btn_save') : t('btn_post');
+    document.getElementById('upload-note').value = job ? (job.note || '') : '';
+
+    document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
+    });
+
+    setPhotoBtn(1, job && job.photoIds[0] ? imgUrl(job.photoIds[0], 300) : null);
+    setPhotoBtn(2, job && job.photoIds[1] ? imgUrl(job.photoIds[1], 300) : null);
+
     document.getElementById('upload-overlay').classList.add('show');
   }
   function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
+
   function pickCat(btn) {
     state.upload.cat = btn.getAttribute('data-cat');
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
   }
-  function resetPhotoBtn(n) {
+
+  /** existingUrl: show current photo (edit mode); null: empty "take photo" state */
+  function setPhotoBtn(n, existingUrl) {
     var b = document.getElementById('photo' + n + '-btn');
-    b.classList.remove('hasphoto');
-    b.innerHTML = '📷 Ambil / Pilih Gambar';
+    if (existingUrl) {
+      b.classList.add('hasphoto');
+      b.innerHTML = '<img src="' + existingUrl + '"> ' + t('photo_keep');
+    } else {
+      b.classList.remove('hasphoto');
+      b.innerHTML = t('btn_takephoto');
+    }
   }
   function photoPicked(input, n) {
     if (!input.files || !input.files[0]) return;
@@ -626,14 +799,35 @@
       state.upload['photo' + n] = b64;
       var b = document.getElementById('photo' + n + '-btn');
       b.classList.add('hasphoto');
-      b.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '"> ✅ Gambar OK — tukar?';
+      b.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '"> ' + t('photo_ok');
     });
     input.value = '';
   }
+
   function submitUpload() {
-    if (!state.upload.photo1) { toast('Sila ambil gambar dulu 📸'); return; }
-    if (state.tab === 'delivery' && !state.upload.cat) { toast('Pilih cara hantar dulu 🛵🚌🤝'); return; }
-    if (state.tab === 'postage' && !state.upload.photo2) { toast('Perlu 2 gambar: jobsheet + airway bill 📸'); return; }
+    var note = document.getElementById('upload-note').value.trim();
+
+    if (state.editing) {
+      if (state.tab === 'delivery' && !state.upload.cat) { toast(t('toast_needcat')); return; }
+      busy(true);
+      google.script.run
+        .withSuccessHandler(function (jobs) {
+          state.jobs[state.tab] = jobs; busy(false); closeUpload(); renderAll();
+          toast(t('toast_saved'));
+        })
+        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+        .editJob(state.editing.id, {
+          note: note,
+          category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
+          photo1: state.upload.photo1,
+          photo2: state.upload.photo2
+        });
+      return;
+    }
+
+    if (!state.upload.photo1) { toast(t('toast_needphoto')); return; }
+    if (state.tab === 'delivery' && !state.upload.cat) { toast(t('toast_needcat')); return; }
+    if (state.tab === 'postage' && !state.upload.photo2) { toast(t('toast_need2')); return; }
     var photos = [state.upload.photo1];
     if (state.upload.photo2) photos.push(state.upload.photo2);
     busy(true);
@@ -641,17 +835,24 @@
       .withSuccessHandler(function (jobs) {
         state.jobs[state.tab] = jobs; busy(false); closeUpload(); renderAll();
         google.script.run.withSuccessHandler(renderBadges).getCounts();
-        toast('📤 Sudah post!');
+        toast(t('toast_posted'));
       })
       .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
       .addJob({
         tab: state.tab,
         category: state.upload.cat,
-        note: document.getElementById('upload-note').value.trim(),
-        photos: photos,
-        createdBy: state.name
+        note: note,
+        photos: photos
       });
   }
+
+  // close any modal by clicking/tapping the dark backdrop
+  ['upload-overlay', 'lang-overlay'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function (e) {
+      if (e.target !== this) return;
+      if (id === 'lang-overlay') closeLang(); else closeUpload();
+    });
+  });
 
   // ------------------------------------------------------------ image compression
   function compressImage(file, cb) {
@@ -677,8 +878,10 @@
   }
 
   // ------------------------------------------------------------ boot
-  renderHeader();
-  if (!state.name || !state.role) openNameModal();
+  var storedLang = localStorage.getItem('kilangLang');
+  state.lang = (storedLang === 'en' || storedLang === 'bm') ? storedLang : 'bm';
+  applyLang();
+  if (!storedLang) document.getElementById('lang-overlay').classList.add('show');
   switchTab('want');
   setInterval(function () {
     // silent background refresh every 60s

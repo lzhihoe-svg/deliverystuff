@@ -43,11 +43,15 @@ so it looks like a real app:
 - **Android (Chrome):** open the link → tap **⋮** → **Add to Home screen**
 - **iPhone (Safari):** open the link → tap **Share** → **Add to Home Screen**
 
-First time they open it, the app asks their **name** and **role**:
-- **👔 Boss** — sees the ➕ button to post jobs, and can archive finished jobs
-- **🧵 Staff Kilang** — sees the jobs and the big action buttons
+First time they open it, the app asks one thing only: **🇲🇾 Bahasa Melayu or 🇬🇧 English**.
+They can switch language anytime with the 🌐 button at the top right.
 
-That's it. No passwords, no training manual needed.
+No names, no logins, no passwords, no training manual needed. Everyone can post
+(➕ button), and every card has **✏️ Edit** and **🗑️ Delete** buttons if a wrong
+photo or instruction was posted.
+
+The app also works nicely on a **computer** — cards show in a grid, and all
+forms open centered on screen — so your office staff can post jobs from their desk.
 
 ---
 
@@ -95,9 +99,10 @@ Malay + English. Swipe right good, swipe left bad — everyone understands Tinde
 mechanics. If a worker can use WhatsApp, they can use this.
 
 **5. You get free management data.**
-The Google Sheet quietly records who did what and when. After a month you can
-answer: How many jobs per week? Average time from post → sewing → delivered?
-Which delivery method is slowest? That's how you find your bottleneck.
+The Google Sheet quietly records every job with exact timestamps for when it was
+posted and when it was completed. After a month you can answer: How many jobs per
+week? Average time from post → sewing → delivered? Which delivery method is
+slowest? That's how you find your bottleneck.
 
 ### Suggested daily routine (SOP)
 

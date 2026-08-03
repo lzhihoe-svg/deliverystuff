@@ -75,6 +75,22 @@ function savePhoto_(base64Data, name) {
   return file.getId();
 }
 
+function trashFile_(fileId) {
+  if (!fileId) return;
+  try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
+}
+
+/** Finds the sheet row (>=2) for a job id, or -1. */
+function findRow_(sh, id) {
+  var last = sh.getLastRow();
+  if (last < 2) return -1;
+  var ids = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) return i + 2;
+  }
+  return -1;
+}
+
 // ---------------------------------------------------------------- API called from the page
 
 /**
@@ -82,8 +98,7 @@ function savePhoto_(base64Data, name) {
  * payload = { tab: 'want'|'delivery'|'postage',
  *             category: ''|'lalamove'|'bus'|'pickup',
  *             note: string,
- *             photos: [base64jpeg, ...],   // 1 photo for want/delivery, 2 for postage
- *             createdBy: string }
+ *             photos: [base64jpeg, ...] }   // 1 photo for want/delivery, 2 for postage
  */
 function addJob(payload) {
   var id = Utilities.getUuid();
@@ -97,12 +112,65 @@ function addJob(payload) {
     getSheet_().appendRow([
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
-      payload.createdBy || '', new Date().getTime(), '', '', ''
+      '', new Date().getTime(), '', '', ''
     ]);
   } finally {
     lock.releaseLock();
   }
   return getJobs(payload.tab);
+}
+
+/**
+ * Edit a job's note / category / photos.
+ * changes = { note, category, photo1: base64|null, photo2: base64|null }
+ * A null photo means "keep the existing one".
+ */
+function editJob(id, changes) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var tab = sh.getRange(row, 2).getValue();
+    var photoIds = JSON.parse(sh.getRange(row, 5).getValue() || '[]');
+
+    if (changes.photo1) {
+      trashFile_(photoIds[0]);
+      photoIds[0] = savePhoto_(changes.photo1, tab + '-' + id + '-0');
+    }
+    if (changes.photo2) {
+      trashFile_(photoIds[1]);
+      photoIds[1] = savePhoto_(changes.photo2, tab + '-' + id + '-1');
+    }
+
+    sh.getRange(row, 3).setValue(changes.category || '');
+    sh.getRange(row, 4).setValue(changes.note || '');
+    sh.getRange(row, 5).setValue(JSON.stringify(photoIds));
+    return getJobs(tab);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+/** Permanently delete a job and move its photos to the Drive trash. */
+function deleteJob(id) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var tab = sh.getRange(row, 2).getValue();
+    var photoIds = JSON.parse(sh.getRange(row, 5).getValue() || '[]');
+    var proofId = sh.getRange(row, 11).getValue();
+    sh.deleteRow(row);
+    for (var i = 0; i < photoIds.length; i++) trashFile_(photoIds[i]);
+    trashFile_(proofId);
+    return getJobs(tab);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 /** All non-archived jobs for one tab, newest first. */
@@ -118,8 +186,7 @@ function getJobs(tab) {
     out.push({
       id: r[0], tab: r[1], category: r[2], note: r[3],
       photoIds: JSON.parse(r[4] || '[]'), status: r[5],
-      createdBy: r[6], createdAt: r[7],
-      doneBy: r[8], doneAt: r[9], proofPhotoId: r[10]
+      createdAt: r[7], doneAt: r[9], proofPhotoId: r[10]
     });
   }
   out.reverse();
@@ -130,9 +197,9 @@ function getJobs(tab) {
  * Update a job's status.
  * Tab 1 (want)            : status 'got' (❤️) or 'notseen' (❌) — no photo needed.
  * Tab 2/3 (delivery/post) : status 'done' — proofBase64 photo REQUIRED.
- * Any tab                 : status 'archived' (boss hides finished/old jobs).
+ * Any tab                 : status 'archived' (hides finished/old jobs, keeps the record).
  */
-function updateStatus(id, status, byName, proofBase64) {
+function updateStatus(id, status, proofBase64) {
   if (status === 'done' && !proofBase64) {
     throw new Error('Proof photo required / Gambar bukti diperlukan');
   }
@@ -142,26 +209,18 @@ function updateStatus(id, status, byName, proofBase64) {
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
-    var last = sh.getLastRow();
-    var ids = sh.getRange(2, 1, last - 1, 1).getValues();
-    for (var i = 0; i < ids.length; i++) {
-      if (ids[i][0] === id) {
-        var row = i + 2;
-        sh.getRange(row, 6).setValue(status);
-        if (status !== 'archived') {
-          sh.getRange(row, 9).setValue(byName || '');
-          sh.getRange(row, 10).setValue(new Date().getTime());
-          if (proofId) sh.getRange(row, 11).setValue(proofId);
-        }
-        var tab = sh.getRange(row, 2).getValue();
-        lock.releaseLock();
-        return getJobs(tab);
-      }
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    sh.getRange(row, 6).setValue(status);
+    if (status !== 'archived') {
+      sh.getRange(row, 10).setValue(new Date().getTime());
+      if (proofId) sh.getRange(row, 11).setValue(proofId);
     }
+    var tab = sh.getRange(row, 2).getValue();
+    return getJobs(tab);
   } finally {
     try { lock.releaseLock(); } catch (e) {}
   }
-  throw new Error('Job not found');
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */
