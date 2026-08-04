@@ -361,6 +361,26 @@ console.log('\n== dueAt (ready-by deadline) ==');
   check(init.jobs.length === 2, 'getInitData still fine with dueAt column');
 }
 
+console.log('\n== pushUp (call to top) ==');
+{
+  const { ctx } = makeEnv();
+  const a = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'A', photos: [B64], thumbs: [B64] });
+  const b = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'B', photos: [B64], thumbs: [B64] });
+  throws(() => ctx.pushUp(a.id, ''), 'staff cannot push up');
+  throws(() => ctx.pushUp(a.id, '9999'), 'wrong PIN cannot push up');
+  const r = ctx.pushUp(a.id, PIN);
+  check(typeof r.pinnedAt === 'number' && r.pinnedAt > 0, 'admin push up sets pinnedAt');
+  check(ctx.getJobs('delivery').find(j => j.id === a.id).pinnedAt === r.pinnedAt, 'pinnedAt persisted in sheet');
+  const r2 = ctx.pushUp(a.id, PIN);
+  check(r2.pinnedAt === '', 'pressing again unpins');
+  throws(() => ctx.pushUp('ghost', PIN), 'unknown id throws');
+  ctx.pushUp(b.id, PIN);
+  const e = ctx.editJob(b.id, { note: 'x', category: 'bus', dueAt: '', photos: [{ id: b.photoIds[0], thumbId: b.thumbIds[0] }] }, PIN);
+  check(!!e.pinnedAt, 'editing a job keeps its push-up');
+  check(!!ctx.getAllData().jobs.delivery.find(j => j.id === b.id).pinnedAt, 'getAllData includes pinnedAt');
+  check(ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64] }).pinnedAt === '', 'new jobs start unpinned');
+}
+
 console.log('\n== admin PIN enforcement ==');
 {
   const { ctx } = makeEnv();

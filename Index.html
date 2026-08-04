@@ -159,6 +159,7 @@
   .chip.pickup   { background: #dcfce7; color: #166534; }
   .chip.old      { background: #fee2e2; color: #991b1b; }
   .chip.up       { background: #fef9c3; color: #854d0e; }
+  .chip.pin      { background: #fef3c7; color: #b45309; }
   .chip.due      { background: var(--lime-soft); color: var(--blue); }
   .chip.soon     { background: #fef3c7; color: #92400e; }
   .chip.late     { background: #fee2e2; color: #991b1b; }
@@ -185,6 +186,7 @@
   .tools .t-edit { border: 2px solid var(--blue); color: var(--blue); }
   .tools .t-del  { border: 2px solid var(--red); color: var(--red); }
   .tools .t-arch { border: 2px solid #94a3b8; color: #64748b; }
+  .tools .t-pin  { border: 2px solid #d97706; color: #b45309; }
 
   /* ---------- swipe stack (tab 1) ---------- */
   .stack-outer { max-width: 420px; margin: 0 auto; }
@@ -921,11 +923,15 @@
     loadImages();
   }
 
-  // admin-only edit/delete/(hide) button row
+  // admin-only tools row: pending cards get Push Up, finished cards get Hide
   function toolBtns(j, withArchive) {
     if (!isAdmin()) return '';
-    var html = '<div class="tools">' +
-      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
+    var html = '<div class="tools">';
+    if (!withArchive) {
+      html += '<button class="t-pin" onclick="pushUpJob(\'' + j.id + '\')">' +
+        (j.pinnedAt ? '📌 Unpin' : '⬆️ Push Up') + '</button>';
+    }
+    html += '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
       '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">🗑️ Delete</button>';
     if (withArchive) {
       html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Hide</button>';
@@ -933,11 +939,26 @@
     return html + '</div>';
   }
 
+  /** Push a job to the very top of its list (press again to unpin). */
+  function pushUpJob(id) {
+    var j = findJob(id);
+    if (!j) return;
+    if (j.uploading) { toast('📤 Still uploading — wait a moment'); return; }
+    var pinning = !j.pinnedAt;
+    j.pinnedAt = pinning ? Date.now() : '';
+    saveJobsCache(state.tab);
+    renderAll();
+    toast(pinning ? '⬆️ Pushed to the top!' : '↩️ Back to normal order');
+    google.script.run.withFailureHandler(bgFail).pushUp(id, state.pin);
+  }
+
   // ------------------------------------------------------------ TAB 1: checking (swipe)
   function renderWant() {
     var jobs = state.jobs.want;
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var responded = jobs.filter(function (j) { return j.status === 'got' || j.status === 'notseen'; });
+    // pushed-up jobsheets jump to the front of the swipe deck
+    pending.sort(function (a, b) { return Number(b.pinnedAt || 0) - Number(a.pinnedAt || 0); });
     var area = document.getElementById('want-stack-area');
 
     if (pending.length === 0) {
@@ -958,7 +979,7 @@
           (multi ? dotsHtml(j.photoIds.length, 'stack-dots') +
                    '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
           '<div class="foot">' +
-            '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') +
+            '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
             '📄 ' + (esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
@@ -1152,8 +1173,11 @@
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
-    // most urgent deadline first; jobs without a deadline after, newest first
+    // pushed-up jobs first (latest push on top), then most urgent deadline,
+    // then jobs without a deadline, newest first
     pending.sort(function (a, b) {
+      var pa = Number(a.pinnedAt || 0), pb = Number(b.pinnedAt || 0);
+      if (pa !== pb) return pb - pa;
       var da = a.dueAt ? Number(a.dueAt) : Infinity;
       var db2 = b.dueAt ? Number(b.dueAt) : Infinity;
       if (da !== db2) return da - db2;
@@ -1185,6 +1209,7 @@
 
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
+    if (!isDone && j.pinnedAt) html += '<span class="chip pin">📌 Pushed up</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     if (!isDone) html += dueChip(j);
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';

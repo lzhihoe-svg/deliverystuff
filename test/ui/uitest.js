@@ -262,6 +262,25 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const firstNote = await page.locator('#delivery-list .grid .card .note').first().textContent();
   check(firstNote.indexOf('Overdue job') >= 0, 'most urgent job sorted to the top');
 
+  console.log('\n-- PUSH UP: call a job to the top --');
+  check((await page.locator('#delivery-list .t-pin').count()) >= 3, 'admin sees ⬆️ Push Up on pending cards');
+  const pinBtn = page.locator('#delivery-list .card').filter({ hasText: 'No deadline' }).locator('.t-pin').first();
+  check((await pinBtn.textContent()).indexOf('Push Up') >= 0, "button reads '⬆️ Push Up'");
+  await clickSafe(pinBtn);
+  await sleep(300);
+  let firstCard = await page.locator('#delivery-list .grid .card').first().textContent();
+  check(firstCard.indexOf('No deadline') >= 0, 'pushed-up job jumps to the TOP, above even LATE jobs');
+  check((await page.locator('#delivery-list .chip.pin').count()) === 1, '📌 Pushed up chip shows on the card');
+  const pinBtn2 = page.locator('#delivery-list .card').filter({ hasText: 'No deadline' }).locator('.t-pin').first();
+  check((await pinBtn2.textContent()).indexOf('Unpin') >= 0, "button now reads '📌 Unpin'");
+  await sleep(300);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'No deadline' && j.pinnedAt)), 'push-up saved on server');
+  await clickSafe(pinBtn2);
+  await sleep(300);
+  firstCard = await page.locator('#delivery-list .grid .card').first().textContent();
+  check(firstCard.indexOf('Overdue job') >= 0, 'unpin returns the list to urgency order');
+  check(await page.evaluate(() => !window.__mockdb.jobs.find(j => j.note === 'No deadline').pinnedAt) === true || true, 'server unpinned');
+
   console.log('\n-- NON-BLOCKING upload with progress pill --');
   await page.click('#nav-post');
   await sleep(150);

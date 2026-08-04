@@ -55,7 +55,7 @@
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
         status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-        dueAt: p.dueAt || ''
+        dueAt: p.dueAt || '', pinnedAt: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -79,6 +79,13 @@
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
+    },
+    pushUp: function (id, pin) {
+      requireAdmin(pin);
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      j.pinnedAt = j.pinnedAt ? '' : Date.now();
+      return { id: id, pinnedAt: j.pinnedAt };
     },
     resetAll: function (pin) {
       requireAdmin(pin);

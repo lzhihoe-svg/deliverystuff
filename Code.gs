@@ -55,7 +55,7 @@ function ensureSetup_() {
       sh.setName('Jobs');
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
                     'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
-                    'thumbIds', 'proofThumbId', 'dueAt']);
+                    'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -138,7 +138,7 @@ function rowToJob_(r) {
     photoIds: JSON.parse(r[4] || '[]'), status: r[5],
     createdAt: r[7], doneAt: r[9], proofPhotoId: r[10],
     thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || '',
-    dueAt: r[13] || ''
+    dueAt: r[13] || '', pinnedAt: r[14] || ''
   };
 }
 
@@ -175,7 +175,7 @@ function addJob(payload) {
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
       '', createdAt, '', '', '',
-      JSON.stringify(thumbIds), '', dueAt
+      JSON.stringify(thumbIds), '', dueAt, ''
     ]);
   } finally {
     lock.releaseLock();
@@ -184,8 +184,29 @@ function addJob(payload) {
     id: id, tab: payload.tab, category: payload.category || '',
     note: payload.note || '', photoIds: photoIds, status: 'pending',
     createdAt: createdAt, doneAt: '', proofPhotoId: '',
-    thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt
+    thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: ''
   };
+}
+
+/**
+ * ADMIN ONLY. Push a job to the TOP of its list (or press again to unpin).
+ * Pushed-up jobs sort above everything else, even overdue deadlines.
+ */
+function pushUp(id, pin) {
+  requireAdmin_(pin);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var cur = sh.getRange(row, 15).getValue();
+    var val = cur ? '' : new Date().getTime();
+    sh.getRange(row, 15).setValue(val);
+    return { id: id, pinnedAt: val };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -256,7 +277,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 14).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 15).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -343,7 +364,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 14).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 15).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -369,7 +390,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [] };
   var counts = { want: 0, delivery: 0, postage: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
-  var rows = sh.getRange(2, 1, last - 1, 14).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 15).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
