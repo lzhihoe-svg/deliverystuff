@@ -88,6 +88,30 @@
       j.status = 'pending'; j.doneAt = ''; j.pinnedAt = Date.now();
       return { id: id, status: 'pending', pinnedAt: j.pinnedAt };
     },
+    resetDone: function (pin) {
+      requireAdmin(pin);
+      var archived = 0, carried = 0;
+      db.jobs.forEach(function (j) {
+        if (j.status === 'archived') return;
+        if (j.status === 'done' || (j.tab === 'want' && j.status === 'got')) { j.status = 'archived'; archived++; }
+        else carried++;
+      });
+      return { ok: true, archived: archived, carried: carried };
+    },
+    updateProof: function (id, proof, proofThumb) {
+      if (!proof) throw new Error('Proof photo required');
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      j.proofPhotoId = 'reproof-' + id;
+      j.proofThumbId = proofThumb ? ('reproofth-' + id) : '';
+      return { id: id, proofPhotoId: j.proofPhotoId, proofThumbId: j.proofThumbId };
+    },
+    deleteProof: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      j.status = 'pending'; j.doneAt = ''; j.proofPhotoId = ''; j.proofThumbId = '';
+      return { id: id, status: 'pending' };
+    },
     resetAll: function (pin) {
       requireAdmin(pin);
       var n = 0;

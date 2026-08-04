@@ -368,6 +368,95 @@ function resetAll(pin) {
   }
 }
 
+/**
+ * ADMIN ONLY. Clear FINISHED work only: archive Delivery/Postage jobs that
+ * are done and Checking jobsheets swiped Got It. Everything unfinished
+ * (To Do, Not Seen) is carried forward to the next day.
+ */
+function resetDone(pin) {
+  requireAdmin_(pin);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: true, archived: 0, carried: 0 };
+    var range = sh.getRange(2, 2, last - 1, 5); // tab .. status
+    var vals = range.getValues();
+    var archived = 0, carried = 0;
+    for (var i = 0; i < vals.length; i++) {
+      var tab = vals[i][0], status = vals[i][4];
+      if (status === 'archived') continue;
+      if (status === 'done' || (tab === 'want' && status === 'got')) {
+        vals[i][4] = 'archived'; archived++;
+      } else {
+        carried++;
+      }
+    }
+    range.setValues(vals);
+    return { ok: true, archived: archived, carried: carried };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Replace the proof photo on a finished job. Staff OR admin — whoever took
+ * a wrong photo can fix it. The old proof files are trashed.
+ */
+function updateProof(id, proofBase64, proofThumbBase64) {
+  if (!proofBase64) throw new Error('Proof photo required');
+  // Save the new proof BEFORE taking the lock (Drive is the slow part).
+  var proofId = savePhoto_(proofBase64, 'proof-' + id);
+  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, 'proof-' + id + '-t') : '';
+  var toTrash = [];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) {
+      trashFile_(proofId); trashFile_(proofThumbId);
+      throw new Error('Job not found');
+    }
+    var vals = sh.getRange(row, 11, 1, 3).getValues()[0];
+    if (vals[0]) toTrash.push(vals[0]); // old proof
+    if (vals[2]) toTrash.push(vals[2]); // old proof thumb
+    sh.getRange(row, 11).setValue(proofId);
+    sh.getRange(row, 13).setValue(proofThumbId);
+  } finally {
+    lock.releaseLock();
+  }
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  return { id: id, proofPhotoId: proofId, proofThumbId: proofThumbId };
+}
+
+/**
+ * Remove the proof photo from a finished job. Staff OR admin. A done job
+ * must have a proof, so the job goes BACK to To Do (status 'pending').
+ */
+function deleteProof(id) {
+  var toTrash = [];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 11, 1, 3).getValues()[0];
+    if (vals[0]) toTrash.push(vals[0]);
+    if (vals[2]) toTrash.push(vals[2]);
+    sh.getRange(row, 6).setValue('pending'); // back to To Do
+    sh.getRange(row, 10).setValue('');       // doneAt
+    sh.getRange(row, 11).setValue('');       // proofPhotoId
+    sh.getRange(row, 13).setValue('');       // proofThumbId
+  } finally {
+    lock.releaseLock();
+  }
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  return { id: id, status: 'pending' };
+}
+
 /** All non-archived jobs for one tab, newest first. */
 function getJobs(tab) {
   var sh = getSheet_();

@@ -261,6 +261,64 @@ console.log('\n== resetAll (new day) ==');
   check(ctx.resetAll(PIN).archived === 0, 'second reset archives nothing (idempotent)');
 }
 
+console.log('\n== resetDone (clear finished work only) ==');
+{
+  const { ctx } = makeEnv();
+  const w1 = ctx.addJob({ tab: 'want', category: '', note: 'seen', photos: [B64] });
+  const w2 = ctx.addJob({ tab: 'want', category: '', note: 'notseen', photos: [B64] });
+  ctx.addJob({ tab: 'want', category: '', note: 'todo', photos: [B64] });
+  const d1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'done', photos: [B64] });
+  ctx.addJob({ tab: 'delivery', category: 'bus', note: 'todo', photos: [B64] });
+  const p1 = ctx.addJob({ tab: 'postage', category: '', note: 'done', photos: [B64, B64] });
+  ctx.updateStatus(w1.id, 'got', null, null, null);
+  ctx.updateStatus(w2.id, 'notseen', null, null, null);
+  ctx.updateStatus(d1.id, 'done', B64, B64, null);
+  ctx.updateStatus(p1.id, 'done', B64, B64, null);
+
+  throws(() => ctx.resetDone(''), 'staff cannot clear done');
+  throws(() => ctx.resetDone('9999'), 'wrong PIN cannot clear done');
+  check(ctx.getJobs('want').length === 3, 'nothing cleared by failed attempts');
+
+  const res = ctx.resetDone(PIN);
+  check(res.ok === true && res.archived === 3, 'archives the Got It + 2 done jobs (3 total)');
+  check(res.carried === 3, 'reports 3 unfinished jobs carried forward');
+  const want = ctx.getJobs('want');
+  check(want.length === 2, 'Got It jobsheet archived, the rest stay');
+  check(want.some(j => j.status === 'notseen') && want.some(j => j.status === 'pending'),
+    'Not Seen and To Do jobsheets carried forward');
+  check(ctx.getJobs('delivery').length === 1 && ctx.getJobs('delivery')[0].status === 'pending',
+    'unfinished delivery carried forward');
+  check(ctx.getJobs('postage').length === 0, 'done postage archived');
+  check(ctx.resetDone(PIN).archived === 0, 'second clear archives nothing (idempotent)');
+}
+
+console.log('\n== updateProof / deleteProof (staff can fix proof photos) ==');
+{
+  const { ctx, files } = makeEnv();
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64], thumbs: [B64] });
+  const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
+
+  // retake — NO PIN needed, staff are allowed
+  const r2 = ctx.updateProof(d.id, B64, B64);
+  check(r2.proofPhotoId && r2.proofPhotoId !== r.proofPhotoId, 'updateProof stores a NEW proof photo');
+  check(files[r.proofPhotoId].trashed && files[r.proofThumbId].trashed, 'old proof + its thumb trashed');
+  const jj = ctx.getJobs('delivery')[0];
+  check(jj.proofPhotoId === r2.proofPhotoId && jj.proofThumbId === r2.proofThumbId, 'new proof persisted in sheet');
+  check(jj.status === 'done', 'job stays done after a retake');
+  throws(() => ctx.updateProof(d.id, null, null), 'updateProof without a photo throws');
+  throws(() => ctx.updateProof('ghost', B64, B64), 'updateProof on a missing job throws');
+
+  // remove — job must go BACK to To Do
+  const r3 = ctx.deleteProof(d.id);
+  check(r3.status === 'pending', 'deleteProof returns pending');
+  check(files[r2.proofPhotoId].trashed && files[r2.proofThumbId].trashed, 'removed proof files trashed');
+  const back = ctx.getJobs('delivery')[0];
+  check(back.status === 'pending' && !back.proofPhotoId && !back.proofThumbId, 'job is back in To Do with no proof');
+  check(back.doneAt === '' || back.doneAt === 0, 'doneAt cleared');
+  check(ctx.getCounts().delivery === 1, 'badge counts it as pending again');
+  throws(() => ctx.deleteProof('ghost'), 'deleteProof on a missing job throws');
+}
+
 console.log('\n== deleteJob ==');
 {
   const { ctx, files, sheetData } = makeEnv();

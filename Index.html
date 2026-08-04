@@ -53,6 +53,7 @@
     border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
   }
   #reset-btn { border-color: #fbbf24; color: #fde68a; display: none; }
+  #cleardone-btn { border-color: #86efac; color: #dcfce7; display: none; }
 
   /* ---------- bottom nav ---------- */
   nav {
@@ -195,6 +196,9 @@
   .tools .t-edit { border: 2px solid var(--blue); color: var(--blue); }
   .tools .t-del  { border: 2px solid var(--red); color: var(--red); }
   .tools .t-arch { border: 2px solid #94a3b8; color: #64748b; }
+  /* proof photo tools — for EVERYONE (staff fix their own proof mistakes) */
+  .tools .t-reproof  { border: 2px solid var(--blue); color: var(--blue); }
+  .tools .t-delproof { border: 2px solid var(--red); color: var(--red); }
 
   /* small, friendly Push Up (ask again) button on Checking status cards */
   .ask-btn {
@@ -417,6 +421,7 @@
       ARA<span class="dot"> MEGA</span>
     </h1>
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
+    <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
     <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
     <div id="sync-row"></div>
@@ -568,7 +573,8 @@
     jobs: { want: [], delivery: [], postage: [] },
     upload: { photos: [], js: [], wb: [], cat: '' },   // entries: {b64,thumb} new, {id,thumbId} existing
     editing: null,
-    proofJobId: null
+    proofJobId: null,
+    reProof: false
   };
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
@@ -985,6 +991,7 @@
   function renderRoleBtn() {
     document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
     document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
+    document.getElementById('cleardone-btn').style.display = isAdmin() ? 'block' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -1429,6 +1436,12 @@
       html += '<div class="proof">' +
         (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') : '') +
         '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div></div>';
+      // proof tools are for EVERYONE — staff can fix a wrong proof photo
+      if (!j.proofUploading && !j.uploading) {
+        html += '<div class="tools proof-tools">' +
+          '<button class="t-reproof" onclick="startReProof(\'' + j.id + '\')">📷 Retake Proof</button>' +
+          '<button class="t-delproof" onclick="removeProof(\'' + j.id + '\')">🗑️ Remove Proof</button></div>';
+      }
       html += '<div class="spacer"></div>' + (j.proofUploading ? '' : toolBtns(j, true));
     } else {
       html += '<div class="spacer"></div>';
@@ -1514,36 +1527,65 @@
       });
   }
 
+  /** CLEAR DONE (admin): archive ONLY finished work — done Delivery/Postage
+      jobs + Got It jobsheets. Unfinished jobs carry forward to the next day. */
+  function askClearDone() {
+    askConfirm('Clear FINISHED work only? Completed jobs and ❤️ Got It jobsheets are archived. Unfinished jobs stay for the next day.',
+      '✅ Yes, Clear Done', function () {
+        ['want', 'delivery', 'postage'].forEach(function (tb) {
+          state.jobs[tb] = state.jobs[tb].filter(function (j) {
+            return !(j.status === 'done' || (tb === 'want' && j.status === 'got'));
+          });
+          saveJobsCache(tb);
+        });
+        renderAll(); updateBadgeLocal();
+        toast('✅ Finished work cleared — unfinished carried forward.');
+        google.script.run
+          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(); })
+          .resetDone(state.pin);
+      });
+  }
+
   function startProof(jobId) {
     state.proofJobId = jobId;
+    state.reProof = false;
+    document.getElementById('proof-file').click();
+  }
+  /** Retake the proof photo on a done job — staff AND admin. */
+  function startReProof(jobId) {
+    var j = findJob(jobId);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
+    state.proofJobId = jobId;
+    state.reProof = true;
     document.getElementById('proof-file').click();
   }
   function proofPicked(input) {
     if (!input.files || !input.files[0]) return;
     var id = state.proofJobId;
+    var redo = state.reProof;
     var jobTab = state.tab;
     compressImage(input.files[0], function (img) {
-      // NON-BLOCKING: mark done instantly, upload the proof in the background
+      // NON-BLOCKING: update the screen instantly, upload in the background
       var j = findJob(id);
       var tempKey = 'localproof-' + (++localSeq);
       imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
       if (j) {
-        j.status = 'done'; j.doneAt = Date.now();
+        if (!redo) { j.status = 'done'; j.doneAt = Date.now(); }
         j.proofPhotoId = tempKey; j.proofThumbId = tempKey;
         j.proofUploading = true;
         inflightJobs.push(j);
       }
       renderAll(); updateBadgeLocal();
-      toast('✅ Done! Proof uploading… 🙏');
+      toast(redo ? '📷 New proof photo uploading… 🙏' : '✅ Done! Proof uploading… 🙏');
       uploadsPending++; updatePill();
-      google.script.run
+      var run = google.script.run
         .withSuccessHandler(function (res) {
           uploadsPending--; updatePill();
           seedImage(res.proofPhotoId, img.full);
           seedImage(res.proofThumbId, img.thumb);
           if (j) {
             j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
-            j.doneAt = res.doneAt;
+            if (res.doneAt) j.doneAt = res.doneAt;
             delete j.proofUploading;
             inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
             saveJobsCache(jobTab); renderAll();
@@ -1553,10 +1595,26 @@
           uploadsPending--; updatePill();
           if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
           toast('⚠️ ' + e.message); refresh();
-        })
-        .updateStatus(id, 'done', img.full, img.thumb, null);
+        });
+      if (redo) run.updateProof(id, img.full, img.thumb);
+      else run.updateStatus(id, 'done', img.full, img.thumb, null);
     });
     input.value = '';
+  }
+
+  /** Remove the proof photo — the job goes BACK to To Do. Staff AND admin. */
+  function removeProof(id) {
+    var j = findJob(id);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
+    askConfirm('Remove the proof photo? This job goes BACK to To Do.', '🗑️ Yes, Remove', function () {
+      if (j) {
+        j.status = 'pending'; j.doneAt = ''; j.proofPhotoId = ''; j.proofThumbId = '';
+        saveJobsCache(state.tab);
+        renderAll(); updateBadgeLocal();
+      }
+      toast('🗑️ Proof removed — job is back in To Do.');
+      google.script.run.withFailureHandler(bgFail).deleteProof(id);
+    });
   }
 
   // ------------------------------------------------------------ upload & edit modal

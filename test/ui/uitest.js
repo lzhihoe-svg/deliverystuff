@@ -189,6 +189,77 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.evaluate(() => window.__mockdb.jobs.every(j => j.status === 'archived')), 'reset archives everything');
   check((await page.locator('#delivery-list .empty').count()) === 1, 'tab cleared');
 
+  console.log('\n-- proof photo: STAFF can retake and remove --');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'pickup', note: 'Proof fix', photos: ['pf1'], thumbs: ['pft1'] });
+    setRole('staff', ''); // these tools must work for STAFF, not just admin
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const pfCard = page.locator('#delivery-list .card').filter({ hasText: 'Proof fix' });
+  await clickSafe(pfCard.locator('.btn.green').first());
+  await page.setInputFiles('#proof-file', IMG);
+  await sleep(800);
+  check((await pfCard.locator('.proof-tools .t-reproof').count()) === 1 &&
+        (await pfCard.locator('.proof-tools .t-delproof').count()) === 1,
+    'staff sees 📷 Retake Proof + 🗑️ Remove Proof on the done card');
+  await clickSafe(pfCard.locator('.t-reproof'));
+  await page.setInputFiles('#proof-file', IMG2);
+  await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Proof fix' && j.proofPhotoId.indexOf('reproof') === 0)),
+    'retake stores the NEW proof photo on the server');
+  check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Proof fix').status === 'done'),
+    'job stays done after a retake');
+  await clickSafe(pfCard.locator('.t-delproof'));
+  await sleep(150);
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Proof fix');
+    return j.status === 'pending' && !j.proofPhotoId;
+  }), 'remove proof sends the job BACK to To Do (server too)');
+  check((await pfCard.locator('.btn.green').count()) === 1, "card shows 'Done! Take Proof Photo' again");
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(300);
+
+  console.log('\n-- CLEAR DONE: only finished work archived, rest carried forward --');
+  await page.evaluate(() => {
+    const g = window.__mockapi.addJob({ tab: 'want', category: '', note: 'CD-got', photos: ['cg1'], thumbs: ['cgt1'] });
+    window.__mockapi.updateStatus(g.id, 'got', null, null, null);
+    const ns = window.__mockapi.addJob({ tab: 'want', category: '', note: 'CD-notseen', photos: ['cn1'], thumbs: ['cnt1'] });
+    window.__mockapi.updateStatus(ns.id, 'notseen', null, null, null);
+    const dd = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'CD-done', photos: ['cd1'], thumbs: ['cdt1'] });
+    window.__mockapi.updateStatus(dd.id, 'done', 'p', 'pt', null);
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  check(await page.locator('#cleardone-btn').isVisible(), 'admin sees the ✅ CLEAR DONE button');
+  await page.click('#cleardone-btn');
+  await sleep(150);
+  check((await page.locator('#confirm-msg').textContent()).indexOf('Unfinished') >= 0,
+    'confirm explains unfinished jobs stay');
+  await page.click('#confirm-yes');
+  await sleep(600);
+  const cd = await page.evaluate(() => ({
+    done: window.__mockdb.jobs.find(j => j.note === 'CD-done').status,
+    got: window.__mockdb.jobs.find(j => j.note === 'CD-got').status,
+    ns: window.__mockdb.jobs.find(j => j.note === 'CD-notseen').status,
+    pf: window.__mockdb.jobs.find(j => j.note === 'Proof fix').status
+  }));
+  check(cd.done === 'archived' && cd.got === 'archived', 'done job + ❤️ Got It jobsheet archived');
+  check(cd.ns === 'notseen' && cd.pf === 'pending', '❌ Not Seen + To Do jobs carried forward');
+  check((await pfCard.count()) === 1, 'carried-forward job still on screen');
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(200);
+  check(!await page.locator('#cleardone-btn').isVisible(), 'staff does NOT see CLEAR DONE');
+  await page.evaluate(() => { // restore admin + tidy the carried notseen job for later sections
+    setRole('admin', '1234');
+    const ns = window.__mockdb.jobs.find(j => j.note === 'CD-notseen');
+    ns.status = 'archived';
+  });
+  await page.evaluate(() => refresh());
+  await sleep(500);
+
 
   console.log('\n-- refresh button: all 3 tabs, word label, updated-at time --');
   // seed jobs in OTHER tabs; one Refresh must pick them all up
