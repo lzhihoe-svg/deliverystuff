@@ -55,7 +55,7 @@ function ensureSetup_() {
       sh.setName('Jobs');
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
                     'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
-                    'thumbIds', 'proofThumbId']);
+                    'thumbIds', 'proofThumbId', 'dueAt']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -137,7 +137,8 @@ function rowToJob_(r) {
     id: r[0], tab: r[1], category: r[2], note: r[3],
     photoIds: JSON.parse(r[4] || '[]'), status: r[5],
     createdAt: r[7], doneAt: r[9], proofPhotoId: r[10],
-    thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || ''
+    thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || '',
+    dueAt: r[13] || ''
   };
 }
 
@@ -149,7 +150,8 @@ function rowToJob_(r) {
  *             category: ''|'lalamove'|'bus'|'pickup',
  *             note: string,
  *             photos: [base64jpeg, ...],      // full size, for zoom
- *             thumbs: [base64jpeg, ...] }     // small, for cards (same order)
+ *             thumbs: [base64jpeg, ...],      // small, for cards (same order)
+ *             dueAt: ms-timestamp or '' }     // optional "ready by" deadline
  */
 function addJob(payload) {
   if (!payload || !payload.photos || !payload.photos.length) {
@@ -164,6 +166,7 @@ function addJob(payload) {
     thumbIds.push(t ? savePhoto_(t, payload.tab + '-' + id + '-' + i + '-t') : '');
   }
   var createdAt = new Date().getTime();
+  var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -172,7 +175,7 @@ function addJob(payload) {
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
       '', createdAt, '', '', '',
-      JSON.stringify(thumbIds), ''
+      JSON.stringify(thumbIds), '', dueAt
     ]);
   } finally {
     lock.releaseLock();
@@ -181,13 +184,51 @@ function addJob(payload) {
     id: id, tab: payload.tab, category: payload.category || '',
     note: payload.note || '', photoIds: photoIds, status: 'pending',
     createdAt: createdAt, doneAt: '', proofPhotoId: '',
-    thumbIds: thumbIds, proofThumbId: ''
+    thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt
   };
 }
 
 /**
+ * Attach one more photo to an existing job at a given position.
+ * The page posts a job with its FIRST photo only (fast), then uploads the
+ * remaining photos through parallel calls to this function — total upload
+ * time becomes the slowest single photo instead of the sum of all of them.
+ */
+function addPhotoToJob(id, index, fullB64, thumbB64) {
+  if (!fullB64) throw new Error('Photo required');
+  index = Number(index);
+  if (!(index >= 0 && index < 6)) throw new Error('Bad photo index');
+
+  // Save to Drive BEFORE taking the lock (Drive is the slow part).
+  var pId = savePhoto_(fullB64, 'job-' + id + '-' + index);
+  var tId = thumbB64 ? savePhoto_(thumbB64, 'job-' + id + '-' + index + '-t') : '';
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) {
+      trashFile_(pId); trashFile_(tId);
+      throw new Error('Job not found');
+    }
+    var photoIds = JSON.parse(sh.getRange(row, 5).getValue() || '[]');
+    var thumbIds = JSON.parse(sh.getRange(row, 12).getValue() || '[]');
+    while (photoIds.length <= index) photoIds.push('');
+    while (thumbIds.length <= index) thumbIds.push('');
+    photoIds[index] = pId;
+    thumbIds[index] = tId;
+    sh.getRange(row, 5).setValue(JSON.stringify(photoIds));
+    sh.getRange(row, 12).setValue(JSON.stringify(thumbIds));
+  } finally {
+    lock.releaseLock();
+  }
+  return { id: id, index: index, photoId: pId, thumbId: tId };
+}
+
+/**
  * Edit a job's note / category / photos. ADMIN ONLY (needs the PIN).
- * changes = { note, category,
+ * changes = { note, category, dueAt,
  *             photos: [ {id, thumbId} | {b64, thumb} , ... ] }   // FULL new list, in order
  * Any existing photo missing from the list is moved to the Drive trash.
  */
@@ -215,7 +256,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 13).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 14).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -230,14 +271,17 @@ function editJob(id, changes, pin) {
     for (var t = 0; t < oldThumbs.length; t++) {
       if (oldThumbs[t] && finalThumbs.indexOf(oldThumbs[t]) < 0) toTrash.push(oldThumbs[t]);
     }
+    var dueAt = changes.dueAt ? Number(changes.dueAt) : '';
 
     sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
     sh.getRange(row, 12).setValue(JSON.stringify(finalThumbs));
+    sh.getRange(row, 14).setValue(dueAt);
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
     vals[4] = JSON.stringify(finalIds);
     vals[11] = JSON.stringify(finalThumbs);
+    vals[13] = dueAt;
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
@@ -299,7 +343,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 13).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 14).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];

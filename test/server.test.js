@@ -314,6 +314,53 @@ console.log('\n== thumbnails + getInitData (speed) ==');
   check(init.counts.want === 2, 'getInitData returns counts in the same round trip');
 }
 
+console.log('\n== addPhotoToJob (parallel uploads) ==');
+{
+  const { ctx, files } = makeEnv();
+  const j = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64], thumbs: [B64] });
+  const r1 = ctx.addPhotoToJob(j.id, 1, B64, B64);
+  const r2 = ctx.addPhotoToJob(j.id, 2, B64, B64);
+  check(r1.photoId && r2.photoId, 'photos 2 and 3 attach to the job');
+  const got = ctx.getJobs('delivery')[0];
+  check(got.photoIds.length === 3 && got.photoIds[1] === r1.photoId && got.photoIds[2] === r2.photoId,
+    'photos land at their positions (order preserved)');
+  check(got.thumbIds[1] === r1.thumbId && got.thumbIds[2] === r2.thumbId, 'thumbs land alongside');
+
+  // out-of-order arrival still lands correctly
+  const k = ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64], thumbs: [B64] });
+  const r3 = ctx.addPhotoToJob(k.id, 3, B64, B64); // photo 4 arrives before photo 2
+  const r4 = ctx.addPhotoToJob(k.id, 1, B64, B64);
+  const got2 = ctx.getJobs('want')[0];
+  check(got2.photoIds[3] === r3.photoId && got2.photoIds[1] === r4.photoId, 'out-of-order arrivals slot correctly');
+
+  throws(() => ctx.addPhotoToJob('ghost', 1, B64, B64), 'unknown job throws');
+  const before = Object.keys(files).length;
+  try { ctx.addPhotoToJob('ghost', 1, B64, B64); } catch (e) {}
+  const ids = Object.keys(files);
+  check(files[ids[before]].trashed && files[ids[before + 1]].trashed, 'orphaned photo+thumb trashed on failure');
+  throws(() => ctx.addPhotoToJob(j.id, 9, B64, B64), 'index over the 6-photo cap throws');
+  throws(() => ctx.addPhotoToJob(j.id, 1, null, null), 'missing photo throws');
+}
+
+console.log('\n== dueAt (ready-by deadline) ==');
+{
+  const { ctx } = makeEnv();
+  const due = Date.now() + 3600000;
+  const j = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64], thumbs: [B64], dueAt: due });
+  check(j.dueAt === due, 'addJob stores dueAt');
+  check(ctx.getJobs('delivery')[0].dueAt === due, 'dueAt persisted in sheet');
+  const noDue = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64] });
+  check(noDue.dueAt === '', 'jobs without deadline store empty');
+  const due2 = Date.now() + 7200000;
+  const e = ctx.editJob(j.id, { note: '', category: 'bus', dueAt: due2, photos: [{ id: j.photoIds[0], thumbId: j.thumbIds[0] }] }, PIN);
+  check(e.dueAt === due2, 'editJob can change the deadline');
+  check(ctx.getJobs('delivery').find(x => x.id === j.id).dueAt === due2, 'changed deadline persisted');
+  const e2 = ctx.editJob(j.id, { note: '', category: 'bus', dueAt: '', photos: [{ id: j.photoIds[0], thumbId: j.thumbIds[0] }] }, PIN);
+  check(e2.dueAt === '', 'deadline can be cleared');
+  const init = ctx.getInitData('delivery');
+  check(init.jobs.length === 2, 'getInitData still fine with dueAt column');
+}
+
 console.log('\n== admin PIN enforcement ==');
 {
   const { ctx } = makeEnv();

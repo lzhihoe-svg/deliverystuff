@@ -72,7 +72,20 @@ whole card to answer ❤️/❌.
 **Fast and smooth on phones**: cards show small thumbnails (tap any photo to
 zoom to full size), photos and job lists are cached on each device so repeat
 opens are instant, and scrolling works normally everywhere — swiping a card or
-a photo strip never blocks scrolling up and down.
+a photo strip never blocks scrolling up and down. Only photos on screen are
+downloaded, and important actions (PIN, posting) always get the network first.
+
+**Posting never blocks you**: tap Post and the job appears instantly — photos
+upload in the background in parallel while a pill at the bottom shows live
+progress ("📤 Uploading 3 photos…"). Same for proof photos.
+
+**🔄 Refresh button**: tap the refresh icon in the header anytime; a status
+line shows "Updating… → Loading photos… → ✅ Updated just now".
+
+**⏰ Ready-by deadline (Delivery & Postage)**: when posting, optionally set a
+time like 4:30 PM. The card shows "🕒 Ready by 4:30 PM", turns amber with a
+countdown when less than 1 hour is left, and turns red "🚨 LATE" if the time
+passes. The most urgent job automatically sorts to the top of the To Do list.
 
 **🔄 Reset for a new day (Admin only)**: the red Reset button at the top clears
 ALL jobs in ALL tabs so the factory starts fresh tomorrow. Nothing is deleted —

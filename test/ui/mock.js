@@ -15,12 +15,26 @@
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
   }
 
+  window.__imgRequests = [];
   var api = {
     checkPin: function (pin) { return String(pin) === PIN; },
     getImagesData: function (ids) {
       var out = {};
-      ids.slice(0, 6).forEach(function (id) { out[id] = id.indexOf('missing') >= 0 ? null : svg(id); });
+      ids.slice(0, 6).forEach(function (id) {
+        window.__imgRequests.push(id);
+        out[id] = id.indexOf('missing') >= 0 ? null : svg(id);
+      });
       return out;
+    },
+    addPhotoToJob: function (id, index, full, thumb) {
+      if (!full) throw new Error('Photo required');
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      while (j.photoIds.length <= index) j.photoIds.push('');
+      while (j.thumbIds.length <= index) j.thumbIds.push('');
+      j.photoIds[index] = 'ph-' + id + '-' + index;
+      j.thumbIds[index] = thumb ? ('th-' + id + '-' + index) : '';
+      return { id: id, index: index, photoId: j.photoIds[index], thumbId: j.thumbIds[index] };
     },
     getJobs: function (tab) {
       return db.jobs
@@ -40,7 +54,8 @@
         id: 'j' + uid, tab: p.tab, category: p.category || '', note: p.note || '',
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
-        status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: ''
+        status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+        dueAt: p.dueAt || ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -54,6 +69,7 @@
       if (!j) throw new Error('Job not found');
       if (!ch.photos || !ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
+      j.dueAt = ch.dueAt || '';
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
@@ -98,6 +114,7 @@
       r[name] = function () {
         var args = Array.prototype.slice.call(arguments);
         window.__mockcalls.push({ name: name, at: Date.now() });
+        var lat = (window.__mocklat && window.__mocklat[name] != null) ? window.__mocklat[name] : LAT;
         setTimeout(function () {
           try {
             var res = api[name].apply(null, args);
@@ -105,7 +122,7 @@
           } catch (e) {
             if (r._f) r._f(e);
           }
-        }, LAT);
+        }, lat);
       };
     });
     return r;

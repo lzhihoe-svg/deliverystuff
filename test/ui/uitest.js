@@ -165,7 +165,10 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   console.log('\n-- proof + reset regression --');
   await clickSafe(page.locator('#delivery-list .btn.green').first());
   await page.setInputFiles('#proof-file', IMG);
-  await sleep(800);
+  await sleep(250);
+  check(!await page.locator('#spinner').isVisible(), 'proof upload does NOT block with a spinner');
+  check((await page.locator('#delivery-list .proof').count()) === 1, 'job marked done instantly (optimistic)');
+  await sleep(600);
   check((await page.locator('#delivery-list .proof').count()) === 1, 'proof photo flow works');
   check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.proofThumbId)), 'proof thumbnail stored too');
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
@@ -175,6 +178,142 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   check(await page.evaluate(() => window.__mockdb.jobs.every(j => j.status === 'archived')), 'reset archives everything');
   check((await page.locator('#delivery-list .empty').count()) === 1, 'tab cleared');
+
+
+  console.log('\n-- refresh button + progress status --');
+  const initCalls0 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getInitData').length);
+  await page.click('#refresh-btn');
+  await sleep(60); // before the mock latency elapses
+  check(await page.locator('#sync-row').isVisible(), 'status row appears under the header');
+  check((await page.locator('#sync-row').textContent()).indexOf('Updating') >= 0, 'shows Updating…');
+  check((await page.locator('#refresh-ico').getAttribute('class')) === 'spin-anim', 'refresh icon spins while updating');
+  await sleep(500);
+  const initCalls1 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getInitData').length);
+  check(initCalls1 === initCalls0 + 1, 'refresh calls the server exactly once');
+  check((await page.locator('#sync-row').textContent()).indexOf('Updated') >= 0, "shows '✅ Updated just now'");
+  await sleep(2700);
+  check(!await page.locator('#sync-row').isVisible(), 'status hides again after a moment');
+  check((await page.locator('#refresh-ico').getAttribute('class')) === '', 'icon stops spinning');
+
+  console.log('\n-- due time: post with Ready by --');
+  await page.click('#nav-delivery');
+  await sleep(500);
+  await page.click('#nav-post');
+  await sleep(150);
+  check(await page.locator('#due-wrap').isVisible(), 'Ready-by time field shows for delivery');
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  await page.fill('#upload-due', '23:58');
+  await page.fill('#upload-note', 'Due tonight');
+  await page.click('#btn-submit');
+  await sleep(700);
+  check((await page.locator('#delivery-list .chip.due, #delivery-list .chip.soon, #delivery-list .chip.late').count()) >= 1,
+    'Ready-by chip shows on the card');
+  check(await page.evaluate(() => !!window.__mockdb.jobs.find(j => j.note === 'Due tonight' && j.dueAt)), 'deadline stored on server');
+  // Checking tab must NOT have a due field
+  await page.click('#nav-want');
+  await sleep(300);
+  await page.click('#nav-post');
+  await sleep(150);
+  check(!await page.locator('#due-wrap').isVisible(), 'no due field on the Checking tab');
+  await page.click('#upload-overlay .x-close');
+  await sleep(150);
+  await page.click('#nav-delivery');
+  await sleep(400);
+
+  console.log('\n-- due time: LATE chip + urgency sorting --');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'No deadline', photos: ['x1'], thumbs: ['xt1'] });
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Overdue job', photos: ['x2'], thumbs: ['xt2'], dueAt: Date.now() - 3600000 });
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Soon job', photos: ['x3'], thumbs: ['xt3'], dueAt: Date.now() + 1800000 });
+  });
+  await page.click('#refresh-btn');
+  await sleep(500);
+  check((await page.locator('#delivery-list .chip.late').count()) === 1, 'overdue job shows red LATE chip');
+  check((await page.locator('#delivery-list .chip.soon').count()) >= 1, 'due-soon job shows countdown chip');
+  const firstNote = await page.locator('#delivery-list .grid .card .note').first().textContent();
+  check(firstNote.indexOf('Overdue job') >= 0, 'most urgent job sorted to the top');
+
+  console.log('\n-- NON-BLOCKING upload with progress pill --');
+  await page.click('#nav-post');
+  await sleep(150);
+  await page.setInputFiles('#photos-file', [IMG, IMG2, IMG3]);
+  await sleep(900);
+  await page.click('#upload-cats button[data-cat="lalamove"]');
+  await page.fill('#upload-note', 'Background upload');
+  await page.evaluate(() => { window.__mocklat = { addJob: 400, addPhotoToJob: 400 }; });
+  await page.click('#btn-submit');
+  await sleep(120); // long before the 400ms server latency
+  check(!await page.locator('#upload-overlay').isVisible(), 'form closes INSTANTLY');
+  check(!await page.locator('#spinner').isVisible(), 'no blocking spinner during upload');
+  check(await page.locator('#upload-pill').isVisible(), 'progress pill appears');
+  check((await page.locator('#upload-pill').textContent()).indexOf('Uploading 3') >= 0, 'pill counts 3 photos');
+  check((await page.locator('#delivery-list .chip.up').count()) === 1, 'card appears immediately with Uploading badge');
+  await sleep(1500); // create(400ms) + parallel photo 2&3 (400ms) ≈ 800ms total
+  check((await page.locator('#delivery-list .chip.up').count()) === 0, 'Uploading badge cleared when finished');
+  const bg = await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Background upload'));
+  check(bg && bg.photoIds.length === 3 && bg.photoIds.every(x => x), 'all 3 photos on server via PARALLEL upload (~0.8s, not 1.2s serial)');
+  await page.evaluate(() => { window.__mocklat = {}; });
+
+  console.log('\n-- PIN gets priority over image loading --');
+  await page.evaluate(() => {
+    localStorage.clear(); // forget cached photos so plenty must load
+    window.__mocklat = { getImagesData: 900 };
+    for (let i = 0; i < 8; i++) {
+      window.__mockapi.addJob({ tab: 'postage', category: '', note: 'P' + i, photos: ['zz' + i, 'zz' + i + 'b'], thumbs: ['zt' + i, 'zt' + i + 'b'] });
+    }
+  });
+  await page.click('#nav-postage');
+  await sleep(350); // image batches now in flight (900ms each)
+  await page.click('#role-btn');
+  await sleep(150);
+  await page.click('#role-admin-btn');
+  await page.fill('#pin-input', '1234');
+  const tPin = await page.evaluate(() => Date.now());
+  await page.click('#pin-wrap .btn.blue');
+  await sleep(450); // PIN latency is only 150ms
+  check(!await page.locator('#spinner').isVisible(), 'PIN completes fast — NOT stuck behind image downloads');
+  check((await page.locator('#role-btn').textContent()).indexOf('Admin') >= 0, 'admin mode on');
+  const imgCallsDuring = await page.evaluate(t =>
+    window.__mockcalls.filter(c => c.name === 'getImagesData' && c.at > t && c.at < t + 300).length, tPin);
+  check(imgCallsDuring === 0, 'zero image downloads started while PIN was checking (priority hold)');
+  await page.evaluate(() => { window.__mocklat = {}; });
+
+  console.log('\n-- lazy loading: only visible photos download --');
+  await sleep(2500); // let visible batches settle
+  const stats = await page.evaluate(() => {
+    const req = new Set(window.__imgRequests);
+    const ids = Array.from(document.querySelectorAll('#postage-list img[data-img]')).map(el => el.getAttribute('data-img'));
+    return { total: ids.length, requested: ids.filter(id => req.has(id)).length };
+  });
+  check(stats.requested > 0 && stats.requested < stats.total,
+    'only on-screen photos requested (' + stats.requested + ' of ' + stats.total + ') — offscreen skipped');
+  await page.evaluate(() => { const s = document.getElementById('scroller'); s.scrollTop = s.scrollHeight; });
+  await sleep(1500);
+  const stats2 = await page.evaluate(() => {
+    const req = new Set(window.__imgRequests);
+    const ids = Array.from(document.querySelectorAll('#postage-list img[data-img]')).map(el => el.getAttribute('data-img'));
+    return { requested: ids.filter(id => req.has(id)).length };
+  });
+  check(stats2.requested > stats.requested, 'scrolling down loads more (' + stats.requested + ' → ' + stats2.requested + ')');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+
+  console.log('\n-- PIN watchdog: spinner can never hang forever --');
+  await page.evaluate(() => { window.__PIN_TIMEOUT = 700; window.__mocklat = { checkPin: 3000 }; });
+  await page.click('#role-btn');
+  await sleep(150);
+  await page.click('#role-admin-btn');
+  await page.fill('#pin-input', '1234');
+  await page.click('#pin-wrap .btn.blue');
+  await sleep(300);
+  check(await page.locator('#spinner').isVisible(), 'spinner shows while the network is slow');
+  await sleep(750);
+  check(!await page.locator('#spinner').isVisible(), 'watchdog closes the spinner instead of spinning forever');
+  check((await page.locator('#toast').textContent()).indexOf('Slow network') >= 0, "tells the user: 'Slow network — please try again'");
+  await page.evaluate(() => { window.__PIN_TIMEOUT = 0; window.__mocklat = {}; });
+  await page.click('#role-overlay .x-close');
+  await sleep(150);
 
   console.log('\n-- instant startup from cache --');
   // localStorage has cached job lists; a reload should render BEFORE the server answers

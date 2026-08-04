@@ -37,10 +37,17 @@
     position: sticky; top: 0; z-index: 20;
     background: var(--header); color: #fff;
     border-bottom: 3px solid var(--lime);
-    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; flex-wrap: wrap;
   }
   header h1 { font-size: 18px; margin-right: auto; }
   header h1 .dot { color: var(--lime); }
+  #refresh-btn { padding: 6px 11px; }
+  .spin-anim { display: inline-block; animation: spin 1s linear infinite; }
+  #sync-row {
+    flex-basis: 100%; display: none; text-align: center;
+    font-size: 12px; font-weight: 700; color: var(--lime); padding-top: 6px;
+  }
   .role-btn {
     border: 1px solid rgba(255,255,255,.4); background: none; color: #fff;
     border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
@@ -151,6 +158,10 @@
   .chip.bus      { background: #dbeafe; color: #1e40af; }
   .chip.pickup   { background: #dcfce7; color: #166534; }
   .chip.old      { background: #fee2e2; color: #991b1b; }
+  .chip.up       { background: #fef9c3; color: #854d0e; }
+  .chip.due      { background: var(--lime-soft); color: var(--blue); }
+  .chip.soon     { background: #fef3c7; color: #92400e; }
+  .chip.late     { background: #fee2e2; color: #991b1b; }
 
   .btn {
     display: block; width: 100%; border: 0; border-radius: 14px;
@@ -234,11 +245,11 @@
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea, .sheet input[type=password] {
+  .sheet textarea, .sheet input[type=password], .sheet input[type=time] {
     width: 100%; border: 2px solid #d3dcc3; border-radius: 12px;
-    padding: 12px; font-size: 16px; font-family: inherit; outline: none;
+    padding: 12px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
   }
-  .sheet textarea:focus, .sheet input[type=password]:focus { border-color: var(--lime); }
+  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus { border-color: var(--lime); }
   .x-close {
     position: absolute; top: 12px; right: 12px;
     width: 38px; height: 38px; border-radius: 50%; border: 0;
@@ -276,6 +287,14 @@
   }
   .choice-row button.active { border-color: var(--green); background: var(--lime-soft); color: var(--blue); }
   .choice-row .big { display: block; font-size: 34px; margin-bottom: 4px; }
+
+  /* background upload progress pill */
+  #upload-pill {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px; z-index: 40;
+    background: var(--header); color: #fff; border: 1px solid var(--lime);
+    border-radius: 999px; padding: 9px 18px; font-size: 13px; font-weight: 700;
+    display: none; white-space: nowrap;
+  }
 
   /* ---------- toast & spinner ---------- */
   #toast {
@@ -329,8 +348,10 @@
 <div id="scroller">
   <header>
     <h1>🏭 Kilang<span class="dot"> App</span></h1>
+    <button class="role-btn" id="refresh-btn" onclick="manualRefresh()" title="Refresh"><span id="refresh-ico">🔄</span></button>
     <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 New Day</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
+    <div id="sync-row"></div>
   </header>
 
   <!-- ================= TAB 1 : CHECKING (Kilang Want) ================= -->
@@ -414,6 +435,11 @@
     <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
     <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
 
+    <div id="due-wrap" style="display:none">
+      <label>Ready by (optional) ⏰</label>
+      <input type="time" id="upload-due">
+    </div>
+
     <label>Instruction (optional)</label>
     <textarea id="upload-note" rows="2" placeholder="Example: Deliver before 5pm"></textarea>
 
@@ -440,6 +466,7 @@
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 
 <div class="viewer" id="viewer" onclick="this.classList.remove('show')"><img id="viewer-img"></div>
+<div id="upload-pill"></div>
 <div id="toast"></div>
 <div id="spinner"><div class="spin-box"><div class="ring"></div><div id="spinner-txt">Please wait…</div></div></div>
 
@@ -473,7 +500,32 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 3, BATCH = 4;
+  var MAX_PARALLEL = 2, BATCH = 3;
+
+  // Interactive work (PIN check, saves) and photo uploads get the network to
+  // themselves: background image downloads pause while they run. This is what
+  // used to make "Checking PIN…" hang for 30s behind image traffic.
+  var priorityHold = 0;
+  var uploadsPending = 0;   // photos still uploading in the background
+  function holdImages() { return priorityHold > 0 || uploadsPending > 0; }
+
+  // Lazy loading: only photos on (or near) the screen are downloaded.
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+    var any = false;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].isIntersecting) { entries[i].target.setAttribute('data-vis', '1'); any = true; }
+    }
+    if (any) loadImages();
+  }, { root: document.getElementById('scroller'), rootMargin: '250px' }) : null;
+
+  function observeImages() {
+    if (!io) return;
+    io.disconnect();
+    var els = document.querySelectorAll('img[data-img]');
+    for (var i = 0; i < els.length; i++) {
+      if (!cachedImg(els[i].getAttribute('data-img'))) io.observe(els[i]);
+    }
+  }
   var PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
     '<rect width="400" height="300" fill="#ecfccb"/>' +
@@ -489,6 +541,7 @@
   }
   function persistImg(id, data) {
     if (!data || data.length > 90000) return; // persist small images (thumbs) only
+    if (String(id).indexOf('local') === 0) return; // temp upload previews stay in memory
     try { localStorage.setItem('ki_' + id, data); }
     catch (e) {
       // storage full: clear old cached images and retry once
@@ -518,11 +571,14 @@
   }
 
   function loadImages() {
+    if (holdImages()) return;               // pause behind PIN checks / uploads
     if (activeLoads >= MAX_PARALLEL) return;
     var want = [];
     var els = document.querySelectorAll('img[data-img]');
     for (var i = 0; i < els.length; i++) {
+      if (io && !els[i].getAttribute('data-vis')) continue;  // offscreen: skip
       var id = els[i].getAttribute('data-img');
+      if (String(id).indexOf('local') === 0) continue;       // temp preview, already local
       if (!cachedImg(id) && !imgFetching[id] && want.indexOf(id) < 0) want.push(id);
     }
     while (want.length && activeLoads < MAX_PARALLEL) {
@@ -541,6 +597,7 @@
         }
         batch.forEach(function (id) { delete imgFetching[id]; });
         applyLoaded();
+        syncPhotosTick();
         loadImages();
       })
       .withFailureHandler(function () {
@@ -560,10 +617,45 @@
   function viewPhoto(id) {
     var v = document.getElementById('viewer-img');
     v.setAttribute('data-img', id);
+    v.setAttribute('data-vis', '1'); // viewer lives outside the scroller: fetch directly
     v.src = cachedImg(id) || PLACEHOLDER;
     document.getElementById('viewer').classList.add('show');
     loadImages();
   }
+
+  // ------------------------------------------------------------ sync status (refresh)
+  var syncTimer = null;
+  function setSync(txt, autoHideMs) {
+    var row = document.getElementById('sync-row');
+    clearTimeout(syncTimer);
+    if (!txt) { row.style.display = 'none'; return; }
+    row.textContent = txt;
+    row.style.display = 'block';
+    if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
+  }
+  function refreshSpin(on) {
+    document.getElementById('refresh-ico').className = on ? 'spin-anim' : '';
+  }
+  function pendingImgCount() {
+    var n = 0, seen = {};
+    var els = document.querySelectorAll('img[data-img]');
+    for (var i = 0; i < els.length; i++) {
+      var id = els[i].getAttribute('data-img');
+      if (String(id).indexOf('local') === 0) continue;
+      if (!cachedImg(id) && !seen[id]) { seen[id] = 1; n++; }
+    }
+    return n;
+  }
+  function syncAfterData() {
+    var n = pendingImgCount();
+    if (n > 0) setSync('📷 Loading photos… (' + n + ' left)');
+    else setSync('✅ Updated just now', 2500);
+  }
+  function syncPhotosTick() {
+    var row = document.getElementById('sync-row');
+    if (row.style.display !== 'none' && row.textContent.indexOf('photos') >= 0) syncAfterData();
+  }
+  function manualRefresh() { refresh(state.tab); }
 
   // ------------------------------------------------------------ photo carousel
   function dotsHtml(n, cls) {
@@ -633,7 +725,13 @@
   }
   function busy(on, msg) {
     document.getElementById('spinner').style.display = on ? 'flex' : 'none';
-    if (on) document.getElementById('spinner-txt').textContent = msg || 'Please wait…';
+    if (on) {
+      document.getElementById('spinner-txt').textContent = msg || 'Please wait…';
+      priorityHold = 1;          // give this call the network to itself
+    } else {
+      priorityHold = 0;
+      loadImages();              // resume background image loading
+    }
   }
   function findJob(id) {
     var list = state.jobs[state.tab];
@@ -643,8 +741,57 @@
 
   // jobs cache: last known list per tab renders INSTANTLY on open,
   // then the server refresh replaces it in the background
+  var inflightJobs = [];   // jobs whose photos are still uploading
+  var localSeq = 0;        // ids for temp local previews
   function saveJobsCache(tab) {
-    try { localStorage.setItem('kj_' + tab, JSON.stringify(state.jobs[tab])); } catch (e) {}
+    try {
+      var clean = state.jobs[tab].filter(function (j) {
+        return !j.uploading && !j.proofUploading && String(j.id).indexOf('local-') !== 0;
+      });
+      localStorage.setItem('kj_' + tab, JSON.stringify(clean));
+    } catch (e) {}
+  }
+
+  // ---- "Ready by" due time helpers ----
+  function msToHHMM(ms) {
+    var d = new Date(Number(ms));
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  function hhmmToMs(v) {
+    if (!v) return '';
+    var p = v.split(':');
+    var d = new Date();
+    d.setHours(Number(p[0]), Number(p[1]), 0, 0);
+    return d.getTime();
+  }
+  function fmtTime(ms) {
+    var d = new Date(Number(ms));
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) h = 12;
+    return h + ':' + ('0' + m).slice(-2) + ' ' + ap;
+  }
+  function dueChip(j) {
+    if (!j.dueAt) return '';
+    var left = Number(j.dueAt) - Date.now();
+    if (left < 0) return '<span class="chip late">🚨 LATE — was due ' + fmtTime(j.dueAt) + '</span> ';
+    if (left < 3600000) return '<span class="chip soon">⏰ Ready by ' + fmtTime(j.dueAt) + ' — ' + Math.max(1, Math.round(left / 60000)) + ' min left!</span> ';
+    return '<span class="chip due">🕒 Ready by ' + fmtTime(j.dueAt) + '</span> ';
+  }
+
+  // ---- background upload progress pill ----
+  var pillTimer = null;
+  function updatePill() {
+    var el = document.getElementById('upload-pill');
+    clearTimeout(pillTimer);
+    if (uploadsPending > 0) {
+      el.textContent = '📤 Uploading ' + uploadsPending + ' photo' + (uploadsPending > 1 ? 's' : '') + '…';
+      el.style.display = 'block';
+    } else {
+      el.textContent = '✅ All photos uploaded!';
+      pillTimer = setTimeout(function () { el.style.display = 'none'; }, 1800);
+      loadImages(); // resume background image loading
+    }
   }
   function readJobsCache(tab) {
     try { return JSON.parse(localStorage.getItem('kj_' + tab) || '[]'); } catch (e) { return []; }
@@ -673,13 +820,27 @@
     var p = document.getElementById('pin-input').value.trim();
     if (!p) { toast('Enter the PIN 🔑'); return; }
     busy(true, 'Checking PIN…');
+    // watchdog: the spinner can never hang forever on a bad connection
+    var settled = false;
+    var dog = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      busy(false);
+      toast('🐢 Slow network — please try again');
+    }, window.__PIN_TIMEOUT || 20000);
     google.script.run
       .withSuccessHandler(function (ok) {
+        if (settled) return;
+        settled = true; clearTimeout(dog);
         busy(false);
         if (ok) { setRole('admin', p); toast('👔 Admin mode on'); }
         else { toast('❌ Wrong PIN'); }
       })
-      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+      .withFailureHandler(function (e) {
+        if (settled) return;
+        settled = true; clearTimeout(dog);
+        busy(false); toast('⚠️ ' + e.message);
+      })
       .checkPin(p);
   }
   function setRole(role, pin) {
@@ -705,12 +866,31 @@
 
   function refresh(tab) {
     // one round trip for jobs + badges (was two)
+    refreshSpin(true);
+    setSync('🔄 Updating…');
     google.script.run
       .withSuccessHandler(function (res) {
-        state.jobs[tab] = res.jobs; saveJobsCache(tab);
+        state.jobs[tab] = res.jobs;
+        // keep background-uploading jobs visible through a refresh
+        inflightJobs.forEach(function (j) {
+          if (j.tab !== tab) return;
+          var idx = -1;
+          for (var k = 0; k < state.jobs[tab].length; k++) {
+            if (state.jobs[tab][k].id === j.id) { idx = k; break; }
+          }
+          if (idx >= 0) state.jobs[tab][idx] = j;
+          else state.jobs[tab].unshift(j);
+        });
+        saveJobsCache(tab);
         renderAll(); renderBadges(res.counts);
+        refreshSpin(false);
+        syncAfterData();
       })
-      .withFailureHandler(function (e) { toast('⚠️ ' + e.message); })
+      .withFailureHandler(function (e) {
+        refreshSpin(false);
+        setSync('⚠️ Update failed — tap 🔄 to retry', 4000);
+        toast('⚠️ ' + e.message);
+      })
       .getInitData(tab);
   }
   function renderBadges(c) {
@@ -724,6 +904,7 @@
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage();
     attachCarousels();
+    observeImages();
     loadImages();
   }
 
@@ -764,10 +945,11 @@
           (multi ? dotsHtml(j.photoIds.length, 'stack-dots') +
                    '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
           '<div class="foot">' +
-            '<div class="cap">📄 ' + (esc(j.note) || 'Jobsheet') +
+            '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') +
+            '📄 ' + (esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
-            toolBtns(j, false) +
+            (j.uploading ? '' : toolBtns(j, false)) +
           '</div>' +
           '<div class="stamp yes">❤️</div><div class="stamp no">❌</div>' +
           '</div>';
@@ -900,6 +1082,13 @@
 
   function flyOut(card, dir, status) {
     var id = card.getAttribute('data-id');
+    var j = findJob(id);
+    if (j && j.uploading) {
+      toast('📤 Still uploading — wait a moment');
+      card.style.transition = 'transform .2s'; card.style.transform = '';
+      setTimeout(function () { card.style.transition = ''; }, 220);
+      return;
+    }
     card.style.transition = 'transform .3s, opacity .3s';
     card.style.transform = 'translateX(' + (dir * window.innerWidth) + 'px) rotate(' + (dir * 30) + 'deg)';
     card.style.opacity = '0';
@@ -935,6 +1124,13 @@
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
+    // most urgent deadline first; jobs without a deadline after, newest first
+    pending.sort(function (a, b) {
+      var da = a.dueAt ? Number(a.dueAt) : Infinity;
+      var db2 = b.dueAt ? Number(b.dueAt) : Infinity;
+      if (da !== db2) return da - db2;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
     var html = '';
 
     if (pending.length === 0 && done.length === 0) {
@@ -960,7 +1156,9 @@
     var html = '<div class="card">' + carouselHtml(j);
 
     html += '<div class="body">';
+    if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
+    if (!isDone) html += dueChip(j);
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
     html += '<div class="meta">Posted ' + timeAgo(j.createdAt) + '</div>';
@@ -968,12 +1166,14 @@
     if (isDone) {
       html += '<div class="proof">' +
         (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\')"') : '') +
-        '<div class="txt">✅ Done · ' + timeAgo(j.doneAt) + '</div></div>';
-      html += '<div class="spacer"></div>' + toolBtns(j, true);
+        '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div></div>';
+      html += '<div class="spacer"></div>' + (j.proofUploading ? '' : toolBtns(j, true));
     } else {
       html += '<div class="spacer"></div>';
-      html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>';
-      html += toolBtns(j, false);
+      if (!j.uploading) {
+        html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>';
+        html += toolBtns(j, false);
+      }
     }
     html += '</div></div>';
     return html;
@@ -991,6 +1191,7 @@
 
   function markJob(id, status) {
     var j = findJob(id);
+    if (j && j.uploading) { toast('📤 Still uploading — wait a moment'); renderAll(); return; }
     if (j) {
       if (status === 'archived') {
         state.jobs[state.tab] = state.jobs[state.tab].filter(function (x) { return x.id !== id; });
@@ -1026,6 +1227,8 @@
   }
 
   function removeJob(id) {
+    var j = findJob(id);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
     askConfirm('Delete this job? Cannot undo!', '🗑️ Yes, Delete', function () {
       state.jobs[state.tab] = state.jobs[state.tab].filter(function (j) { return j.id !== id; });
       saveJobsCache(state.tab);
@@ -1056,19 +1259,39 @@
   function proofPicked(input) {
     if (!input.files || !input.files[0]) return;
     var id = state.proofJobId;
-    busy(true, 'Uploading proof photo… 📸'); // real upload — keep the spinner while it transfers
+    var jobTab = state.tab;
     compressImage(input.files[0], function (img) {
+      // NON-BLOCKING: mark done instantly, upload the proof in the background
+      var j = findJob(id);
+      var tempKey = 'localproof-' + (++localSeq);
+      imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
+      if (j) {
+        j.status = 'done'; j.doneAt = Date.now();
+        j.proofPhotoId = tempKey; j.proofThumbId = tempKey;
+        j.proofUploading = true;
+        inflightJobs.push(j);
+      }
+      renderAll(); updateBadgeLocal();
+      toast('✅ Done! Proof uploading… 🙏');
+      uploadsPending++; updatePill();
       google.script.run
         .withSuccessHandler(function (res) {
-          var j = findJob(id);
-          if (j) { j.status = 'done'; j.doneAt = res.doneAt; j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId; }
+          uploadsPending--; updatePill();
           seedImage(res.proofPhotoId, img.full);
           seedImage(res.proofThumbId, img.thumb);
-          saveJobsCache(state.tab);
-          busy(false); renderAll(); updateBadgeLocal();
-          toast('✅ Done! Thank you 🙏');
+          if (j) {
+            j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
+            j.doneAt = res.doneAt;
+            delete j.proofUploading;
+            inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
+            saveJobsCache(jobTab); renderAll();
+          }
         })
-        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); refresh(state.tab); })
+        .withFailureHandler(function (e) {
+          uploadsPending--; updatePill();
+          if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
+          toast('⚠️ ' + e.message); refresh(state.tab);
+        })
         .updateStatus(id, 'done', img.full, img.thumb, null);
     });
     input.value = '';
@@ -1079,6 +1302,7 @@
     var job = editId ? findJob(editId) : null;
     if (editId && !job) return;
     if (job && !isAdmin()) { toast('Admin only'); return; }
+    if (job && job.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     state.editing = job;
     state.upload = {
       photos: job ? job.photoIds.map(function (id, i) {
@@ -1098,6 +1322,9 @@
       state.tab === 'postage' ? 'Photos 📸 (jobsheet + airway bill)' : 'Photos 📸';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
+    document.getElementById('due-wrap').style.display =
+      (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
+    document.getElementById('upload-due').value = (job && job.dueAt) ? msToHHMM(job.dueAt) : '';
 
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
@@ -1125,6 +1352,9 @@
         '</div>';
     });
     document.getElementById('upload-thumbs').innerHTML = html;
+    // the modal lives outside the scroller, so mark its images as visible
+    var els = document.querySelectorAll('#upload-thumbs img[data-img]');
+    for (var k = 0; k < els.length; k++) els[k].setAttribute('data-vis', '1');
   }
   function removeUploadPhoto(i) {
     state.upload.photos.splice(i, 1);
@@ -1154,6 +1384,8 @@
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
     var photos = state.upload.photos;
+    var hasDue = state.tab === 'delivery' || state.tab === 'postage';
+    var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
 
     if (!photos.length) { toast('Please add a photo first 📸'); return; }
     if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
@@ -1166,6 +1398,7 @@
       var spec = photos.map(function (p) {
         return p.b64 ? { b64: p.b64, thumb: p.thumb } : { id: p.id, thumbId: p.thumbId };
       });
+      var editTab = state.tab;
       google.script.run
         .withSuccessHandler(function (job) {
           for (var i = 0; i < spec.length; i++) {
@@ -1174,9 +1407,9 @@
               seedImage(job.thumbIds[i], spec[i].thumb);
             }
           }
-          var list = state.jobs[state.tab];
+          var list = state.jobs[editTab];
           for (var k = 0; k < list.length; k++) if (list[k].id === job.id) { list[k] = job; break; }
-          saveJobsCache(state.tab);
+          saveJobsCache(editTab);
           busy(false); closeUpload(); renderAll(); updateBadgeLocal();
           toast('💾 Saved!');
         })
@@ -1184,32 +1417,95 @@
         .editJob(state.editing.id, {
           note: note,
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
+          dueAt: dueMs,
           photos: spec
         }, state.pin);
       return;
     }
 
+    // ---- NON-BLOCKING POST ----
+    // The job appears on screen instantly (from the local photos) and the
+    // modal closes right away. Photo 1 creates the job; the remaining photos
+    // upload in PARALLEL in the background (wall time = slowest photo, not
+    // the sum). The pill at the bottom shows live progress.
     var fulls = photos.map(function (p) { return p.b64; });
     var thumbs = photos.map(function (p) { return p.thumb; });
-    busy(true, 'Uploading ' + photos.length + ' photo' + (photos.length > 1 ? 's' : '') + '… 📤');
+    var postTab = state.tab;
+    var tempPhotoIds = [], tempThumbIds = [];
+    localSeq++;
+    for (var i = 0; i < fulls.length; i++) {
+      var pk = 'localp-' + localSeq + '-' + i, tk = 'localt-' + localSeq + '-' + i;
+      imgCache[pk] = 'data:image/jpeg;base64,' + fulls[i];
+      imgCache[tk] = 'data:image/jpeg;base64,' + (thumbs[i] || fulls[i]);
+      tempPhotoIds.push(pk); tempThumbIds.push(tk);
+    }
+    var tempJob = {
+      id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
+      photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
+      createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+      dueAt: dueMs, uploading: true
+    };
+    state.jobs[postTab].unshift(tempJob);
+    inflightJobs.push(tempJob);
+    closeUpload(); renderAll(); updateBadgeLocal();
+    toast('📤 Posting…');
+    uploadsPending += fulls.length; updatePill();
+
+    function finishPost() {
+      delete tempJob.uploading;
+      inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
+      saveJobsCache(postTab);
+      renderAll(); updateBadgeLocal();
+      toast('✅ Posted!');
+    }
+
     google.script.run
       .withSuccessHandler(function (job) {
-        for (var i = 0; i < fulls.length; i++) {
-          seedImage(job.photoIds[i], fulls[i]);
-          seedImage(job.thumbIds[i], thumbs[i]);
+        uploadsPending--; updatePill();
+        seedImage(job.photoIds[0], fulls[0]);
+        seedImage(job.thumbIds[0], thumbs[0]);
+        tempJob.id = job.id;
+        tempJob.createdAt = job.createdAt;
+        tempJob.photoIds[0] = job.photoIds[0];
+        tempJob.thumbIds[0] = job.thumbIds[0];
+        var remaining = fulls.length - 1;
+        if (remaining === 0) { finishPost(); return; }
+        for (var idx = 1; idx < fulls.length; idx++) {
+          (function (ix) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                uploadsPending--; updatePill();
+                seedImage(res.photoId, fulls[ix]);
+                seedImage(res.thumbId, thumbs[ix]);
+                tempJob.photoIds[ix] = res.photoId;
+                tempJob.thumbIds[ix] = res.thumbId;
+                remaining--;
+                if (remaining === 0) finishPost();
+              })
+              .withFailureHandler(function (e) {
+                uploadsPending--; updatePill();
+                remaining--;
+                toast('⚠️ One photo failed: ' + e.message);
+                if (remaining === 0) finishPost();
+              })
+              .addPhotoToJob(tempJob.id, ix, fulls[ix], thumbs[ix]);
+          })(idx);
         }
-        state.jobs[state.tab].unshift(job);
-        saveJobsCache(state.tab);
-        busy(false); closeUpload(); renderAll(); updateBadgeLocal();
-        toast('📤 Posted!');
       })
-      .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+      .withFailureHandler(function (e) {
+        uploadsPending -= fulls.length; updatePill();
+        inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
+        state.jobs[postTab] = state.jobs[postTab].filter(function (x) { return x !== tempJob; });
+        renderAll(); updateBadgeLocal();
+        toast('⚠️ Post failed: ' + e.message + ' — please try again');
+      })
       .addJob({
-        tab: state.tab,
-        category: state.upload.cat,
+        tab: postTab,
+        category: tempJob.category,
         note: note,
-        photos: fulls,
-        thumbs: thumbs
+        photos: [fulls[0]],
+        thumbs: [thumbs[0]],
+        dueAt: dueMs
       });
   }
 
