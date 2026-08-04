@@ -81,6 +81,13 @@
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
     },
+    undoSwipe: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.status !== 'got' && j.status !== 'notseen') throw new Error('Nothing to undo');
+      j.status = 'pending'; j.doneAt = ''; j.pinnedAt = Date.now();
+      return { id: id, status: 'pending', pinnedAt: j.pinnedAt };
+    },
     askAgain: function (id, pin) {
       requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });

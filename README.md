@@ -4,7 +4,7 @@ One simple web app that replaces your 3 WhatsApp groups:
 
 | WhatsApp Group | App Tab | What happens |
 |---|---|---|
-| **Kilang Want** | 🧵 **Checking** | Post jobsheet photos → factory **swipes right ❤️** (got it) or **swipes left ❌** (haven't seen it) — like Tinder |
+| **Kilang Want** | 🔍 **Checking** | Post jobsheet photos → factory **swipes right ❤️** (got it) or **swipes left ❌** (haven't seen it) — like Tinder |
 | **Kilang Packing** | 🚚 **Delivery** | Boss posts jobsheet + instruction under **🛵 Lalamove / 🚌 Bus / 🤝 Pickup**. Staff must **take a photo of the parcel** to mark it done ✅ |
 | **Kilang Postage** | 📦 **Postage** | Boss posts **airway bill + jobsheet** photos side by side. Staff sticks the right sticker, then **takes a photo of the parcel** to confirm ✅ |
 
@@ -148,7 +148,7 @@ slowest? That's how you find your bottleneck.
 
 | Time | Who | Action |
 |---|---|---|
-| Morning | Admin | Tap 🔄 Reset to clear yesterday, then post the day's jobsheets in 🧵 Checking |
+| Morning | Admin | Tap 🔄 Reset to clear yesterday, then post the day's jobsheets in 🔍 Checking |
 | Within 1 hour | Factory | Swipe every card — zero cards left in the stack |
 | Midday | Admin | Check ❌ items and follow up; post 🚚 Delivery and 📦 Postage jobs |
 | Before closing | Staff | Every parcel out the door = proof photo taken |

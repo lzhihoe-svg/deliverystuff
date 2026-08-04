@@ -482,6 +482,27 @@ console.log('\n== askAgain (re-check with staff) ==');
   throws(() => ctx.askAgain('ghost', PIN), 'unknown id throws');
 }
 
+console.log('\n== undoSwipe (staff fix a wrong swipe, no PIN) ==');
+{
+  const { ctx } = makeEnv();
+  const j = ctx.addJob({ tab: 'want', category: '', note: 'Oops', photos: [B64], thumbs: [B64] });
+  throws(() => ctx.undoSwipe(j.id), 'cannot undo a jobsheet that was never swiped');
+  ctx.updateStatus(j.id, 'got', null, null, null);
+  const r = ctx.undoSwipe(j.id); // NO pin — staff allowed
+  check(r.status === 'pending' && typeof r.pinnedAt === 'number', 'undo returns pending + pinned');
+  const back = ctx.getJobs('want')[0];
+  check(back.status === 'pending' && back.doneAt === '', 'jobsheet back in the deck, answer time cleared');
+  check(back.pinnedAt === r.pinnedAt, 'pinned to the FRONT of the deck');
+  check(ctx.getCounts().want === 1, 'badge counts it as pending again');
+  ctx.updateStatus(j.id, 'notseen', null, null, null);
+  check(ctx.undoSwipe(j.id).status === 'pending', 'undo works from notseen too');
+  throws(() => ctx.undoSwipe(j.id), 'second undo throws (already pending)');
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '', photos: [B64] });
+  ctx.updateStatus(d.id, 'done', B64, B64, null);
+  throws(() => ctx.undoSwipe(d.id), 'cannot undo a DONE delivery job (use Remove Proof)');
+  throws(() => ctx.undoSwipe('ghost'), 'unknown id throws');
+}
+
 console.log('\n== jsCount (postage jobsheet/waybill split) ==');
 {
   const { ctx } = makeEnv();

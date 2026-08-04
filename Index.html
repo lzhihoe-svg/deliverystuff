@@ -200,6 +200,20 @@
   .tools .t-reproof  { border: 2px solid var(--blue); color: var(--blue); }
   .tools .t-delproof { border: 2px solid var(--red); color: var(--red); }
 
+  /* undo bar after a swipe — fix a wrong swipe with one tap */
+  .undo-bar {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: #fff; border: 1.5px solid var(--lime); border-radius: 12px;
+    padding: 8px 12px; margin-bottom: 12px;
+    font-size: 14px; font-weight: 700; color: var(--blue);
+    box-shadow: 0 1px 4px rgba(15,23,42,.08);
+  }
+  .undo-bar button {
+    border: 0; background: linear-gradient(135deg, var(--lime), var(--green));
+    color: #fff; border-radius: 999px; padding: 7px 16px;
+    font-size: 14px; font-weight: 800; cursor: pointer;
+  }
+
   /* small, friendly Push Up (ask again) button on Checking status cards */
   .ask-btn {
     display: block; width: 100%; margin-top: 8px;
@@ -418,7 +432,7 @@
               fill="#b7e388" stroke="#161a10" stroke-width="9" stroke-linejoin="round"/>
         <path d="M93 106 L93 80 L67 106 Z" fill="#f18bb9" stroke="#161a10" stroke-width="7" stroke-linejoin="round"/>
       </svg>
-      ARA<span class="dot"> MEGA</span>
+      ARA<span class="dot">MEGA</span>
     </h1>
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
     <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
@@ -453,7 +467,7 @@
 <!-- ================= BOTTOM NAV ================= -->
 <nav>
   <button id="nav-want" onclick="switchTab('want')">
-    <span class="ico">🧵</span><span class="nav-lbl">Checking</span>
+    <span class="ico">🔍</span><span class="nav-lbl">Checking</span>
     <span class="badge" id="badge-want"></span>
   </button>
   <button id="nav-delivery" onclick="switchTab('delivery')">
@@ -589,7 +603,8 @@
     upload: { photos: [], js: [], wb: [], cat: '' },   // entries: {b64,thumb} new, {id,thumbId} existing
     editing: null,
     proofJobId: null,
-    reProof: false
+    reProof: false,
+    lastSwipe: null
   };
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
@@ -1143,6 +1158,25 @@
     google.script.run.withFailureHandler(bgFail).askAgain(id, state.pin);
   }
 
+  /** UNDO a wrong swipe (staff AND admin, no PIN): the jobsheet returns to
+      the FRONT of the swipe deck so it can be answered again. */
+  function undoSwipeNow() {
+    var ls = state.lastSwipe;
+    if (!ls) return;
+    state.lastSwipe = null;
+    var list = state.jobs.want;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === ls.id) {
+        list[i].status = 'pending'; list[i].doneAt = ''; list[i].pinnedAt = Date.now();
+        break;
+      }
+    }
+    saveJobsCache('want');
+    renderAll(); updateBadgeLocal();
+    toast('↩️ Swipe undone — please answer again.');
+    google.script.run.withFailureHandler(bgFail).undoSwipe(ls.id);
+  }
+
   // ------------------------------------------------------------ TAB 1: checking (swipe)
   function renderWant() {
     var jobs = state.jobs.want;
@@ -1152,11 +1186,23 @@
     pending.sort(function (a, b) { return Number(b.pinnedAt || 0) - Number(a.pinnedAt || 0); });
     var area = document.getElementById('want-stack-area');
 
+    // undo bar: right after a swipe, one tap brings the jobsheet back
+    var undoHtml = '';
+    var ls = state.lastSwipe;
+    if (ls && Date.now() - ls.at < 60000) {
+      var lj = jobs.find(function (x) { return x.id === ls.id; });
+      if (lj && (lj.status === 'got' || lj.status === 'notseen')) {
+        undoHtml = '<div class="undo-bar" id="undo-bar">Swiped ' +
+          (ls.status === 'got' ? '❤️ Got It' : '❌ Not Seen') + ' — wrong?' +
+          '<button onclick="undoSwipeNow()">↩️ UNDO</button></div>';
+      }
+    }
+
     if (pending.length === 0) {
-      area.innerHTML = '<div class="empty"><span class="big">🎉</span>No new jobsheets!' +
+      area.innerHTML = undoHtml + '<div class="empty"><span class="big">🎉</span>No new jobsheets!' +
         '<br><span class="hint">Tap ＋ Post below to add one</span></div>';
     } else {
-      var html = '<div class="stack-outer">';
+      var html = undoHtml + '<div class="stack-outer">';
       html += '<div class="swipe-help">👈 ❌ Not seen &nbsp;|&nbsp; ❤️ Got it 👉</div>';
       html += '<div class="stack-wrap" id="stack">';
       var show = pending.slice(0, 3).reverse();   // last in DOM = top of stack
@@ -1489,6 +1535,9 @@
         j.status = status; j.doneAt = Date.now();
       }
       saveJobsCache(state.tab);
+      if (status === 'got' || status === 'notseen') {
+        state.lastSwipe = { id: id, status: status, at: Date.now() };
+      }
       renderAll(); updateBadgeLocal();
     }
     if (status === 'got') toast('❤️ Great!');
@@ -1675,7 +1724,7 @@
     }
 
     var titles = {
-      want: '🧵 Post New Jobsheet',
+      want: '🔍 Post New Jobsheet',
       delivery: '🚚 Post Delivery Instruction',
       postage: '📦 Post Airway Bill + Jobsheet'
     };

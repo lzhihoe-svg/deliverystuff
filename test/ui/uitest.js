@@ -60,7 +60,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const calls = await page.evaluate(() => window.__mockcalls.map(c => c.name));
   check(calls.indexOf('getAllData') >= 0, 'startup uses combined getAllData call (all 3 tabs at once)');
   check(calls.indexOf('getJobs') < 0 && calls.indexOf('getCounts') < 0 && calls.indexOf('getInitData') < 0, 'no separate per-tab calls');
-  check((await page.locator('header h1').textContent()).indexOf('ARA') >= 0, 'ARA MEGA branding in header');
+  check((await page.locator('header h1').textContent()).replace(/\s+/g, ' ').indexOf('ARAMEGA') >= 0,
+    'ARAMEGA branding in header (one word)');
   check((await page.locator('header h1 svg.logo').count()) === 1, 't-shirt logo in header');
   check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "refresh button shows the word 'Refresh'");
 
@@ -409,6 +410,37 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.mouse.up();
   await sleep(700);
   check((await page.locator('#want-stack-area .empty').count()) === 1, 'staff answered again — deck empty');
+
+  console.log('\n-- UNDO a wrong swipe (staff, no PIN) --');
+  check((await page.locator('#nav-want .ico').textContent()) === '🔍', 'Checking tab icon is a magnifying glass');
+  check(await page.locator('#undo-bar').isVisible(), 'after swiping, an UNDO bar appears');
+  await page.evaluate(() => setRole('staff', '')); // undo must work WITHOUT admin
+  await sleep(300);
+  check(await page.locator('#undo-bar').isVisible(), 'staff sees the UNDO bar too');
+  const undoCalls0 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'undoSwipe').length);
+  await clickSafe(page.locator('#undo-bar button'));
+  await sleep(500);
+  check((await page.locator('#topcard').count()) === 1, 'jobsheet comes BACK to the swipe deck');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('📌') >= 0,
+    'returned card is at the FRONT of the deck (pinned)');
+  check((await page.locator('#undo-bar').count()) === 0, 'undo bar disappears after use');
+  check(await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'undoSwipe').length) === undoCalls0 + 1,
+    'undoSwipe called on the server (no PIN)');
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'want' && j.status === 'pending').length === 1),
+    'server put it back to pending');
+  check((await page.locator('#badge-want').textContent()) === '1', 'Checking badge counts it again');
+  // swipe it away once more so later sections start from the expected state
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(200);
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(200);
+  const ub = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(ub.x + ub.width / 2 + i * 25, ub.y + ub.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(700);
+  check((await page.locator('#want-stack-area .empty').count()) === 1, 'deck empty again after re-swipe');
   await page.click('#nav-delivery');
   await sleep(500);
 

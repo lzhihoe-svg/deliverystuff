@@ -14,7 +14,7 @@
  *  - getInitData() returns jobs + badge counts in ONE round trip.
  */
 
-var APP_TITLE = 'ARA MEGA — Kilang App';
+var APP_TITLE = 'ARAMEGA — Kilang App';
 
 /**
  * ADMIN PIN — CHANGE THIS before you deploy!
@@ -204,6 +204,30 @@ function askAgain(id, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
+    var ts = new Date().getTime();
+    sh.getRange(row, 6).setValue('pending');
+    sh.getRange(row, 10).setValue('');
+    sh.getRange(row, 15).setValue(ts);
+    return { id: id, status: 'pending', pinnedAt: ts };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * UNDO a wrong swipe on the Checking tab — staff OR admin, no PIN (staff
+ * fix their own swipes). Only works on a swiped jobsheet (got / notseen);
+ * it returns to the FRONT of the swipe deck.
+ */
+function undoSwipe(id) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var st = sh.getRange(row, 6).getValue();
+    if (st !== 'got' && st !== 'notseen') throw new Error('Nothing to undo');
     var ts = new Date().getTime();
     sh.getRange(row, 6).setValue('pending');
     sh.getRange(row, 10).setValue('');
