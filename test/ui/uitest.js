@@ -56,10 +56,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#role-overlay .x-close');
   await sleep(150);
 
-  console.log('\n-- one round trip on startup --');
+  console.log('\n-- one round trip on startup + branding --');
   const calls = await page.evaluate(() => window.__mockcalls.map(c => c.name));
-  check(calls.indexOf('getInitData') >= 0, 'startup uses combined getInitData call');
-  check(calls.indexOf('getJobs') < 0 && calls.indexOf('getCounts') < 0, 'no separate getJobs/getCounts calls (halved round trips)');
+  check(calls.indexOf('getAllData') >= 0, 'startup uses combined getAllData call (all 3 tabs at once)');
+  check(calls.indexOf('getJobs') < 0 && calls.indexOf('getCounts') < 0 && calls.indexOf('getInitData') < 0, 'no separate per-tab calls');
+  check((await page.locator('header h1').textContent()).indexOf('ARA') >= 0, 'ARA MEGA branding in header');
+  check((await page.locator('header h1 svg.logo').count()) === 1, 't-shirt logo in header');
+  check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "refresh button shows the word 'Refresh'");
 
   console.log('\n-- post multi-photo job --');
   await page.click('#nav-post');
@@ -115,6 +118,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.mouse.up();
   await sleep(700);
   check((await page.locator('#want-responded').textContent()).indexOf('Got it') >= 0, 'mouse drag right = ❤️');
+
+  console.log('\n-- status list separated by swipe result --');
+  const respHtml = await page.locator('#want-responded').innerHTML();
+  check(respHtml.indexOf('Not Seen (1)') >= 0, "'❌ Not Seen (1)' section present");
+  check(respHtml.indexOf('Got It (1)') >= 0, "'❤️ Got It (1)' section present");
+  check(respHtml.indexOf('Not Seen') < respHtml.indexOf('Got It'), 'Not Seen shown first (needs follow-up)');
+
 
   console.log('\n-- cards use small thumbnails, not full images --');
   const cardImgs = await page.evaluate(() =>
@@ -180,20 +190,37 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#delivery-list .empty').count()) === 1, 'tab cleared');
 
 
-  console.log('\n-- refresh button + progress status --');
-  const initCalls0 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getInitData').length);
+  console.log('\n-- refresh button: all 3 tabs, word label, updated-at time --');
+  // seed jobs in OTHER tabs; one Refresh must pick them all up
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'want', category: '', note: 'W-seed', photos: ['w1'], thumbs: ['wt1'] });
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'D-seed', photos: ['d1'], thumbs: ['dt1'] });
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'G-seed', photos: ['g1', 'g2'], thumbs: ['gt1', 'gt2'] });
+  });
+  const allCalls0 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getAllData').length);
   await page.click('#refresh-btn');
   await sleep(60); // before the mock latency elapses
   check(await page.locator('#sync-row').isVisible(), 'status row appears under the header');
   check((await page.locator('#sync-row').textContent()).indexOf('Updating') >= 0, 'shows Updating…');
-  check((await page.locator('#refresh-ico').getAttribute('class')) === 'spin-anim', 'refresh icon spins while updating');
-  await sleep(500);
-  const initCalls1 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getInitData').length);
-  check(initCalls1 === initCalls0 + 1, 'refresh calls the server exactly once');
-  check((await page.locator('#sync-row').textContent()).indexOf('Updated') >= 0, "shows '✅ Updated just now'");
-  await sleep(2700);
-  check(!await page.locator('#sync-row').isVisible(), 'status hides again after a moment');
-  check((await page.locator('#refresh-ico').getAttribute('class')) === '', 'icon stops spinning');
+  check((await page.locator('#refresh-btn').textContent()).indexOf('Refreshing') >= 0, "button reads 'Refreshing…' while working");
+  await sleep(600);
+  const allCalls1 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getAllData').length);
+  check(allCalls1 === allCalls0 + 1, 'ONE server call refreshes everything');
+  const allTabs = await page.evaluate(() => ({
+    w: window.__kilang.jobs.want.length, d: window.__kilang.jobs.delivery.length, g: window.__kilang.jobs.postage.length
+  }));
+  check(allTabs.w >= 1 && allTabs.d >= 1 && allTabs.g >= 1,
+    'Checking + Delivery + Postage ALL updated together (' + allTabs.w + '/' + allTabs.d + '/' + allTabs.g + ')');
+  check(await page.locator('#badge-delivery').isVisible() && await page.locator('#badge-postage').isVisible(),
+    'other tabs\' badges updated without visiting them');
+  check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "button back to 'Refresh'");
+  await sleep(1200);
+  const syncTxt = await page.locator('#sync-row').textContent();
+  check(syncTxt.indexOf('Updated at') >= 0 && /\d{1,2}:\d{2}\s(AM|PM)/.test(syncTxt),
+    "shows the actual time: '" + syncTxt.trim() + "'");
+  await sleep(2600);
+  check(await page.locator('#sync-row').isVisible() && (await page.locator('#sync-row').textContent()).indexOf('Updated at') >= 0,
+    'updated-at time STAYS visible (does not disappear)');
 
   console.log('\n-- due time: post with Ready by --');
   await page.click('#nav-delivery');

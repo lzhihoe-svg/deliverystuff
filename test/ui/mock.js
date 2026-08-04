@@ -63,6 +63,12 @@
     getInitData: function (tab) {
       return { jobs: api.getJobs(tab), counts: api.getCounts() };
     },
+    getAllData: function () {
+      return {
+        jobs: { want: api.getJobs('want'), delivery: api.getJobs('delivery'), postage: api.getJobs('postage') },
+        counts: api.getCounts()
+      };
+    },
     editJob: function (id, ch, pin) {
       requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });

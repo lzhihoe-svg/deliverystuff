@@ -14,7 +14,7 @@
  *  - getInitData() returns jobs + badge counts in ONE round trip.
  */
 
-var APP_TITLE = 'Kilang App';
+var APP_TITLE = 'ARA MEGA — Kilang App';
 
 /**
  * ADMIN PIN — CHANGE THIS before you deploy!
@@ -357,6 +357,28 @@ function getJobs(tab) {
 /** Jobs for one tab + badge counts, in a single round trip (faster startup). */
 function getInitData(tab) {
   return { jobs: getJobs(tab), counts: getCounts() };
+}
+
+/**
+ * ALL three tabs + badge counts in ONE round trip — a single sheet read.
+ * Used by the Refresh button so Checking, Delivery and Postage update together.
+ */
+function getAllData() {
+  var sh = getSheet_();
+  var last = sh.getLastRow();
+  var jobs = { want: [], delivery: [], postage: [] };
+  var counts = { want: 0, delivery: 0, postage: 0 };
+  if (last < 2) return { jobs: jobs, counts: counts };
+  var rows = sh.getRange(2, 1, last - 1, 14).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
+    var j = rowToJob_(r);
+    jobs[r[1]].push(j);
+    if (j.status === 'pending') counts[r[1]]++;
+  }
+  jobs.want.reverse(); jobs.delivery.reverse(); jobs.postage.reverse();
+  return { jobs: jobs, counts: counts };
 }
 
 /**

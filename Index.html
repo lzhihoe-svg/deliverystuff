@@ -40,10 +40,10 @@
     padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
     gap: 8px; flex-wrap: wrap;
   }
-  header h1 { font-size: 18px; margin-right: auto; }
+  header h1 { font-size: 18px; margin-right: auto; display: flex; align-items: center; gap: 8px; letter-spacing: .5px; }
   header h1 .dot { color: var(--lime); }
-  #refresh-btn { padding: 6px 11px; }
-  .spin-anim { display: inline-block; animation: spin 1s linear infinite; }
+  header h1 .logo { width: 27px; height: 27px; flex: 0 0 auto; }
+  #refresh-btn { padding: 6px 12px; border-color: var(--lime); color: var(--lime-soft); }
   #sync-row {
     flex-basis: 100%; display: none; text-align: center;
     font-size: 12px; font-weight: 700; color: var(--lime); padding-top: 6px;
@@ -347,9 +347,16 @@
 
 <div id="scroller">
   <header>
-    <h1>🏭 Kilang<span class="dot"> App</span></h1>
-    <button class="role-btn" id="refresh-btn" onclick="manualRefresh()" title="Refresh"><span id="refresh-ico">🔄</span></button>
-    <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 New Day</button>
+    <h1>
+      <svg class="logo" viewBox="0 0 120 112" xmlns="http://www.w3.org/2000/svg">
+        <path d="M39 7 L12 21 L3 47 L23 55 L27 43 L27 99 Q27 106 34 106 L86 106 Q93 106 93 99 L93 43 L97 55 L117 47 L108 21 L81 7 Q73 17 60 17 Q47 17 39 7 Z"
+              fill="#b7e388" stroke="#161a10" stroke-width="9" stroke-linejoin="round"/>
+        <path d="M93 106 L93 80 L67 106 Z" fill="#f18bb9" stroke="#161a10" stroke-width="7" stroke-linejoin="round"/>
+      </svg>
+      ARA<span class="dot"> MEGA</span>
+    </h1>
+    <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
+    <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
     <div id="sync-row"></div>
   </header>
@@ -634,12 +641,15 @@
     if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
   }
   function refreshSpin(on) {
-    document.getElementById('refresh-ico').className = on ? 'spin-anim' : '';
+    document.getElementById('refresh-btn').textContent = on ? '⏳ Refreshing…' : 'Refresh';
   }
+  var lastSyncAt = 0;
   function pendingImgCount() {
+    // only count photos that are actually queued to load (visible on screen)
     var n = 0, seen = {};
     var els = document.querySelectorAll('img[data-img]');
     for (var i = 0; i < els.length; i++) {
+      if (io && !els[i].getAttribute('data-vis')) continue;
       var id = els[i].getAttribute('data-img');
       if (String(id).indexOf('local') === 0) continue;
       if (!cachedImg(id) && !seen[id]) { seen[id] = 1; n++; }
@@ -649,13 +659,13 @@
   function syncAfterData() {
     var n = pendingImgCount();
     if (n > 0) setSync('📷 Loading photos… (' + n + ' left)');
-    else setSync('✅ Updated just now', 2500);
+    else if (lastSyncAt) setSync('✅ Updated at ' + fmtTime(lastSyncAt)); // stays visible
   }
   function syncPhotosTick() {
     var row = document.getElementById('sync-row');
     if (row.style.display !== 'none' && row.textContent.indexOf('photos') >= 0) syncAfterData();
   }
-  function manualRefresh() { refresh(state.tab); }
+  function manualRefresh() { refresh(); }
 
   // ------------------------------------------------------------ photo carousel
   function dotsHtml(n, cls) {
@@ -861,37 +871,40 @@
     // render the cached list instantly, then refresh from the server
     if (!state.jobs[tab].length) state.jobs[tab] = readJobsCache(tab);
     renderAll();
-    refresh(tab);
+    refresh();
   }
 
-  function refresh(tab) {
-    // one round trip for jobs + badges (was two)
+  function refresh() {
+    // ONE round trip refreshes ALL THREE tabs + badges together
     refreshSpin(true);
     setSync('🔄 Updating…');
     google.script.run
       .withSuccessHandler(function (res) {
-        state.jobs[tab] = res.jobs;
-        // keep background-uploading jobs visible through a refresh
-        inflightJobs.forEach(function (j) {
-          if (j.tab !== tab) return;
-          var idx = -1;
-          for (var k = 0; k < state.jobs[tab].length; k++) {
-            if (state.jobs[tab][k].id === j.id) { idx = k; break; }
-          }
-          if (idx >= 0) state.jobs[tab][idx] = j;
-          else state.jobs[tab].unshift(j);
+        ['want', 'delivery', 'postage'].forEach(function (tb) {
+          state.jobs[tb] = res.jobs[tb] || [];
+          // keep background-uploading jobs visible through a refresh
+          inflightJobs.forEach(function (j) {
+            if (j.tab !== tb) return;
+            var idx = -1;
+            for (var k = 0; k < state.jobs[tb].length; k++) {
+              if (state.jobs[tb][k].id === j.id) { idx = k; break; }
+            }
+            if (idx >= 0) state.jobs[tb][idx] = j;
+            else state.jobs[tb].unshift(j);
+          });
+          saveJobsCache(tb);
         });
-        saveJobsCache(tab);
+        lastSyncAt = Date.now();
         renderAll(); renderBadges(res.counts);
         refreshSpin(false);
         syncAfterData();
       })
       .withFailureHandler(function (e) {
         refreshSpin(false);
-        setSync('⚠️ Update failed — tap 🔄 to retry', 4000);
+        setSync('⚠️ Update failed — tap Refresh to retry');
         toast('⚠️ ' + e.message);
       })
-      .getInitData(tab);
+      .getAllData();
   }
   function renderBadges(c) {
     ['want', 'delivery', 'postage'].forEach(function (x) {
@@ -965,19 +978,34 @@
 
     var r = document.getElementById('want-responded');
     if (responded.length === 0) { r.innerHTML = ''; return; }
-    var html2 = '<div class="section-title">📋 Jobsheet Status</div><div class="grid">';
-    responded.forEach(function (j) {
-      var got = j.status === 'got';
-      html2 += '<div class="card">' + carouselHtml(j) +
+
+    // separate by status: Not Seen first (needs follow-up), then Got It
+    var notSeen = responded.filter(function (j) { return j.status === 'notseen'; });
+    var got = responded.filter(function (j) { return j.status === 'got'; });
+
+    function statusCard(j, isGot) {
+      return '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
-        '<div class="note" style="font-size:15px">' + (got ? '❤️ Got it' : '❌ Not seen yet') + '</div>' +
-        '<div class="meta">' + timeAgo(j.doneAt) + '</div>' +
-        (!got ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
+        (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
+        '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) + '</div>' +
+        (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         '<div class="spacer"></div>' +
         toolBtns(j, true) +
         '</div></div>';
-    });
-    r.innerHTML = html2 + '</div>';
+    }
+
+    var html2 = '';
+    if (notSeen.length) {
+      html2 += '<div class="section-title" style="color:#b91c1c">❌ Not Seen (' + notSeen.length + ')</div><div class="grid">';
+      notSeen.forEach(function (j) { html2 += statusCard(j, false); });
+      html2 += '</div>';
+    }
+    if (got.length) {
+      html2 += '<div class="section-title">❤️ Got It (' + got.length + ')</div><div class="grid">';
+      got.forEach(function (j) { html2 += statusCard(j, true); });
+      html2 += '</div>';
+    }
+    r.innerHTML = html2;
   }
 
   /** Tap left/right side of the top swipe card to flip between its photos. */
@@ -1180,7 +1208,7 @@
   }
 
   // ------------------------------------------------------------ status updates / delete / reset
-  function bgFail(e) { toast('⚠️ ' + e.message); refresh(state.tab); }
+  function bgFail(e) { toast('⚠️ ' + e.message); refresh(); }
 
   function updateBadgeLocal() {
     var n = state.jobs[state.tab].filter(function (j) { return j.status === 'pending'; }).length;
@@ -1239,15 +1267,15 @@
   }
 
   function askReset() {
-    askConfirm('Start a new day? ALL jobs in ALL tabs will be cleared. Records stay safe in the Google Sheet.',
-      '🧹 Yes, Start New Day', function () {
+    askConfirm('Reset for a new day? ALL jobs in ALL tabs will be cleared. Records stay safe in the Google Sheet.',
+      '🧹 Yes, RESET', function () {
         state.jobs = { want: [], delivery: [], postage: [] };
         ['want', 'delivery', 'postage'].forEach(saveJobsCache);
         renderAll();
         renderBadges({ want: 0, delivery: 0, postage: 0 });
         toast('🔄 Fresh day! All tabs cleared.');
         google.script.run
-          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(state.tab); })
+          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(); })
           .resetAll(state.pin);
       });
   }
@@ -1290,7 +1318,7 @@
         .withFailureHandler(function (e) {
           uploadsPending--; updatePill();
           if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
-          toast('⚠️ ' + e.message); refresh(state.tab);
+          toast('⚠️ ' + e.message); refresh();
         })
         .updateStatus(id, 'done', img.full, img.thumb, null);
     });
@@ -1557,6 +1585,6 @@
   window.__kilang = state; // debugging/test hook
   setInterval(function () {
     // silent background refresh every 60s
-    if (!document.getElementById('upload-overlay').classList.contains('show')) refresh(state.tab);
+    if (!document.getElementById('upload-overlay').classList.contains('show')) refresh();
   }, 60000);
 </script>
