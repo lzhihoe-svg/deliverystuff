@@ -405,6 +405,19 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(800);
   check((await page.locator('#postage-list .proof').count()) === 1, 'postage proof photo works');
 
+  console.log('\n-- bottom nav: icons stay put when tapped --');
+  const icoB = await page.locator('#nav-want .ico').boundingBox();
+  const lblB = await page.locator('#nav-want .nav-lbl').boundingBox();
+  await page.click('#nav-want');
+  await sleep(400);
+  const icoA = await page.locator('#nav-want .ico').boundingBox();
+  const lblA = await page.locator('#nav-want .nav-lbl').boundingBox();
+  check(Math.abs(icoB.x - icoA.x) < 0.6 && Math.abs(icoB.y - icoA.y) < 0.6,
+    'icon does NOT move when its tab becomes active');
+  check(Math.abs(lblB.x - lblA.x) < 0.6 && Math.abs(lblB.y - lblA.y) < 0.6,
+    'label does NOT move either');
+  check(lblA.y >= icoA.y + icoA.height - 3, 'label sits stacked BELOW the icon');
+
   console.log('\n-- fullscreen viewer: swipe through the photos --');
   await page.click('#nav-delivery');
   await sleep(500);
@@ -433,6 +446,30 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.locator('.viewer-x').click();
   await sleep(250);
   check(!await page.locator('#viewer').isVisible(), '✕ closes the viewer');
+
+  console.log('\n-- viewer speed: thumbnail shows instantly, neighbours prefetch --');
+  const vjob = await page.evaluate(() =>
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Viewer speed', photos: ['sf1', 'sf2', 'sf3'], thumbs: ['st1', 'st2', 'st3'] }));
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const vsCard = page.locator('#delivery-list .card').filter({ hasText: 'Viewer speed' });
+  await vsCard.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await sleep(900); // card thumbnails finish downloading
+  await page.evaluate(() => { window.__mocklat = { getImagesData: 1200 }; }); // slow network for the full photos
+  await vsCard.locator('.car-slide img').first().click();
+  await sleep(250); // far less than the 1200ms the full photo needs
+  const quickSrc = await page.locator('#viewer-img').getAttribute('src');
+  check(quickSrc.indexOf(vjob.thumbIds[0]) >= 0,
+    'viewer shows the cached THUMBNAIL instantly while the full photo downloads');
+  await sleep(1700);
+  const sharpSrc = await page.locator('#viewer-img').getAttribute('src');
+  check(sharpSrc.indexOf(vjob.photoIds[0]) >= 0, 'sharp full-size photo replaces it when it arrives');
+  const prefetched = await page.evaluate(ids =>
+    ids.filter(id => window.__imgRequests.indexOf(id) >= 0).length, [vjob.photoIds[1], vjob.photoIds[2]]);
+  check(prefetched === 2, 'next/previous photos prefetch in the background (instant swiping)');
+  await page.evaluate(() => { window.__mocklat = {}; });
+  await page.locator('.viewer-x').click();
+  await sleep(250);
   // postage: tapping a jobsheet photo swipes ONLY jobsheet pages
   await page.click('#nav-postage');
   await sleep(500);

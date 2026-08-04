@@ -58,29 +58,38 @@
   nav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
     display: flex; background: #fff; border-top: 1px solid #e2e8f0;
+    box-shadow: 0 -2px 12px rgba(15,23,42,.06);
     padding-bottom: env(safe-area-inset-bottom);
   }
+  /* Icon stacked ABOVE the label, and NOTHING changes size on tap (only
+     colors), so the icons never jump out of position when you click. */
   nav button {
-    flex: 1; border: 0; background: none; padding: 8px 0 10px;
-    font-size: 12px; color: var(--muted); position: relative; cursor: pointer;
+    flex: 1; border: 0; background: none; padding: 7px 0 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    position: relative; cursor: pointer; transition: color .15s;
+    -webkit-tap-highlight-color: transparent;
   }
   nav button .ico {
-    display: inline-block; font-size: 26px; line-height: 1.2;
-    padding: 2px 16px; border-radius: 14px; transition: background .15s;
+    display: block; font-size: 23px; line-height: 30px; height: 30px;
+    padding: 0 17px; border-radius: 999px;
+    background: transparent; transition: background .15s;
   }
-  nav button.active { color: var(--blue); font-weight: 800; }
+  .nav-lbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .2px; }
+  nav button.active { color: var(--blue); }
   nav button.active .ico { background: var(--lime-soft); }
   nav button .badge {
-    position: absolute; top: 2px; right: 22%;
+    position: absolute; top: 3px; left: 50%; margin-left: 10px;
     background: var(--red); color: #fff; border-radius: 999px;
     font-size: 11px; font-weight: 700; min-width: 18px; height: 18px;
     line-height: 18px; padding: 0 4px; display: none;
+    box-shadow: 0 1px 3px rgba(15,23,42,.25);
   }
-  #nav-post { color: var(--blue); font-weight: 800; }
+  #nav-post { color: var(--blue); }
   #nav-post .post-circle {
-    display: block; width: 31px; height: 31px; margin: 0 auto; border-radius: 50%;
+    display: block; width: 30px; height: 30px; border-radius: 50%;
     background: linear-gradient(135deg, var(--lime), var(--green));
-    color: #fff; font-size: 24px; line-height: 30px; font-weight: 700;
+    color: #fff; font-size: 22px; line-height: 29px; font-weight: 700; text-align: center;
     box-shadow: 0 2px 6px rgba(101,163,13,.4);
   }
 
@@ -579,7 +588,7 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 2, BATCH = 3;
+  var MAX_PARALLEL = 4, BATCH = 4;
 
   // Interactive work (PIN check, saves) and photo uploads get the network to
   // themselves: background image downloads pause while they run. This is what
@@ -595,7 +604,7 @@
       if (entries[i].isIntersecting) { entries[i].target.setAttribute('data-vis', '1'); any = true; }
     }
     if (any) loadImages();
-  }, { root: document.getElementById('scroller'), rootMargin: '250px' }) : null;
+  }, { root: document.getElementById('scroller'), rootMargin: '600px' }) : null;
 
   function observeImages() {
     if (!io) return;
@@ -649,6 +658,13 @@
     }
   }
 
+  // Extra ids to download soon (e.g. the next/previous photo while the
+  // fullscreen viewer is open) so swiping to them is instant.
+  var prefetchWant = {};
+  function prefetchImg(id) {
+    if (id && !cachedImg(id) && String(id).indexOf('local') !== 0) prefetchWant[id] = 1;
+  }
+
   function loadImages() {
     if (holdImages()) return;               // pause behind PIN checks / uploads
     if (activeLoads >= MAX_PARALLEL) return;
@@ -659,6 +675,10 @@
       var id = els[i].getAttribute('data-img');
       if (String(id).indexOf('local') === 0) continue;       // temp preview, already local
       if (!cachedImg(id) && !imgFetching[id] && want.indexOf(id) < 0) want.push(id);
+    }
+    for (var p in prefetchWant) {
+      if (cachedImg(p)) { delete prefetchWant[p]; continue; }
+      if (!imgFetching[p] && want.indexOf(p) < 0) want.push(p);
     }
     while (want.length && activeLoads < MAX_PARALLEL) {
       var batch = want.splice(0, BATCH);
@@ -694,27 +714,36 @@
   }
 
   // ---- fullscreen photo viewer with swipe left/right through the set ----
-  var viewerState = { ids: [], idx: 0 };
+  var viewerState = { ids: [], thumbs: [], idx: 0 };
 
-  function viewPhotoSet(idsCsv, idx) {
+  function viewPhotoSet(idsCsv, idx, thumbsCsv) {
     viewerState.ids = String(idsCsv).split(',').filter(function (x) { return x; });
+    viewerState.thumbs = String(thumbsCsv || '').split(',');
     viewerState.idx = Math.max(0, Math.min(Number(idx) || 0, viewerState.ids.length - 1));
     showViewerImg();
     document.getElementById('viewer').classList.add('show');
   }
-  function viewPhoto(id) { viewPhotoSet(id, 0); } // single-photo shortcut
+  function viewPhoto(id, thumbId) { viewPhotoSet(id, 0, thumbId || ''); } // single-photo shortcut
 
   function showViewerImg() {
     var id = viewerState.ids[viewerState.idx];
+    var thumb = viewerState.thumbs[viewerState.idx];
     var v = document.getElementById('viewer-img');
     v.setAttribute('data-img', id);
     v.setAttribute('data-vis', '1'); // viewer lives outside the scroller: fetch directly
-    v.src = cachedImg(id) || PLACEHOLDER;
+    // show the already-downloaded thumbnail INSTANTLY; the sharp full-size
+    // photo replaces it as soon as it arrives
+    v.src = cachedImg(id) || (thumb && cachedImg(thumb)) || PLACEHOLDER;
     var multi = viewerState.ids.length > 1;
     document.getElementById('viewer-prev').style.display = multi ? 'block' : 'none';
     document.getElementById('viewer-next').style.display = multi ? 'block' : 'none';
     document.getElementById('viewer-count').textContent =
       multi ? (viewerState.idx + 1) + ' / ' + viewerState.ids.length + '  👈 swipe 👉' : '';
+    if (multi) { // download the neighbours in the background: swiping feels instant
+      var n = viewerState.ids.length;
+      prefetchImg(viewerState.ids[(viewerState.idx + 1) % n]);
+      prefetchImg(viewerState.ids[(viewerState.idx - 1 + n) % n]);
+    }
     loadImages();
   }
   function viewerNav(dir) {
@@ -822,13 +851,14 @@
   function carouselHtml(j) {
     var n = j.photoIds.length;
     var csv = j.photoIds.join(',');
+    var tcsv = j.photoIds.map(function (_, k) { return thumbOf(j, k); }).join(',');
     if (n === 1) {
       return '<div class="carousel">' +
-        imgTag(thumbOf(j, 0), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0)"') + '</div>';
+        imgTag(thumbOf(j, 0), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"') + '</div>';
     }
     var s = '<div class="carousel"><div class="car-track">';
     for (var i = 0; i < n; i++) {
-      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + i + ')"') + '</div>';
+      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + i + ', \'' + tcsv + '\')"') + '</div>';
     }
     s += '</div>';
     s += '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>';
@@ -1353,13 +1383,14 @@
   function miniCarousel(j, start, end, label) {
     var count = end - start;
     var csv = j.photoIds.slice(start, end).join(',');
+    var tcsv = j.photoIds.slice(start, end).map(function (_, k) { return thumbOf(j, start + k); }).join(',');
     var inner;
     if (count <= 1) {
-      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0)"');
+      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"');
     } else {
       inner = '<div class="car-track">';
       for (var i = start; i < end; i++) {
-        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (i - start) + ')"') + '</div>';
+        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (i - start) + ', \'' + tcsv + '\')"') + '</div>';
       }
       inner += '</div>' +
         '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>' +
@@ -1396,7 +1427,7 @@
 
     if (isDone) {
       html += '<div class="proof">' +
-        (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\')"') : '') +
+        (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') : '') +
         '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div></div>';
       html += '<div class="spacer"></div>' + (j.proofUploading ? '' : toolBtns(j, true));
     } else {
