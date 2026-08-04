@@ -383,6 +383,20 @@ console.log('\n== askAgain (re-check with staff) ==');
   throws(() => ctx.askAgain('ghost', PIN), 'unknown id throws');
 }
 
+console.log('\n== jsCount (postage jobsheet/waybill split) ==');
+{
+  const { ctx } = makeEnv();
+  const j = ctx.addJob({ tab: 'postage', category: '', note: '', photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 2 });
+  check(j.jsCount === 2, 'addJob stores the jobsheet count');
+  check(ctx.getJobs('postage')[0].jsCount === 2, 'jsCount persisted in sheet');
+  check(ctx.getAllData().jobs.postage[0].jsCount === 2, 'getAllData includes jsCount');
+  const e = ctx.editJob(j.id, { note: '', category: '', dueAt: '', jsCount: 1,
+    photos: j.photoIds.map((id, i) => ({ id: id, thumbId: j.thumbIds[i] })) }, PIN);
+  check(e.jsCount === 1, 'edit can change the split');
+  const legacy = ctx.addJob({ tab: 'postage', category: '', note: '', photos: [B64, B64] });
+  check(legacy.jsCount === 0, 'legacy jobs without split store 0 (page treats 1st photo as jobsheet)');
+}
+
 console.log('\n== admin PIN enforcement ==');
 {
   const { ctx } = makeEnv();

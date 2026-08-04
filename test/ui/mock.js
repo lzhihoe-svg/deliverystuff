@@ -55,7 +55,7 @@
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
         status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-        dueAt: p.dueAt || '', pinnedAt: ''
+        dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -76,6 +76,7 @@
       if (!ch.photos || !ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
       j.dueAt = ch.dueAt || '';
+      j.jsCount = ch.jsCount || 0;
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));

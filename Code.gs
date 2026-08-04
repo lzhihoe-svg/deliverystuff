@@ -55,7 +55,7 @@ function ensureSetup_() {
       sh.setName('Jobs');
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
                     'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
-                    'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt']);
+                    'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt', 'jsCount']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -138,7 +138,8 @@ function rowToJob_(r) {
     photoIds: JSON.parse(r[4] || '[]'), status: r[5],
     createdAt: r[7], doneAt: r[9], proofPhotoId: r[10],
     thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || '',
-    dueAt: r[13] || '', pinnedAt: r[14] || ''
+    dueAt: r[13] || '', pinnedAt: r[14] || '',
+    jsCount: Number(r[15]) || 0   // postage: first N photos are Jobsheet, rest Waybill
   };
 }
 
@@ -167,6 +168,7 @@ function addJob(payload) {
   }
   var createdAt = new Date().getTime();
   var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
+  var jsCount = payload.jsCount ? Number(payload.jsCount) : 0;
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -175,7 +177,7 @@ function addJob(payload) {
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
       '', createdAt, '', '', '',
-      JSON.stringify(thumbIds), '', dueAt, ''
+      JSON.stringify(thumbIds), '', dueAt, '', jsCount
     ]);
   } finally {
     lock.releaseLock();
@@ -184,7 +186,8 @@ function addJob(payload) {
     id: id, tab: payload.tab, category: payload.category || '',
     note: payload.note || '', photoIds: photoIds, status: 'pending',
     createdAt: createdAt, doneAt: '', proofPhotoId: '',
-    thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: ''
+    thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
+    jsCount: jsCount
   };
 }
 
@@ -280,7 +283,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 15).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 16).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -296,16 +299,19 @@ function editJob(id, changes, pin) {
       if (oldThumbs[t] && finalThumbs.indexOf(oldThumbs[t]) < 0) toTrash.push(oldThumbs[t]);
     }
     var dueAt = changes.dueAt ? Number(changes.dueAt) : '';
+    var jsCount = changes.jsCount ? Number(changes.jsCount) : 0;
 
     sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
     sh.getRange(row, 12).setValue(JSON.stringify(finalThumbs));
     sh.getRange(row, 14).setValue(dueAt);
+    sh.getRange(row, 16).setValue(jsCount);
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
     vals[4] = JSON.stringify(finalIds);
     vals[11] = JSON.stringify(finalThumbs);
     vals[13] = dueAt;
+    vals[15] = jsCount;
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
@@ -367,7 +373,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 15).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -393,7 +399,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [] };
   var counts = { want: 0, delivery: 0, postage: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
-  var rows = sh.getRange(2, 1, last - 1, 15).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;

@@ -346,34 +346,46 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(bg && bg.photoIds.length === 3 && bg.photoIds.every(x => x), 'all 3 photos on server via PARALLEL upload (~0.8s, not 1.2s serial)');
   await page.evaluate(() => { window.__mocklat = {}; });
 
-  console.log('\n-- tab 3: postage multi-photo like delivery + side-by-side display --');
+  console.log('\n-- tab 3: Jobsheet & Waybill groups, each multi + swipeable --');
   await page.click('#nav-postage');
   await sleep(500);
   await page.click('#nav-post');
   await sleep(150);
-  check(await page.locator('#generic-photos').isVisible(), 'postage uses the SAME multi-photo picker as delivery');
-  check((await page.locator('#photos-label').textContent()).indexOf('Jobsheet') >= 0, 'label explains 1st = Jobsheet, 2nd = Waybill');
-  await page.setInputFiles('#photos-file', IMG);
-  await sleep(500);
+  check(await page.locator('#postage-groups').isVisible(), 'TWO photo groups shown: Jobsheet and Waybill');
+  check(!await page.locator('#generic-photos').isVisible(), 'single picker hidden for postage');
   await page.click('#btn-submit');
   await sleep(150);
-  check((await page.locator('#toast').textContent()).indexOf('2 photos') >= 0, '1 photo blocked — needs jobsheet + waybill');
-  await page.setInputFiles('#photos-file', [IMG2, IMG3]);
-  await sleep(800);
-  check((await page.locator('#upload-thumbs .thumb').count()) === 3, 'can add MULTIPLE photos to postage');
-  check((await page.locator('#upload-thumbs .thumb-arrows').count()) === 3, '◀ ▶ reorder available for postage');
-  check((await page.locator('#upload-thumbs .thumb-x').count()) === 3, '✕ delete available for postage');
-  await page.locator('#upload-thumbs .thumb-x').last().click();
-  await sleep(200);
-  check((await page.locator('#upload-thumbs .thumb').count()) === 2, 'removed the extra photo');
+  check((await page.locator('#toast').textContent()).indexOf('Jobsheet') >= 0, 'blocked without a jobsheet photo');
+  await page.setInputFiles('#js-file', [IMG, IMG2]);
+  await sleep(700);
+  check((await page.locator('#js-thumbs .thumb').count()) === 2, 'MULTIPLE jobsheet photos added');
+  check((await page.locator('#js-thumbs .thumb-arrows').count()) === 2, 'jobsheet photos reorderable with ◀ ▶');
   await page.click('#btn-submit');
-  await sleep(800);
-  check((await page.locator('#postage-list .photo-pair').count()) >= 1, 'photos shown SIDE BY SIDE (no swiping)');
-  check((await page.locator('#postage-list .photo-pair .lbl').first().textContent()).indexOf('Jobsheet') >= 0, 'Jobsheet label on photo 1');
-  check((await page.locator('#postage-list .photo-pair .lbl').nth(1).textContent()).indexOf('Waybill') >= 0, 'Waybill label on photo 2');
+  await sleep(150);
+  check((await page.locator('#toast').textContent()).indexOf('Waybill') >= 0, 'blocked without a waybill photo');
+  await page.setInputFiles('#wb-file', IMG3);
+  await sleep(500);
+  check((await page.locator('#wb-thumbs .thumb').count()) === 1, 'waybill photo added in its own group');
+  await page.click('#btn-submit');
+  await sleep(900);
+  check((await page.locator('#postage-list .photo-pair').count()) >= 1, 'card shows Jobsheet | Waybill side by side');
+  check((await page.locator('#postage-list .photo-pair .lbl').first().textContent()).indexOf('Jobsheet') >= 0, 'Jobsheet label on the left');
+  check((await page.locator('#postage-list .photo-pair .lbl').nth(1).textContent()).indexOf('Waybill') >= 0, 'Waybill label on the right');
+  check((await page.locator('#postage-list .photo-pair .car-track').count()) === 1, 'jobsheet side is its own mini-carousel (2 pages)');
+  check((await page.locator('#postage-list .photo-pair .car-dots span').count()) === 2, 'dots show 2 jobsheet pages');
+  const bgJob = await page.evaluate(() => window.__mockdb.jobs.find(jj => jj.tab === 'postage' && jj.jsCount));
+  check(bgJob && bgJob.jsCount === 2 && bgJob.photoIds.length === 3, 'server stored the split (2 jobsheet + 1 waybill)');
+  // swipe inside the jobsheet half only
+  const mini = page.locator('#postage-list .photo-pair .car-track').first();
+  await mini.evaluate(el => { el.scrollLeft = el.clientWidth; });
+  await sleep(400);
+  check((await page.locator('#postage-list .photo-pair .car-dots span').nth(1).getAttribute('class')) === 'on',
+    'swiping the jobsheet half flips to its page 2');
+  // edit re-opens with the groups split correctly
   await clickSafe(page.locator('#postage-list .t-edit').first());
   await sleep(300);
-  check((await page.locator('#upload-thumbs .thumb').count()) === 2, 'editing a postage job shows the same reorderable thumbs');
+  check((await page.locator('#js-thumbs .thumb').count()) === 2 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
+    'editing splits photos back into their groups');
   await page.click('#upload-overlay .x-close');
   await sleep(200);
   await clickSafe(page.locator('#postage-list .btn.green').first());

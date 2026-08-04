@@ -297,17 +297,17 @@
   }
   .thumb-arrows button:active { background: var(--lime-soft); }
 
-  /* postage: jobsheet + waybill (and any extras) shown side by side */
+  /* postage: Jobsheet mini-carousel | Waybill mini-carousel, side by side */
   .photo-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #e2e8f0; }
-  .photo-pair > div { position: relative; }
-  .photo-pair img {
-    width: 100%; height: 100%; display: block; min-height: 120px; max-height: 280px;
-    object-fit: contain; background: #e2e8f0; cursor: pointer;
-  }
+  .photo-pair .carousel { position: relative; }
+  .photo-pair img { min-height: 120px; max-height: 280px; }
   .photo-pair .lbl {
-    position: absolute; top: 6px; left: 6px; background: rgba(31,43,19,.78);
+    position: absolute; top: 6px; left: 6px; z-index: 2; pointer-events: none;
+    background: rgba(31,43,19,.78);
     color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
   }
+  .photo-pair .car-btn { width: 30px; height: 30px; line-height: 30px; font-size: 16px; }
+  .photo-pair .car-count { top: auto; bottom: 8px; right: 6px; padding: 2px 8px; }
 
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
@@ -470,7 +470,19 @@
       <label id="photos-label">Photos 📸</label>
       <div class="thumbs" id="upload-thumbs"></div>
       <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
-      <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
+      <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPickedG(this, 'main')">
+    </div>
+
+    <div id="postage-groups" style="display:none">
+      <label>📄 Jobsheet photos</label>
+      <div class="thumbs" id="js-thumbs"></div>
+      <button class="photo-btn" onclick="document.getElementById('js-file').click()">📷 Add Jobsheet Photo(s)</button>
+      <input type="file" id="js-file" accept="image/*" multiple onchange="photosPickedG(this, 'js')">
+
+      <label>🏷️ Waybill photos (J&amp;T)</label>
+      <div class="thumbs" id="wb-thumbs"></div>
+      <button class="photo-btn" onclick="document.getElementById('wb-file').click()">📷 Add Waybill Photo(s)</button>
+      <input type="file" id="wb-file" accept="image/*" multiple onchange="photosPickedG(this, 'wb')">
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -516,7 +528,7 @@
     pin: localStorage.getItem('kilangPin') || '',
     deliveryCat: '',
     jobs: { want: [], delivery: [], postage: [] },
-    upload: { photos: [], cat: '' },   // photos: [{b64,thumb}] new, [{id,thumbId}] existing
+    upload: { photos: [], js: [], wb: [], cat: '' },   // entries: {b64,thumb} new, {id,thumbId} existing
     editing: null,
     proofJobId: null
   };
@@ -1227,16 +1239,42 @@
     return html;
   }
 
-  /** Postage: ALL photos shown together, side by side in a 2-column grid.
-      Photo 1 is labelled Jobsheet, photo 2 Waybill; extras just join the grid. */
-  function pairHtml(j) {
-    var s = '<div class="photo-pair">';
-    for (var i = 0; i < j.photoIds.length; i++) {
-      var lbl = i === 0 ? '📄 Jobsheet' : (i === 1 ? '🏷️ Waybill' : '');
-      s += '<div>' + (lbl ? '<span class="lbl">' + lbl + '</span>' : '') +
-        imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
+  /** Postage: how many of the job's photos are Jobsheet pages (rest = Waybill). */
+  function jsCountOf(j) {
+    var n = Number(j.jsCount || 0);
+    if (n > 0 && n < j.photoIds.length) return n;
+    // legacy jobs without the split: first photo = jobsheet, rest = waybill
+    return j.photoIds.length > 1 ? 1 : j.photoIds.length;
+  }
+
+  /** One half of the postage card: its own swipeable mini-carousel. */
+  function miniCarousel(j, start, end, label) {
+    var count = end - start;
+    var inner;
+    if (count <= 1) {
+      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhoto(\'' + j.photoIds[start] + '\')"');
+    } else {
+      inner = '<div class="car-track">';
+      for (var i = start; i < end; i++) {
+        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
+      }
+      inner += '</div>' +
+        '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>' +
+        '<button class="car-btn next" onclick="carMove(this,1)">›</button>' +
+        '<div class="car-count">' + count + ' 📷</div>' +
+        dotsHtml(count, 'car-dots');
     }
-    return s + '</div>';
+    return '<div class="carousel"><span class="lbl">' + label + '</span>' + inner + '</div>';
+  }
+
+  /** Postage: Jobsheet photos on the left, Waybill photos on the right —
+      each side shows its 1st photo and swipes left/right through the rest. */
+  function pairHtml(j) {
+    var n = jsCountOf(j);
+    return '<div class="photo-pair">' +
+      miniCarousel(j, 0, n, '📄 Jobsheet') +
+      miniCarousel(j, n, j.photoIds.length, '🏷️ Waybill') +
+      '</div>';
   }
 
   function jobCard(j, isDone) {
@@ -1394,12 +1432,15 @@
     if (job && !isAdmin()) { toast('Admin only'); return; }
     if (job && job.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     state.editing = job;
-    state.upload = {
-      photos: job ? job.photoIds.map(function (id, i) {
-        return { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
-      }) : [],
-      cat: job ? (job.category || '') : ''
-    };
+    state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '' };
+    if (job) {
+      var split = state.tab === 'postage' ? jsCountOf(job) : -1;
+      job.photoIds.forEach(function (id, i) {
+        var item = { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
+        if (split < 0) state.upload.photos.push(item);
+        else (i < split ? state.upload.js : state.upload.wb).push(item);
+      });
+    }
 
     var titles = {
       want: '🧵 Post New Jobsheet',
@@ -1408,9 +1449,10 @@
     };
     document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    document.getElementById('photos-label').textContent = state.tab === 'postage'
-      ? 'Photos 📸 — 1st: Jobsheet 📄, 2nd: Waybill 🏷️ (use ◀ ▶ to arrange)'
-      : 'Photos 📸';
+    // postage: two separate photo groups (Jobsheet / Waybill)
+    var isPost = state.tab === 'postage';
+    document.getElementById('generic-photos').style.display = isPost ? 'none' : 'block';
+    document.getElementById('postage-groups').style.display = isPost ? 'block' : 'none';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
     document.getElementById('due-wrap').style.display =
@@ -1421,7 +1463,7 @@
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
     });
 
-    renderUploadThumbs();
+    renderAllThumbs();
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
@@ -1433,70 +1475,88 @@
     btn.classList.add('active');
   }
 
-  function renderUploadThumbs() {
-    var html = '';
-    var n = state.upload.photos.length;
-    state.upload.photos.forEach(function (p, i) {
+  // photo groups in the post window: 'main' (Checking/Delivery),
+  // 'js' = postage Jobsheet photos, 'wb' = postage Waybill photos
+  function grp(g) { return g === 'js' ? state.upload.js : (g === 'wb' ? state.upload.wb : state.upload.photos); }
+  function grpBoxId(g) { return g === 'js' ? 'js-thumbs' : (g === 'wb' ? 'wb-thumbs' : 'upload-thumbs'); }
+  function totalUploadPhotos() {
+    return state.upload.photos.length + state.upload.js.length + state.upload.wb.length;
+  }
+
+  function renderThumbsG(g) {
+    var arr = grp(g), n = arr.length, html = '';
+    arr.forEach(function (p, i) {
       html += '<div class="thumb-wrap"><div class="thumb">' +
         (p.b64 ? '<img src="data:image/jpeg;base64,' + (p.thumb || p.b64) + '">' : imgTag(p.thumbId || p.id)) +
-        '<button class="thumb-x" onclick="removeUploadPhoto(' + i + ')">✕</button>' +
+        '<button class="thumb-x" onclick="removePhotoG(\'' + g + '\',' + i + ')">✕</button>' +
         '<span class="thumb-n">' + (i + 1) + '</span>' +
         '</div>' +
         (n > 1
           ? '<div class="thumb-arrows">' +
-            (i > 0 ? '<button onclick="movePhoto(' + i + ',-1)">◀</button>' : '') +
-            (i < n - 1 ? '<button onclick="movePhoto(' + i + ',1)">▶</button>' : '') +
+            (i > 0 ? '<button onclick="movePhotoG(\'' + g + '\',' + i + ',-1)">◀</button>' : '') +
+            (i < n - 1 ? '<button onclick="movePhotoG(\'' + g + '\',' + i + ',1)">▶</button>' : '') +
             '</div>'
           : '') +
         '</div>';
     });
-    document.getElementById('upload-thumbs').innerHTML = html;
+    var box = document.getElementById(grpBoxId(g));
+    box.innerHTML = html;
     // the modal lives outside the scroller, so mark its images as visible
-    var els = document.querySelectorAll('#upload-thumbs img[data-img]');
+    var els = box.querySelectorAll('img[data-img]');
     for (var k = 0; k < els.length; k++) els[k].setAttribute('data-vis', '1');
   }
-  function removeUploadPhoto(i) {
-    state.upload.photos.splice(i, 1);
-    renderUploadThumbs(); loadImages();
+  function renderAllThumbs() {
+    if (state.tab === 'postage') { renderThumbsG('js'); renderThumbsG('wb'); }
+    else renderThumbsG('main');
+    loadImages();
   }
-  /** ◀ ▶ rearrange photo order before posting */
-  function movePhoto(i, dir) {
-    var arr = state.upload.photos;
-    var k = i + dir;
+  function removePhotoG(g, i) {
+    grp(g).splice(i, 1);
+    renderAllThumbs();
+  }
+  /** ◀ ▶ rearrange photo order (within its own group) before posting */
+  function movePhotoG(g, i, dir) {
+    var arr = grp(g), k = i + dir;
     if (k < 0 || k >= arr.length) return;
     var tmp = arr[i]; arr[i] = arr[k]; arr[k] = tmp;
-    renderUploadThumbs(); loadImages();
+    renderAllThumbs();
   }
 
-  function photosPicked(input) {
+  function photosPickedG(input, g) {
     if (!input.files || !input.files.length) return;
     var files = Array.prototype.slice.call(input.files);
     input.value = '';
-    if (state.upload.photos.length + files.length > MAX_PHOTOS) {
+    var room = MAX_PHOTOS - totalUploadPhotos();
+    if (files.length > room) {
       toast('Max ' + MAX_PHOTOS + ' photos per job');
-      files = files.slice(0, MAX_PHOTOS - state.upload.photos.length);
+      files = files.slice(0, room);
       if (!files.length) return;
     }
     busy(true, 'Preparing photos…');
     var remaining = files.length;
     files.forEach(function (f) {
       compressImage(f, function (img) {
-        state.upload.photos.push({ b64: img.full, thumb: img.thumb });
+        grp(g).push({ b64: img.full, thumb: img.thumb });
         remaining--;
-        if (remaining === 0) { busy(false); renderUploadThumbs(); loadImages(); }
+        if (remaining === 0) { busy(false); renderAllThumbs(); }
       });
     });
   }
 
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
-    var photos = state.upload.photos;
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
     var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
 
-    if (!photos.length) { toast('Please add a photo first 📸'); return; }
-    if (state.tab === 'postage' && photos.length < 2) {
-      toast('Need at least 2 photos: 1st Jobsheet 📄 + 2nd Waybill 🏷️'); return;
+    var photos, jsCount = 0;
+    if (state.tab === 'postage') {
+      if (!state.upload.js.length) { toast('Please add a Jobsheet photo 📄'); return; }
+      if (!state.upload.wb.length) { toast('Please add a Waybill photo 🏷️'); return; }
+      photos = state.upload.js.concat(state.upload.wb);
+      jsCount = state.upload.js.length;
+    } else {
+      photos = state.upload.photos;
+      if (!photos.length) { toast('Please add a photo first 📸'); return; }
     }
     if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
 
@@ -1525,6 +1585,7 @@
           note: note,
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
           dueAt: dueMs,
+          jsCount: jsCount,
           photos: spec
         }, state.pin);
       return;
@@ -1550,7 +1611,7 @@
       id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
       photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
       createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-      dueAt: dueMs, uploading: true
+      dueAt: dueMs, jsCount: jsCount, uploading: true
     };
     state.jobs[postTab].unshift(tempJob);
     inflightJobs.push(tempJob);
@@ -1612,7 +1673,8 @@
         note: note,
         photos: [fulls[0]],
         thumbs: [thumbs[0]],
-        dueAt: dueMs
+        dueAt: dueMs,
+        jsCount: jsCount
       });
   }
 
