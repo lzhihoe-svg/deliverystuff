@@ -405,6 +405,48 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(800);
   check((await page.locator('#postage-list .proof').count()) === 1, 'postage proof photo works');
 
+  console.log('\n-- fullscreen viewer: swipe through the photos --');
+  await page.click('#nav-delivery');
+  await sleep(500);
+  const bgCard = page.locator('#delivery-list .card').filter({ hasText: 'Background upload' });
+  await bgCard.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await sleep(200);
+  await bgCard.locator('.car-slide img').first().click();
+  await sleep(300);
+  check(await page.locator('#viewer').isVisible(), 'tapping a photo opens the fullscreen viewer');
+  check((await page.locator('#viewer-count').textContent()).indexOf('1 / 3') >= 0, "counter shows '1 / 3'");
+  const vImg0 = await page.locator('#viewer-img').getAttribute('data-img');
+  // finger swipe left = next photo
+  const vBox = await page.locator('#viewer').boundingBox();
+  await touchDrag(cdp, vBox.x + vBox.width * 0.7, vBox.y + vBox.height / 2, vBox.x + vBox.width * 0.2, vBox.y + vBox.height / 2);
+  await sleep(300);
+  check((await page.locator('#viewer-count').textContent()).indexOf('2 / 3') >= 0, 'finger swipe left → photo 2');
+  check((await page.locator('#viewer-img').getAttribute('data-img')) !== vImg0, 'image actually changed');
+  // finger swipe right = back
+  await touchDrag(cdp, vBox.x + vBox.width * 0.2, vBox.y + vBox.height / 2, vBox.x + vBox.width * 0.8, vBox.y + vBox.height / 2);
+  await sleep(300);
+  check((await page.locator('#viewer-count').textContent()).indexOf('1 / 3') >= 0, 'finger swipe right → back to photo 1');
+  // arrows work on mobile too
+  await page.locator('#viewer-next').click();
+  await sleep(250);
+  check((await page.locator('#viewer-count').textContent()).indexOf('2 / 3') >= 0, '› arrow also works');
+  await page.locator('.viewer-x').click();
+  await sleep(250);
+  check(!await page.locator('#viewer').isVisible(), '✕ closes the viewer');
+  // postage: tapping a jobsheet photo swipes ONLY jobsheet pages
+  await page.click('#nav-postage');
+  await sleep(500);
+  const pairImg = page.locator('#postage-list .photo-pair .car-slide img').first();
+  await pairImg.evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await sleep(200);
+  await pairImg.click();
+  await sleep(300);
+  check((await page.locator('#viewer-count').textContent()).indexOf('/ 2') >= 0, 'jobsheet photo opens viewer with ONLY its 2 jobsheet pages');
+  await page.locator('.viewer-x').click();
+  await sleep(250);
+  await page.click('#nav-delivery');
+  await sleep(400);
+
   console.log('\n-- PIN gets priority over image loading --');
   await page.evaluate(() => {
     localStorage.clear(); // forget cached photos so plenty must load
@@ -523,6 +565,34 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await dpage.mouse.up();
   await sleep(700);
   check((await dpage.locator('#want-responded').textContent()).indexOf('Got it') >= 0, 'decision swipe works on desktop');
+
+  console.log('\n-- desktop viewer: arrows + keyboard --');
+  await dpage.click('#nav-delivery');
+  await sleep(500);
+  await dpage.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'PC viewer', photos: ['pc1', 'pc2', 'pc3'], thumbs: ['pt1', 'pt2', 'pt3'] });
+  });
+  await dpage.click('#refresh-btn');
+  await sleep(600);
+  const pcCard = dpage.locator('#delivery-list .card').filter({ hasText: 'PC viewer' });
+  await pcCard.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await sleep(200);
+  await pcCard.locator('.car-slide img').first().click();
+  await sleep(300);
+  check(await dpage.locator('#viewer').isVisible(), 'clicking a photo opens the viewer on PC');
+  check(await dpage.locator('#viewer-next').isVisible(), '‹ › arrows visible on PC');
+  await dpage.locator('#viewer-next').click();
+  await sleep(250);
+  check((await dpage.locator('#viewer-count').textContent()).indexOf('2 / 3') >= 0, '› arrow → photo 2');
+  await dpage.keyboard.press('ArrowRight');
+  await sleep(250);
+  check((await dpage.locator('#viewer-count').textContent()).indexOf('3 / 3') >= 0, 'keyboard arrow → photo 3');
+  await dpage.keyboard.press('ArrowLeft');
+  await sleep(250);
+  check((await dpage.locator('#viewer-count').textContent()).indexOf('2 / 3') >= 0, 'keyboard back → photo 2');
+  await dpage.keyboard.press('Escape');
+  await sleep(250);
+  check(!await dpage.locator('#viewer').isVisible(), 'Escape closes the viewer');
 
   await dctx.close();
   await browser.close();

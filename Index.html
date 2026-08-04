@@ -355,9 +355,25 @@
   #spinner-txt { font-size: 14px; font-weight: 700; color: var(--blue); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .viewer { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 70; display: none; align-items: center; justify-content: center; }
+  .viewer {
+    position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 70;
+    display: none; align-items: center; justify-content: center;
+    touch-action: none;
+  }
   .viewer.show { display: flex; }
   .viewer img { max-width: 100%; max-height: 100%; }
+  .viewer .viewer-x {
+    position: absolute; top: 14px; right: 14px; z-index: 2;
+    background: rgba(255,255,255,.18); color: #fff;
+  }
+  .viewer .car-btn { display: block; z-index: 2; }
+  #viewer-prev { left: 10px; }
+  #viewer-next { right: 10px; }
+  #viewer-count {
+    position: absolute; bottom: 20px; left: 0; right: 0; text-align: center;
+    color: #fff; font-size: 14px; font-weight: 800; z-index: 2;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none;
+  }
 
   /* ================= DESKTOP ================= */
   @media (min-width: 700px) {
@@ -522,7 +538,13 @@
 <!-- ================= PROOF PHOTO (staff confirm) ================= -->
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 
-<div class="viewer" id="viewer" onclick="this.classList.remove('show')"><img id="viewer-img"></div>
+<div class="viewer" id="viewer">
+  <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
+  <button class="car-btn prev" id="viewer-prev" onclick="viewerNav(-1)">‹</button>
+  <img id="viewer-img">
+  <button class="car-btn next" id="viewer-next" onclick="viewerNav(1)">›</button>
+  <div id="viewer-count"></div>
+</div>
 <div id="upload-pill"></div>
 <div id="toast"></div>
 <div id="spinner"><div class="spin-box"><div class="ring"></div><div id="spinner-txt">Please wait…</div></div></div>
@@ -671,14 +693,84 @@
     }
   }
 
-  function viewPhoto(id) {
+  // ---- fullscreen photo viewer with swipe left/right through the set ----
+  var viewerState = { ids: [], idx: 0 };
+
+  function viewPhotoSet(idsCsv, idx) {
+    viewerState.ids = String(idsCsv).split(',').filter(function (x) { return x; });
+    viewerState.idx = Math.max(0, Math.min(Number(idx) || 0, viewerState.ids.length - 1));
+    showViewerImg();
+    document.getElementById('viewer').classList.add('show');
+  }
+  function viewPhoto(id) { viewPhotoSet(id, 0); } // single-photo shortcut
+
+  function showViewerImg() {
+    var id = viewerState.ids[viewerState.idx];
     var v = document.getElementById('viewer-img');
     v.setAttribute('data-img', id);
     v.setAttribute('data-vis', '1'); // viewer lives outside the scroller: fetch directly
     v.src = cachedImg(id) || PLACEHOLDER;
-    document.getElementById('viewer').classList.add('show');
+    var multi = viewerState.ids.length > 1;
+    document.getElementById('viewer-prev').style.display = multi ? 'block' : 'none';
+    document.getElementById('viewer-next').style.display = multi ? 'block' : 'none';
+    document.getElementById('viewer-count').textContent =
+      multi ? (viewerState.idx + 1) + ' / ' + viewerState.ids.length + '  👈 swipe 👉' : '';
     loadImages();
   }
+  function viewerNav(dir) {
+    var n = viewerState.ids.length;
+    if (n < 2) return;
+    viewerState.idx = (viewerState.idx + dir + n) % n;
+    showViewerImg();
+  }
+  function closeViewer() {
+    document.getElementById('viewer').classList.remove('show');
+  }
+
+  // gestures: swipe left/right to change photo; tap sides to flip;
+  // tap the dark background or ✕ to close; PC: arrows, click sides, arrow keys
+  (function () {
+    var vEl = document.getElementById('viewer');
+    var vs = { sx: 0, dx: 0, active: false };
+    vEl.addEventListener('touchstart', function (e) {
+      vs.active = true; vs.sx = e.touches[0].clientX; vs.dx = 0;
+    }, { passive: true });
+    vEl.addEventListener('touchmove', function (e) {
+      if (!vs.active) return;
+      vs.dx = e.touches[0].clientX - vs.sx;
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    vEl.addEventListener('touchend', function (e) {
+      if (!vs.active) return;
+      vs.active = false;
+      if (e.cancelable) e.preventDefault(); // suppress the synthetic mouse click
+      if (vs.dx <= -50) { viewerNav(1); return; }
+      if (vs.dx >= 50) { viewerNav(-1); return; }
+      var t = e.target;
+      if (t && t.id === 'viewer-img' && viewerState.ids.length > 1) {
+        var rect = t.getBoundingClientRect();
+        viewerNav(vs.sx - rect.left > rect.width / 2 ? 1 : -1);
+      } else if (t === vEl) {
+        closeViewer();
+      } else if (t && t.tagName === 'BUTTON') {
+        t.click(); // preventDefault swallowed the click — re-fire it
+      }
+    });
+    vEl.addEventListener('click', function (e) {
+      if (e.target === vEl) closeViewer();
+    });
+    document.getElementById('viewer-img').addEventListener('click', function (e) {
+      if (viewerState.ids.length < 2) return;
+      var rect = this.getBoundingClientRect();
+      viewerNav(e.clientX - rect.left > rect.width / 2 ? 1 : -1);
+    });
+    window.addEventListener('keydown', function (e) {
+      if (!vEl.classList.contains('show')) return;
+      if (e.key === 'ArrowRight') viewerNav(1);
+      else if (e.key === 'ArrowLeft') viewerNav(-1);
+      else if (e.key === 'Escape') closeViewer();
+    });
+  })();
 
   // ------------------------------------------------------------ sync status (refresh)
   var syncTimer = null;
@@ -725,16 +817,18 @@
     return s + '</div>';
   }
 
-  /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens full photo. */
+  /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens the
+      full-size viewer where you can swipe through the whole set. */
   function carouselHtml(j) {
     var n = j.photoIds.length;
+    var csv = j.photoIds.join(',');
     if (n === 1) {
       return '<div class="carousel">' +
-        imgTag(thumbOf(j, 0), '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>';
+        imgTag(thumbOf(j, 0), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0)"') + '</div>';
     }
     var s = '<div class="carousel"><div class="car-track">';
     for (var i = 0; i < n; i++) {
-      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
+      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + i + ')"') + '</div>';
     }
     s += '</div>';
     s += '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>';
@@ -1254,16 +1348,18 @@
     return j.photoIds.length > 1 ? 1 : j.photoIds.length;
   }
 
-  /** One half of the postage card: its own swipeable mini-carousel. */
+  /** One half of the postage card: its own swipeable mini-carousel.
+      Tapping opens the viewer scoped to THIS group's photos only. */
   function miniCarousel(j, start, end, label) {
     var count = end - start;
+    var csv = j.photoIds.slice(start, end).join(',');
     var inner;
     if (count <= 1) {
-      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhoto(\'' + j.photoIds[start] + '\')"');
+      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0)"');
     } else {
       inner = '<div class="car-track">';
       for (var i = start; i < end; i++) {
-        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
+        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (i - start) + ')"') + '</div>';
       }
       inner += '</div>' +
         '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>' +
