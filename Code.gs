@@ -355,14 +355,58 @@ function resetAll(pin) {
     var sh = getSheet_();
     var last = sh.getLastRow();
     if (last < 2) return { ok: true, archived: 0 };
-    var range = sh.getRange(2, 6, last - 1, 1); // status column
-    var vals = range.getValues();
-    var n = 0;
+    var vals = sh.getRange(2, 1, last - 1, 6).getValues(); // id .. status
+    var out = [], snap = {}, n = 0;
     for (var i = 0; i < vals.length; i++) {
-      if (vals[i][0] !== 'archived') { vals[i][0] = 'archived'; n++; }
+      var st = vals[i][5];
+      if (st !== 'archived') { snap[vals[i][0]] = st; st = 'archived'; n++; }
+      out.push([st]);
     }
-    range.setValues(vals);
+    sh.getRange(2, 6, last - 1, 1).setValues(out);
+    if (n > 0) saveResetSnapshot_(snap);
     return { ok: true, archived: n };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Remember what a reset archived, so the admin can UNDO a mistake. */
+function saveResetSnapshot_(snap) {
+  try {
+    PropertiesService.getScriptProperties()
+      .setProperty('LAST_RESET', JSON.stringify({ at: new Date().getTime(), rows: snap }));
+  } catch (e) {} // snapshot too big to store — reset still works, undo unavailable
+}
+
+/**
+ * ADMIN ONLY. Undo the LAST reset (RESET ALL or CLEAR DONE): every job that
+ * reset archived gets its previous status back — got stays got, done stays
+ * done, pending comes back to the deck. One level of undo.
+ */
+function undoReset(pin) {
+  requireAdmin_(pin);
+  var raw = PropertiesService.getScriptProperties().getProperty('LAST_RESET');
+  if (!raw) throw new Error('Nothing to undo');
+  var snap = JSON.parse(raw);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var last = sh.getLastRow();
+    var restored = 0;
+    if (last >= 2) {
+      var vals = sh.getRange(2, 1, last - 1, 6).getValues();
+      var out = [];
+      for (var i = 0; i < vals.length; i++) {
+        var st = vals[i][5];
+        var prev = snap.rows[vals[i][0]];
+        if (prev && st === 'archived') { st = prev; restored++; }
+        out.push([st]);
+      }
+      sh.getRange(2, 6, last - 1, 1).setValues(out);
+    }
+    PropertiesService.getScriptProperties().deleteProperty('LAST_RESET');
+    return { ok: true, restored: restored };
   } finally {
     lock.releaseLock();
   }
@@ -381,19 +425,21 @@ function resetDone(pin) {
     var sh = getSheet_();
     var last = sh.getLastRow();
     if (last < 2) return { ok: true, archived: 0, carried: 0 };
-    var range = sh.getRange(2, 2, last - 1, 5); // tab .. status
-    var vals = range.getValues();
-    var archived = 0, carried = 0;
+    var vals = sh.getRange(2, 1, last - 1, 6).getValues(); // id .. status
+    var out = [], snap = {}, archived = 0, carried = 0;
     for (var i = 0; i < vals.length; i++) {
-      var tab = vals[i][0], status = vals[i][4];
-      if (status === 'archived') continue;
-      if (status === 'done' || (tab === 'want' && status === 'got')) {
-        vals[i][4] = 'archived'; archived++;
-      } else {
-        carried++;
+      var tab = vals[i][1], status = vals[i][5];
+      if (status !== 'archived') {
+        if (status === 'done' || (tab === 'want' && status === 'got')) {
+          snap[vals[i][0]] = status; status = 'archived'; archived++;
+        } else {
+          carried++;
+        }
       }
+      out.push([status]);
     }
-    range.setValues(vals);
+    sh.getRange(2, 6, last - 1, 1).setValues(out);
+    if (archived > 0) saveResetSnapshot_(snap);
     return { ok: true, archived: archived, carried: carried };
   } finally {
     lock.releaseLock();

@@ -62,7 +62,8 @@ function makeEnv() {
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: k => (k in props ? props[k] : null),
-        setProperty: (k, v) => { props[k] = v; }
+        setProperty: (k, v) => { props[k] = v; },
+        deleteProperty: k => { delete props[k]; }
       })
     },
     LockService: {
@@ -290,6 +291,46 @@ console.log('\n== resetDone (clear finished work only) ==');
     'unfinished delivery carried forward');
   check(ctx.getJobs('postage').length === 0, 'done postage archived');
   check(ctx.resetDone(PIN).archived === 0, 'second clear archives nothing (idempotent)');
+}
+
+console.log('\n== undoReset (bring back what a reset archived) ==');
+{
+  const { ctx } = makeEnv();
+  const w1 = ctx.addJob({ tab: 'want', category: '', note: 'got', photos: [B64] });
+  const w2 = ctx.addJob({ tab: 'want', category: '', note: 'todo', photos: [B64] });
+  const d1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'done', photos: [B64] });
+  ctx.updateStatus(w1.id, 'got', null, null, null);
+  ctx.updateStatus(d1.id, 'done', B64, B64, null);
+
+  throws(() => ctx.undoReset(PIN), 'nothing to undo before any reset');
+
+  // undo a FULL reset: every job returns with its old status
+  ctx.resetAll(PIN);
+  check(ctx.getJobs('want').length === 0, 'reset all cleared the tabs');
+  throws(() => ctx.undoReset(''), 'staff cannot undo');
+  const u1 = ctx.undoReset(PIN);
+  check(u1.ok === true && u1.restored === 3, 'undo restores all 3 archived jobs');
+  const wantBack = ctx.getJobs('want');
+  check(wantBack.find(j => j.id === w1.id).status === 'got', "❤️ Got It came back as 'got', not pending");
+  check(wantBack.find(j => j.id === w2.id).status === 'pending', 'To Do came back as pending');
+  check(ctx.getJobs('delivery')[0].status === 'done', 'done job came back as done, proof intact');
+  check(ctx.getJobs('delivery')[0].proofPhotoId, 'proof photo still attached after undo');
+  throws(() => ctx.undoReset(PIN), 'second undo throws (one level of undo)');
+
+  // undo a CLEAR DONE: only what IT archived comes back
+  ctx.resetDone(PIN);
+  check(ctx.getJobs('want').length === 1 && ctx.getJobs('delivery').length === 0, 'clear done archived got + done');
+  const u2 = ctx.undoReset(PIN);
+  check(u2.restored === 2, 'undo restores the 2 jobs clear-done archived');
+  check(ctx.getJobs('want').length === 2 && ctx.getJobs('delivery').length === 1, 'both back on the board');
+
+  // a job archived by an OLDER reset must NOT come back with a newer undo
+  ctx.resetAll(PIN);              // archives all 3 (snapshot A)
+  const w3 = ctx.addJob({ tab: 'want', category: '', note: 'new day', photos: [B64] });
+  ctx.resetAll(PIN);              // archives only the new job (snapshot B overwrites A)
+  const u3 = ctx.undoReset(PIN);
+  check(u3.restored === 1 && ctx.getJobs('want').length === 1 && ctx.getJobs('want')[0].id === w3.id,
+    'undo only brings back the LAST reset, older archives stay archived');
 }
 
 console.log('\n== updateProof / deleteProof (staff can fix proof photos) ==');

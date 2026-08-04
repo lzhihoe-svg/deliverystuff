@@ -184,10 +184,46 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
   await page.click('#reset-btn');
   await sleep(150);
+  check(await page.locator('#reset-overlay').isVisible(), 'RESET opens a SAFETY MENU first — no more one-tap wipe');
+  check(await page.locator('#reset-overlay .btn.green').isVisible() &&
+        await page.locator('#reset-overlay .btn.red').isVisible() &&
+        await page.locator('#reset-overlay .btn.gray').isVisible(),
+    'menu offers CLEAR DONE, RESET ALL and UNDO');
+  await page.locator('#reset-overlay .btn.green').click(); // CLEAR DONE path
+  await sleep(150);
+  check((await page.locator('#confirm-msg').textContent()).indexOf('FINISHED') >= 0,
+    'menu CLEAR DONE leads to the clear-done confirm');
+  await page.locator('#confirm-overlay .btn.gray').click(); // cancel it
+  await sleep(150);
+  await page.click('#reset-btn');
+  await sleep(150);
+  await page.locator('#reset-overlay .btn.red').click(); // RESET ALL
+  await sleep(150);
+  check(await page.locator('#confirm-overlay').isVisible(), 'RESET ALL still asks are-you-sure on top');
   await page.click('#confirm-yes');
   await sleep(500);
   check(await page.evaluate(() => window.__mockdb.jobs.every(j => j.status === 'archived')), 'reset archives everything');
   check((await page.locator('#delivery-list .empty').count()) === 1, 'tab cleared');
+
+  console.log('\n-- UNDO: the last reset can be taken back --');
+  const preUndo = await page.evaluate(() => window.__mockdb.jobs.length);
+  await page.click('#reset-btn');
+  await sleep(150);
+  await page.locator('#reset-overlay .btn.gray').click(); // UNDO
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.status !== 'archived').length > 0),
+    'archived jobs are back on the server');
+  check((await page.locator('#delivery-list .card').count()) > 0, 'cards reappear on screen after undo');
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.status === 'done' && j.proofPhotoId)),
+    'a done job returned as done WITH its proof photo');
+  // put everything back to archived so later sections start clean
+  await page.click('#reset-btn');
+  await sleep(150);
+  await page.locator('#reset-overlay .btn.red').click();
+  await sleep(150);
+  await page.click('#confirm-yes');
+  await sleep(500);
+  check(preUndo === await page.evaluate(() => window.__mockdb.jobs.length), 'undo/reset never deletes records');
 
   console.log('\n-- proof photo: STAFF can retake and remove --');
   await page.evaluate(() => {

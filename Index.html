@@ -549,6 +549,21 @@
   </div>
 </div>
 
+<!-- ================= RESET MENU (safety: choose what to clear + undo) ================= -->
+<div class="overlay" id="reset-overlay">
+  <div class="sheet" style="max-width:400px;text-align:center">
+    <button class="x-close" onclick="closeResetMenu()">✕</button>
+    <h2 style="padding-right:0">🧹 Reset — choose carefully</h2>
+    <p style="font-size:14px;color:var(--muted);margin:10px 0 14px">
+      Records are never deleted — everything stays in the Google Sheet.
+      Pressed the wrong one? UNDO brings the last reset back.
+    </p>
+    <button class="btn green" style="margin-bottom:10px" onclick="clearDoneFromMenu()">✅ CLEAR DONE — unfinished jobs stay</button>
+    <button class="btn red" style="margin-bottom:10px" onclick="resetAllFromMenu()">🧹 RESET ALL — wipe every tab</button>
+    <button class="btn gray" onclick="undoLastReset()">↩️ UNDO the last reset</button>
+  </div>
+</div>
+
 <!-- ================= PROOF PHOTO (staff confirm) ================= -->
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 
@@ -1513,9 +1528,22 @@
     });
   }
 
+  // RESET now opens a SAFETY MENU first — one accidental tap can no longer
+  // wipe the day, and a wrong choice can be undone.
   function askReset() {
-    askConfirm('Reset for a new day? ALL jobs in ALL tabs will be cleared. Records stay safe in the Google Sheet.',
-      '🧹 Yes, RESET', function () {
+    document.getElementById('reset-overlay').classList.add('show');
+  }
+  function closeResetMenu() {
+    document.getElementById('reset-overlay').classList.remove('show');
+  }
+  function clearDoneFromMenu() {
+    closeResetMenu();
+    askClearDone();
+  }
+  function resetAllFromMenu() {
+    closeResetMenu();
+    askConfirm('⚠️ Wipe ALL jobs in ALL tabs — finished AND unfinished? (You can UNDO from the Reset menu.)',
+      '🧹 Yes, RESET ALL', function () {
         state.jobs = { want: [], delivery: [], postage: [] };
         ['want', 'delivery', 'postage'].forEach(saveJobsCache);
         renderAll();
@@ -1525,6 +1553,18 @@
           .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(); })
           .resetAll(state.pin);
       });
+  }
+  /** Bring back everything the LAST reset archived (statuses restored). */
+  function undoLastReset() {
+    closeResetMenu();
+    toast('↩️ Restoring the last reset…');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        toast('↩️ Restored ' + res.restored + ' jobs — welcome back!');
+        refresh();
+      })
+      .withFailureHandler(function (e) { toast('⚠️ ' + e.message); })
+      .undoReset(state.pin);
   }
 
   /** CLEAR DONE (admin): archive ONLY finished work — done Delivery/Postage
@@ -1884,11 +1924,12 @@
   }
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
       else if (id === 'confirm-overlay') closeConfirm();
+      else if (id === 'reset-overlay') closeResetMenu();
       else closeUpload();
     });
   });

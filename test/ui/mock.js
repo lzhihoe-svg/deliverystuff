@@ -90,13 +90,25 @@
     },
     resetDone: function (pin) {
       requireAdmin(pin);
-      var archived = 0, carried = 0;
+      var archived = 0, carried = 0, snap = {};
       db.jobs.forEach(function (j) {
         if (j.status === 'archived') return;
-        if (j.status === 'done' || (j.tab === 'want' && j.status === 'got')) { j.status = 'archived'; archived++; }
-        else carried++;
+        if (j.status === 'done' || (j.tab === 'want' && j.status === 'got')) {
+          snap[j.id] = j.status; j.status = 'archived'; archived++;
+        } else carried++;
       });
+      if (archived > 0) db.lastReset = snap;
       return { ok: true, archived: archived, carried: carried };
+    },
+    undoReset: function (pin) {
+      requireAdmin(pin);
+      if (!db.lastReset) throw new Error('Nothing to undo');
+      var restored = 0;
+      db.jobs.forEach(function (j) {
+        if (db.lastReset[j.id] && j.status === 'archived') { j.status = db.lastReset[j.id]; restored++; }
+      });
+      db.lastReset = null;
+      return { ok: true, restored: restored };
     },
     updateProof: function (id, proof, proofThumb) {
       if (!proof) throw new Error('Proof photo required');
@@ -114,8 +126,11 @@
     },
     resetAll: function (pin) {
       requireAdmin(pin);
-      var n = 0;
-      db.jobs.forEach(function (j) { if (j.status !== 'archived') { j.status = 'archived'; n++; } });
+      var n = 0, snap = {};
+      db.jobs.forEach(function (j) {
+        if (j.status !== 'archived') { snap[j.id] = j.status; j.status = 'archived'; n++; }
+      });
+      if (n > 0) db.lastReset = snap;
       return { ok: true, archived: n };
     },
     deleteJob: function (id, pin) {
