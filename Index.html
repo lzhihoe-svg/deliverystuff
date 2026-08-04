@@ -186,7 +186,14 @@
   .tools .t-edit { border: 2px solid var(--blue); color: var(--blue); }
   .tools .t-del  { border: 2px solid var(--red); color: var(--red); }
   .tools .t-arch { border: 2px solid #94a3b8; color: #64748b; }
-  .tools .t-pin  { border: 2px solid #d97706; color: #b45309; }
+
+  /* small, friendly Push Up (ask again) button on Checking status cards */
+  .ask-btn {
+    display: block; width: 100%; margin-top: 8px;
+    background: #fff; border: 2px solid var(--green); color: var(--blue);
+    border-radius: 10px; padding: 8px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .ask-btn:active { background: var(--lime-soft); }
 
   /* ---------- swipe stack (tab 1) ---------- */
   .stack-outer { max-width: 420px; margin: 0 auto; }
@@ -290,18 +297,17 @@
   }
   .thumb-arrows button:active { background: var(--lime-soft); }
 
-  /* postage: jobsheet + waybill shown side by side */
-  .photo-pair { display: flex; gap: 2px; background: #e2e8f0; }
-  .photo-pair > div { flex: 1; position: relative; }
+  /* postage: jobsheet + waybill (and any extras) shown side by side */
+  .photo-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #e2e8f0; }
+  .photo-pair > div { position: relative; }
   .photo-pair img {
-    width: 100%; display: block; min-height: 120px; max-height: 280px;
+    width: 100%; height: 100%; display: block; min-height: 120px; max-height: 280px;
     object-fit: contain; background: #e2e8f0; cursor: pointer;
   }
   .photo-pair .lbl {
     position: absolute; top: 6px; left: 6px; background: rgba(31,43,19,.78);
     color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
   }
-  .slot-btn img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; }
 
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
@@ -465,15 +471,6 @@
       <div class="thumbs" id="upload-thumbs"></div>
       <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
       <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
-    </div>
-
-    <div id="postage-slots" style="display:none">
-      <label>📄 Jobsheet photo</label>
-      <button class="photo-btn slot-btn" id="slot-0" onclick="document.getElementById('slot-0-file').click()">📷 Add Jobsheet Photo</button>
-      <input type="file" id="slot-0-file" accept="image/*" onchange="slotPicked(this, 0)">
-      <label>🏷️ Waybill photo (J&amp;T)</label>
-      <button class="photo-btn slot-btn" id="slot-1" onclick="document.getElementById('slot-1-file').click()">📷 Add Waybill Photo</button>
-      <input type="file" id="slot-1-file" accept="image/*" onchange="slotPicked(this, 1)">
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -1039,7 +1036,7 @@
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) + '</div>' +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
-        (isAdmin() ? '<button class="btn blue small" style="margin-top:8px" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — Ask Again</button>' : '') +
+        (isAdmin() ? '<button class="ask-btn" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '') +
         '<div class="spacer"></div>' +
         toolBtns(j, true) +
         '</div></div>';
@@ -1230,14 +1227,16 @@
     return html;
   }
 
-  /** Postage: jobsheet + waybill shown together, side by side. */
+  /** Postage: ALL photos shown together, side by side in a 2-column grid.
+      Photo 1 is labelled Jobsheet, photo 2 Waybill; extras just join the grid. */
   function pairHtml(j) {
-    return '<div class="photo-pair">' +
-      '<div><span class="lbl">📄 Jobsheet</span>' +
-        imgTag(thumbOf(j, 0), '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>' +
-      '<div><span class="lbl">🏷️ Waybill</span>' +
-        imgTag(thumbOf(j, 1), '', 'onclick="viewPhoto(\'' + j.photoIds[1] + '\')"') + '</div>' +
-      '</div>';
+    var s = '<div class="photo-pair">';
+    for (var i = 0; i < j.photoIds.length; i++) {
+      var lbl = i === 0 ? '📄 Jobsheet' : (i === 1 ? '🏷️ Waybill' : '');
+      s += '<div>' + (lbl ? '<span class="lbl">' + lbl + '</span>' : '') +
+        imgTag(thumbOf(j, i), '', 'onclick="viewPhoto(\'' + j.photoIds[i] + '\')"') + '</div>';
+    }
+    return s + '</div>';
   }
 
   function jobCard(j, isDone) {
@@ -1409,10 +1408,9 @@
     };
     document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    // postage uses two fixed slots (jobsheet + waybill); other tabs use the multi picker
-    var isPost = state.tab === 'postage';
-    document.getElementById('generic-photos').style.display = isPost ? 'none' : 'block';
-    document.getElementById('postage-slots').style.display = isPost ? 'block' : 'none';
+    document.getElementById('photos-label').textContent = state.tab === 'postage'
+      ? 'Photos 📸 — 1st: Jobsheet 📄, 2nd: Waybill 🏷️ (use ◀ ▶ to arrange)'
+      : 'Photos 📸';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
     document.getElementById('due-wrap').style.display =
@@ -1423,43 +1421,11 @@
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
     });
 
-    if (isPost) renderSlots(); else renderUploadThumbs();
+    renderUploadThumbs();
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
   function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
-
-  // ---- postage slots (photo 0 = jobsheet, photo 1 = waybill) ----
-  var SLOT_LABELS = ['📷 Add Jobsheet Photo', '📷 Add Waybill Photo'];
-  function renderSlots() {
-    for (var i = 0; i < 2; i++) {
-      var b = document.getElementById('slot-' + i);
-      var p = state.upload.photos[i];
-      if (p) {
-        b.classList.add('hasphoto');
-        b.innerHTML = (p.thumb || p.b64
-          ? '<img src="data:image/jpeg;base64,' + (p.thumb || p.b64) + '">'
-          : imgTag(p.thumbId || p.id)) + ' ✅ Photo OK — change?';
-      } else {
-        b.classList.remove('hasphoto');
-        b.innerHTML = SLOT_LABELS[i];
-      }
-    }
-    var els = document.querySelectorAll('#postage-slots img[data-img]');
-    for (var k = 0; k < els.length; k++) els[k].setAttribute('data-vis', '1');
-    loadImages();
-  }
-  function slotPicked(input, idx) {
-    if (!input.files || !input.files[0]) return;
-    var f = input.files[0];
-    input.value = '';
-    busy(true, 'Preparing photo…');
-    compressImage(f, function (img) {
-      busy(false);
-      state.upload.photos[idx] = { b64: img.full, thumb: img.thumb };
-      renderSlots();
-    });
-  }
 
   function pickCat(btn) {
     state.upload.cat = btn.getAttribute('data-cat');
@@ -1528,13 +1494,9 @@
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
     var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
 
-    if (state.tab === 'postage') {
-      if (!photos[0]) { toast('Please add the Jobsheet photo 📄'); return; }
-      if (!photos[1]) { toast('Please add the Waybill photo 🏷️'); return; }
-      photos = [photos[0], photos[1]];   // exactly 2, in order
-      state.upload.photos = photos;
-    } else {
-      if (!photos.length) { toast('Please add a photo first 📸'); return; }
+    if (!photos.length) { toast('Please add a photo first 📸'); return; }
+    if (state.tab === 'postage' && photos.length < 2) {
+      toast('Need at least 2 photos: 1st Jobsheet 📄 + 2nd Waybill 🏷️'); return;
     }
     if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
 

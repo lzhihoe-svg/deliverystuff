@@ -281,9 +281,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#refresh-btn');
   await sleep(600);
   check((await page.locator('#want-stack-area .empty').count()) === 1, 'swipe deck empty (all jobsheets answered)');
-  const askBtns = await page.locator('#want-responded .btn.blue.small').count();
+  const askBtns = await page.locator('#want-responded .ask-btn').count();
   check(askBtns === 2, 'admin sees 🔁 Ask Again on Got It AND Not Seen cards');
-  await clickSafe(page.locator('#want-responded .btn.blue.small').first());
+  await clickSafe(page.locator('#want-responded .ask-btn').first());
   await sleep(300);
   check((await page.locator('#topcard').count()) === 1, 'jobsheet returns to the swipe deck instantly');
   check((await page.locator('#topcard .foot .cap').textContent()).indexOf('📌') >= 0, 'asked-again card pinned to the FRONT of the deck');
@@ -291,7 +291,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(300);
   check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'want' && j.status === 'pending').length === 1),
     'server put it back to pending');
-  check((await page.locator('#want-responded .btn.blue.small').count()) === 1, 'only 1 answered card left in status list');
+  check((await page.locator('#want-responded .ask-btn').count()) === 1, 'only 1 answered card left in status list');
   // staff must answer again — swipe it once more
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
   await sleep(200);
@@ -346,6 +346,41 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(bg && bg.photoIds.length === 3 && bg.photoIds.every(x => x), 'all 3 photos on server via PARALLEL upload (~0.8s, not 1.2s serial)');
   await page.evaluate(() => { window.__mocklat = {}; });
 
+  console.log('\n-- tab 3: postage multi-photo like delivery + side-by-side display --');
+  await page.click('#nav-postage');
+  await sleep(500);
+  await page.click('#nav-post');
+  await sleep(150);
+  check(await page.locator('#generic-photos').isVisible(), 'postage uses the SAME multi-photo picker as delivery');
+  check((await page.locator('#photos-label').textContent()).indexOf('Jobsheet') >= 0, 'label explains 1st = Jobsheet, 2nd = Waybill');
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(500);
+  await page.click('#btn-submit');
+  await sleep(150);
+  check((await page.locator('#toast').textContent()).indexOf('2 photos') >= 0, '1 photo blocked — needs jobsheet + waybill');
+  await page.setInputFiles('#photos-file', [IMG2, IMG3]);
+  await sleep(800);
+  check((await page.locator('#upload-thumbs .thumb').count()) === 3, 'can add MULTIPLE photos to postage');
+  check((await page.locator('#upload-thumbs .thumb-arrows').count()) === 3, '◀ ▶ reorder available for postage');
+  check((await page.locator('#upload-thumbs .thumb-x').count()) === 3, '✕ delete available for postage');
+  await page.locator('#upload-thumbs .thumb-x').last().click();
+  await sleep(200);
+  check((await page.locator('#upload-thumbs .thumb').count()) === 2, 'removed the extra photo');
+  await page.click('#btn-submit');
+  await sleep(800);
+  check((await page.locator('#postage-list .photo-pair').count()) >= 1, 'photos shown SIDE BY SIDE (no swiping)');
+  check((await page.locator('#postage-list .photo-pair .lbl').first().textContent()).indexOf('Jobsheet') >= 0, 'Jobsheet label on photo 1');
+  check((await page.locator('#postage-list .photo-pair .lbl').nth(1).textContent()).indexOf('Waybill') >= 0, 'Waybill label on photo 2');
+  await clickSafe(page.locator('#postage-list .t-edit').first());
+  await sleep(300);
+  check((await page.locator('#upload-thumbs .thumb').count()) === 2, 'editing a postage job shows the same reorderable thumbs');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
+  await clickSafe(page.locator('#postage-list .btn.green').first());
+  await page.setInputFiles('#proof-file', IMG);
+  await sleep(800);
+  check((await page.locator('#postage-list .proof').count()) === 1, 'postage proof photo works');
+
   console.log('\n-- PIN gets priority over image loading --');
   await page.evaluate(() => {
     localStorage.clear(); // forget cached photos so plenty must load
@@ -371,7 +406,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { window.__mocklat = {}; });
 
   console.log('\n-- lazy loading: only visible photos download --');
-  await sleep(2500); // let visible batches settle
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(2500); // back to the top; let visible batches settle
   const stats = await page.evaluate(() => {
     const req = new Set(window.__imgRequests);
     const ids = Array.from(document.querySelectorAll('#postage-list img[data-img]')).map(el => el.getAttribute('data-img'));
@@ -379,8 +415,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   check(stats.requested > 0 && stats.requested < stats.total,
     'only on-screen photos requested (' + stats.requested + ' of ' + stats.total + ') — offscreen skipped');
-  await page.evaluate(() => { const s = document.getElementById('scroller'); s.scrollTop = s.scrollHeight; });
-  await sleep(1500);
+  // scroll down step by step, like a real user
+  for (let step = 0; step < 8; step++) {
+    await page.evaluate(() => { document.getElementById('scroller').scrollTop += 550; });
+    await sleep(250);
+  }
+  await sleep(1200);
   const stats2 = await page.evaluate(() => {
     const req = new Set(window.__imgRequests);
     const ids = Array.from(document.querySelectorAll('#postage-list img[data-img]')).map(el => el.getAttribute('data-img'));
