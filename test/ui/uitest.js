@@ -262,24 +262,68 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const firstNote = await page.locator('#delivery-list .grid .card .note').first().textContent();
   check(firstNote.indexOf('Overdue job') >= 0, 'most urgent job sorted to the top');
 
-  console.log('\n-- PUSH UP: call a job to the top --');
-  check((await page.locator('#delivery-list .t-pin').count()) >= 3, 'admin sees ⬆️ Push Up on pending cards');
-  const pinBtn = page.locator('#delivery-list .card').filter({ hasText: 'No deadline' }).locator('.t-pin').first();
-  check((await pinBtn.textContent()).indexOf('Push Up') >= 0, "button reads '⬆️ Push Up'");
-  await clickSafe(pinBtn);
+  console.log('\n-- ASK AGAIN: send a swiped jobsheet back to staff --');
+  await page.click('#nav-want');
+  await sleep(500);
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(200);
+  // swipe the pending seeded jobsheet to ❤️, and seed a ❌ one on the server
+  let askBox = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(askBox.x + askBox.width / 2, askBox.y + askBox.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(askBox.x + askBox.width / 2 + i * 25, askBox.y + askBox.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(700);
+  await page.evaluate(() => {
+    const jj = window.__mockapi.addJob({ tab: 'want', category: '', note: 'NS-seed', photos: ['n1'], thumbs: ['nt1'] });
+    window.__mockapi.updateStatus(jj.id, 'notseen', null, null, null);
+  });
+  await page.click('#refresh-btn');
+  await sleep(600);
+  check((await page.locator('#want-stack-area .empty').count()) === 1, 'swipe deck empty (all jobsheets answered)');
+  const askBtns = await page.locator('#want-responded .btn.blue.small').count();
+  check(askBtns === 2, 'admin sees 🔁 Ask Again on Got It AND Not Seen cards');
+  await clickSafe(page.locator('#want-responded .btn.blue.small').first());
   await sleep(300);
-  let firstCard = await page.locator('#delivery-list .grid .card').first().textContent();
-  check(firstCard.indexOf('No deadline') >= 0, 'pushed-up job jumps to the TOP, above even LATE jobs');
-  check((await page.locator('#delivery-list .chip.pin').count()) === 1, '📌 Pushed up chip shows on the card');
-  const pinBtn2 = page.locator('#delivery-list .card').filter({ hasText: 'No deadline' }).locator('.t-pin').first();
-  check((await pinBtn2.textContent()).indexOf('Unpin') >= 0, "button now reads '📌 Unpin'");
+  check((await page.locator('#topcard').count()) === 1, 'jobsheet returns to the swipe deck instantly');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('📌') >= 0, 'asked-again card pinned to the FRONT of the deck');
+  check((await page.locator('#badge-want').textContent()) === '1', 'Checking badge counts it as pending again');
   await sleep(300);
-  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'No deadline' && j.pinnedAt)), 'push-up saved on server');
-  await clickSafe(pinBtn2);
-  await sleep(300);
-  firstCard = await page.locator('#delivery-list .grid .card').first().textContent();
-  check(firstCard.indexOf('Overdue job') >= 0, 'unpin returns the list to urgency order');
-  check(await page.evaluate(() => !window.__mockdb.jobs.find(j => j.note === 'No deadline').pinnedAt) === true || true, 'server unpinned');
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'want' && j.status === 'pending').length === 1),
+    'server put it back to pending');
+  check((await page.locator('#want-responded .btn.blue.small').count()) === 1, 'only 1 answered card left in status list');
+  // staff must answer again — swipe it once more
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(200);
+  askBox = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(askBox.x + askBox.width / 2, askBox.y + askBox.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(askBox.x + askBox.width / 2 + i * 25, askBox.y + askBox.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(700);
+  check((await page.locator('#want-stack-area .empty').count()) === 1, 'staff answered again — deck empty');
+  await page.click('#nav-delivery');
+  await sleep(500);
+
+  console.log('\n-- photo REORDER + bigger previews in the post window --');
+  await page.click('#nav-post');
+  await sleep(150);
+  await page.setInputFiles('#photos-file', [IMG, IMG2, IMG3]);
+  await sleep(900);
+  const tw = await page.locator('#upload-thumbs .thumb').first().evaluate(el => el.offsetWidth);
+  check(tw >= 100, 'photo previews are bigger (' + tw + 'px) so admin can verify');
+  check((await page.locator('#upload-thumbs .thumb-arrows').count()) === 3, '◀ ▶ reorder buttons on every photo');
+  const order0 = await page.evaluate(() => window.__kilang.upload.photos.map(pp => pp.b64.slice(30, 50)));
+  await page.locator('#upload-thumbs .thumb-wrap').first().locator('.thumb-arrows button').first().click();
+  await sleep(200);
+  const order1 = await page.evaluate(() => window.__kilang.upload.photos.map(pp => pp.b64.slice(30, 50)));
+  check(order1[0] === order0[1] && order1[1] === order0[0], '▶ swaps photo 1 and photo 2');
+  await page.locator('#upload-thumbs .thumb-wrap').nth(1).locator('.thumb-arrows button').first().click();
+  await sleep(200);
+  const order2 = await page.evaluate(() => window.__kilang.upload.photos.map(pp => pp.b64.slice(30, 50)));
+  check(order2[0] === order0[0], '◀ moves it back — order fully controllable');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
 
   console.log('\n-- NON-BLOCKING upload with progress pill --');
   await page.click('#nav-post');

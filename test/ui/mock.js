@@ -80,12 +80,12 @@
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
     },
-    pushUp: function (id, pin) {
+    askAgain: function (id, pin) {
       requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      j.pinnedAt = j.pinnedAt ? '' : Date.now();
-      return { id: id, pinnedAt: j.pinnedAt };
+      j.status = 'pending'; j.doneAt = ''; j.pinnedAt = Date.now();
+      return { id: id, status: 'pending', pinnedAt: j.pinnedAt };
     },
     resetAll: function (pin) {
       requireAdmin(pin);

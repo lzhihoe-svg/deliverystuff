@@ -269,18 +269,39 @@
   .photo-btn:active { transform: scale(.98); }
   input[type=file] { display: none; }
 
-  .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-  .thumb { position: relative; width: 76px; height: 76px; }
+  /* bigger previews so admin can confirm the right photo, with ◀ ▶ reorder */
+  .thumbs { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .thumb-wrap { width: 116px; }
+  .thumb { position: relative; width: 116px; height: 116px; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; border: 2px solid var(--green); }
   .thumb .thumb-x {
-    position: absolute; top: -8px; right: -8px; width: 24px; height: 24px;
+    position: absolute; top: -8px; right: -8px; width: 26px; height: 26px;
     border-radius: 50%; border: 2px solid #fff; background: var(--red); color: #fff;
-    font-size: 12px; font-weight: 800; cursor: pointer; line-height: 20px; padding: 0;
+    font-size: 13px; font-weight: 800; cursor: pointer; line-height: 22px; padding: 0;
   }
   .thumb .thumb-n {
-    position: absolute; bottom: 2px; left: 2px; background: rgba(15,23,42,.7);
-    color: #fff; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 6px;
+    position: absolute; bottom: 4px; left: 4px; background: rgba(31,43,19,.75);
+    color: #fff; font-size: 12px; font-weight: 800; border-radius: 6px; padding: 1px 7px;
   }
+  .thumb-arrows { display: flex; gap: 4px; margin-top: 5px; }
+  .thumb-arrows button {
+    flex: 1; border: 2px solid #d3dcc3; background: #fff; border-radius: 8px;
+    padding: 5px 0; font-size: 14px; font-weight: 800; color: var(--blue); cursor: pointer;
+  }
+  .thumb-arrows button:active { background: var(--lime-soft); }
+
+  /* postage: jobsheet + waybill shown side by side */
+  .photo-pair { display: flex; gap: 2px; background: #e2e8f0; }
+  .photo-pair > div { flex: 1; position: relative; }
+  .photo-pair img {
+    width: 100%; display: block; min-height: 120px; max-height: 280px;
+    object-fit: contain; background: #e2e8f0; cursor: pointer;
+  }
+  .photo-pair .lbl {
+    position: absolute; top: 6px; left: 6px; background: rgba(31,43,19,.78);
+    color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+  }
+  .slot-btn img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; }
 
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
@@ -439,10 +460,21 @@
       </div>
     </div>
 
-    <label id="photos-label">Photos 📸</label>
-    <div class="thumbs" id="upload-thumbs"></div>
-    <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
-    <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
+    <div id="generic-photos">
+      <label id="photos-label">Photos 📸</label>
+      <div class="thumbs" id="upload-thumbs"></div>
+      <button class="photo-btn" onclick="document.getElementById('photos-file').click()">📷 Add Photo(s)</button>
+      <input type="file" id="photos-file" accept="image/*" multiple onchange="photosPicked(this)">
+    </div>
+
+    <div id="postage-slots" style="display:none">
+      <label>📄 Jobsheet photo</label>
+      <button class="photo-btn slot-btn" id="slot-0" onclick="document.getElementById('slot-0-file').click()">📷 Add Jobsheet Photo</button>
+      <input type="file" id="slot-0-file" accept="image/*" onchange="slotPicked(this, 0)">
+      <label>🏷️ Waybill photo (J&amp;T)</label>
+      <button class="photo-btn slot-btn" id="slot-1" onclick="document.getElementById('slot-1-file').click()">📷 Add Waybill Photo</button>
+      <input type="file" id="slot-1-file" accept="image/*" onchange="slotPicked(this, 1)">
+    </div>
 
     <div id="due-wrap" style="display:none">
       <label>Ready by (optional) ⏰</label>
@@ -923,15 +955,11 @@
     loadImages();
   }
 
-  // admin-only tools row: pending cards get Push Up, finished cards get Hide
+  // admin-only tools row (withArchive: finished cards get 🗄️ Hide)
   function toolBtns(j, withArchive) {
     if (!isAdmin()) return '';
-    var html = '<div class="tools">';
-    if (!withArchive) {
-      html += '<button class="t-pin" onclick="pushUpJob(\'' + j.id + '\')">' +
-        (j.pinnedAt ? '📌 Unpin' : '⬆️ Push Up') + '</button>';
-    }
-    html += '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
+    var html = '<div class="tools">' +
+      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
       '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">🗑️ Delete</button>';
     if (withArchive) {
       html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Hide</button>';
@@ -939,17 +967,18 @@
     return html + '</div>';
   }
 
-  /** Push a job to the very top of its list (press again to unpin). */
-  function pushUpJob(id) {
+  /** PUSH UP (Checking page): send a swiped jobsheet BACK to the front of
+      the swipe deck so staff must answer seen / not seen again. */
+  function askAgainJob(id) {
     var j = findJob(id);
     if (!j) return;
-    if (j.uploading) { toast('📤 Still uploading — wait a moment'); return; }
-    var pinning = !j.pinnedAt;
-    j.pinnedAt = pinning ? Date.now() : '';
+    j.status = 'pending';
+    j.doneAt = '';
+    j.pinnedAt = Date.now();   // front of the deck
     saveJobsCache(state.tab);
-    renderAll();
-    toast(pinning ? '⬆️ Pushed to the top!' : '↩️ Back to normal order');
-    google.script.run.withFailureHandler(bgFail).pushUp(id, state.pin);
+    renderAll(); updateBadgeLocal();
+    toast('🔁 Sent back — staff must swipe again!');
+    google.script.run.withFailureHandler(bgFail).askAgain(id, state.pin);
   }
 
   // ------------------------------------------------------------ TAB 1: checking (swipe)
@@ -1010,6 +1039,7 @@
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) + '</div>' +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
+        (isAdmin() ? '<button class="btn blue small" style="margin-top:8px" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — Ask Again</button>' : '') +
         '<div class="spacer"></div>' +
         toolBtns(j, true) +
         '</div></div>';
@@ -1173,11 +1203,8 @@
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
-    // pushed-up jobs first (latest push on top), then most urgent deadline,
-    // then jobs without a deadline, newest first
+    // most urgent deadline first; jobs without a deadline after, newest first
     pending.sort(function (a, b) {
-      var pa = Number(a.pinnedAt || 0), pb = Number(b.pinnedAt || 0);
-      if (pa !== pb) return pb - pa;
       var da = a.dueAt ? Number(a.dueAt) : Infinity;
       var db2 = b.dueAt ? Number(b.dueAt) : Infinity;
       if (da !== db2) return da - db2;
@@ -1203,13 +1230,24 @@
     return html;
   }
 
+  /** Postage: jobsheet + waybill shown together, side by side. */
+  function pairHtml(j) {
+    return '<div class="photo-pair">' +
+      '<div><span class="lbl">📄 Jobsheet</span>' +
+        imgTag(thumbOf(j, 0), '', 'onclick="viewPhoto(\'' + j.photoIds[0] + '\')"') + '</div>' +
+      '<div><span class="lbl">🏷️ Waybill</span>' +
+        imgTag(thumbOf(j, 1), '', 'onclick="viewPhoto(\'' + j.photoIds[1] + '\')"') + '</div>' +
+      '</div>';
+  }
+
   function jobCard(j, isDone) {
     var old = !isDone && (Date.now() - j.createdAt > DAY);
-    var html = '<div class="card">' + carouselHtml(j);
+    var media = (j.tab === 'postage' && j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1])
+      ? pairHtml(j) : carouselHtml(j);
+    var html = '<div class="card">' + media;
 
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
-    if (!isDone && j.pinnedAt) html += '<span class="chip pin">📌 Pushed up</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     if (!isDone) html += dueChip(j);
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
@@ -1371,8 +1409,10 @@
     };
     document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    document.getElementById('photos-label').textContent =
-      state.tab === 'postage' ? 'Photos 📸 (jobsheet + airway bill)' : 'Photos 📸';
+    // postage uses two fixed slots (jobsheet + waybill); other tabs use the multi picker
+    var isPost = state.tab === 'postage';
+    document.getElementById('generic-photos').style.display = isPost ? 'none' : 'block';
+    document.getElementById('postage-slots').style.display = isPost ? 'block' : 'none';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
     document.getElementById('due-wrap').style.display =
@@ -1383,11 +1423,43 @@
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
     });
 
-    renderUploadThumbs();
+    if (isPost) renderSlots(); else renderUploadThumbs();
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
   function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
+
+  // ---- postage slots (photo 0 = jobsheet, photo 1 = waybill) ----
+  var SLOT_LABELS = ['📷 Add Jobsheet Photo', '📷 Add Waybill Photo'];
+  function renderSlots() {
+    for (var i = 0; i < 2; i++) {
+      var b = document.getElementById('slot-' + i);
+      var p = state.upload.photos[i];
+      if (p) {
+        b.classList.add('hasphoto');
+        b.innerHTML = (p.thumb || p.b64
+          ? '<img src="data:image/jpeg;base64,' + (p.thumb || p.b64) + '">'
+          : imgTag(p.thumbId || p.id)) + ' ✅ Photo OK — change?';
+      } else {
+        b.classList.remove('hasphoto');
+        b.innerHTML = SLOT_LABELS[i];
+      }
+    }
+    var els = document.querySelectorAll('#postage-slots img[data-img]');
+    for (var k = 0; k < els.length; k++) els[k].setAttribute('data-vis', '1');
+    loadImages();
+  }
+  function slotPicked(input, idx) {
+    if (!input.files || !input.files[0]) return;
+    var f = input.files[0];
+    input.value = '';
+    busy(true, 'Preparing photo…');
+    compressImage(f, function (img) {
+      busy(false);
+      state.upload.photos[idx] = { b64: img.full, thumb: img.thumb };
+      renderSlots();
+    });
+  }
 
   function pickCat(btn) {
     state.upload.cat = btn.getAttribute('data-cat');
@@ -1397,11 +1469,19 @@
 
   function renderUploadThumbs() {
     var html = '';
+    var n = state.upload.photos.length;
     state.upload.photos.forEach(function (p, i) {
-      html += '<div class="thumb">' +
+      html += '<div class="thumb-wrap"><div class="thumb">' +
         (p.b64 ? '<img src="data:image/jpeg;base64,' + (p.thumb || p.b64) + '">' : imgTag(p.thumbId || p.id)) +
         '<button class="thumb-x" onclick="removeUploadPhoto(' + i + ')">✕</button>' +
         '<span class="thumb-n">' + (i + 1) + '</span>' +
+        '</div>' +
+        (n > 1
+          ? '<div class="thumb-arrows">' +
+            (i > 0 ? '<button onclick="movePhoto(' + i + ',-1)">◀</button>' : '') +
+            (i < n - 1 ? '<button onclick="movePhoto(' + i + ',1)">▶</button>' : '') +
+            '</div>'
+          : '') +
         '</div>';
     });
     document.getElementById('upload-thumbs').innerHTML = html;
@@ -1411,6 +1491,14 @@
   }
   function removeUploadPhoto(i) {
     state.upload.photos.splice(i, 1);
+    renderUploadThumbs(); loadImages();
+  }
+  /** ◀ ▶ rearrange photo order before posting */
+  function movePhoto(i, dir) {
+    var arr = state.upload.photos;
+    var k = i + dir;
+    if (k < 0 || k >= arr.length) return;
+    var tmp = arr[i]; arr[i] = arr[k]; arr[k] = tmp;
     renderUploadThumbs(); loadImages();
   }
 
@@ -1440,11 +1528,15 @@
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
     var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
 
-    if (!photos.length) { toast('Please add a photo first 📸'); return; }
-    if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
-    if (state.tab === 'postage' && photos.length < 2 && !state.editing) {
-      toast('Need at least 2 photos: jobsheet + airway bill 📸'); return;
+    if (state.tab === 'postage') {
+      if (!photos[0]) { toast('Please add the Jobsheet photo 📄'); return; }
+      if (!photos[1]) { toast('Please add the Waybill photo 🏷️'); return; }
+      photos = [photos[0], photos[1]];   // exactly 2, in order
+      state.upload.photos = photos;
+    } else {
+      if (!photos.length) { toast('Please add a photo first 📸'); return; }
     }
+    if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
 
     if (state.editing) {
       busy(true, 'Saving changes… 💾');

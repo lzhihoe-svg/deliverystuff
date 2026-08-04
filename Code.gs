@@ -189,10 +189,11 @@ function addJob(payload) {
 }
 
 /**
- * ADMIN ONLY. Push a job to the TOP of its list (or press again to unpin).
- * Pushed-up jobs sort above everything else, even overdue deadlines.
+ * ADMIN ONLY. Ask the factory AGAIN about a jobsheet they already swiped:
+ * puts it back to 'pending' and pins it to the FRONT of the swipe deck,
+ * so staff must answer ❤️ seen / ❌ not seen one more time.
  */
-function pushUp(id, pin) {
+function askAgain(id, pin) {
   requireAdmin_(pin);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -200,14 +201,16 @@ function pushUp(id, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var cur = sh.getRange(row, 15).getValue();
-    var val = cur ? '' : new Date().getTime();
-    sh.getRange(row, 15).setValue(val);
-    return { id: id, pinnedAt: val };
+    var ts = new Date().getTime();
+    sh.getRange(row, 6).setValue('pending');
+    sh.getRange(row, 10).setValue('');
+    sh.getRange(row, 15).setValue(ts);
+    return { id: id, status: 'pending', pinnedAt: ts };
   } finally {
     lock.releaseLock();
   }
 }
+
 
 /**
  * Attach one more photo to an existing job at a given position.

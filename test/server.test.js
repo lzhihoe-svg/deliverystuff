@@ -361,24 +361,26 @@ console.log('\n== dueAt (ready-by deadline) ==');
   check(init.jobs.length === 2, 'getInitData still fine with dueAt column');
 }
 
-console.log('\n== pushUp (call to top) ==');
+console.log('\n== askAgain (re-check with staff) ==');
 {
   const { ctx } = makeEnv();
-  const a = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'A', photos: [B64], thumbs: [B64] });
-  const b = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'B', photos: [B64], thumbs: [B64] });
-  throws(() => ctx.pushUp(a.id, ''), 'staff cannot push up');
-  throws(() => ctx.pushUp(a.id, '9999'), 'wrong PIN cannot push up');
-  const r = ctx.pushUp(a.id, PIN);
-  check(typeof r.pinnedAt === 'number' && r.pinnedAt > 0, 'admin push up sets pinnedAt');
-  check(ctx.getJobs('delivery').find(j => j.id === a.id).pinnedAt === r.pinnedAt, 'pinnedAt persisted in sheet');
-  const r2 = ctx.pushUp(a.id, PIN);
-  check(r2.pinnedAt === '', 'pressing again unpins');
-  throws(() => ctx.pushUp('ghost', PIN), 'unknown id throws');
-  ctx.pushUp(b.id, PIN);
-  const e = ctx.editJob(b.id, { note: 'x', category: 'bus', dueAt: '', photos: [{ id: b.photoIds[0], thumbId: b.thumbIds[0] }] }, PIN);
-  check(!!e.pinnedAt, 'editing a job keeps its push-up');
-  check(!!ctx.getAllData().jobs.delivery.find(j => j.id === b.id).pinnedAt, 'getAllData includes pinnedAt');
-  check(ctx.addJob({ tab: 'want', category: '', note: '', photos: [B64] }).pinnedAt === '', 'new jobs start unpinned');
+  const j = ctx.addJob({ tab: 'want', category: '', note: 'Jobsheet A', photos: [B64], thumbs: [B64] });
+  ctx.updateStatus(j.id, 'got', null, null, null);
+  check(ctx.getJobs('want')[0].status === 'got', 'job swiped as got');
+  throws(() => ctx.askAgain(j.id, ''), 'staff cannot ask again');
+  throws(() => ctx.askAgain(j.id, '9999'), 'wrong PIN cannot ask again');
+  const r = ctx.askAgain(j.id, PIN);
+  check(r.status === 'pending' && typeof r.pinnedAt === 'number', 'askAgain returns pending + pinned');
+  const back = ctx.getJobs('want')[0];
+  check(back.status === 'pending', 'job is back in the swipe deck');
+  check(back.doneAt === '', 'old answer time cleared');
+  check(back.pinnedAt === r.pinnedAt, 'pinned to the front of the deck');
+  check(ctx.getCounts().want === 1, 'badge counts it as pending again');
+  const j2 = ctx.addJob({ tab: 'want', category: '', note: 'B', photos: [B64] });
+  ctx.updateStatus(j2.id, 'notseen', null, null, null);
+  const r2 = ctx.askAgain(j2.id, PIN);
+  check(r2.status === 'pending', 'works from notseen too');
+  throws(() => ctx.askAgain('ghost', PIN), 'unknown id throws');
 }
 
 console.log('\n== admin PIN enforcement ==');
