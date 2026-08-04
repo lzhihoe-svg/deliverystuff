@@ -296,6 +296,13 @@
     padding: 5px 0; font-size: 14px; font-weight: 800; color: var(--blue); cursor: pointer;
   }
   .thumb-arrows button:active { background: var(--lime-soft); }
+  /* move a photo to the other postage group (wrong upload fix) */
+  .thumb-move {
+    display: block; width: 100%; margin-top: 4px;
+    border: 2px solid #d97706; color: #b45309; background: #fff;
+    border-radius: 8px; padding: 4px 0; font-size: 12px; font-weight: 800; cursor: pointer;
+  }
+  .thumb-move:active { background: #fef3c7; }
 
   /* postage: Jobsheet mini-carousel | Waybill mini-carousel, side by side */
   .photo-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #e2e8f0; }
@@ -1497,6 +1504,9 @@
             (i < n - 1 ? '<button onclick="movePhotoG(\'' + g + '\',' + i + ',1)">▶</button>' : '') +
             '</div>'
           : '') +
+        // uploaded to the wrong group? one tap moves it to the other one
+        (g === 'js' ? '<button class="thumb-move" onclick="transferPhoto(\'js\',' + i + ')">⬇️ To Waybill</button>' : '') +
+        (g === 'wb' ? '<button class="thumb-move" onclick="transferPhoto(\'wb\',' + i + ')">⬆️ To Jobsheet</button>' : '') +
         '</div>';
     });
     var box = document.getElementById(grpBoxId(g));
@@ -1504,6 +1514,16 @@
     // the modal lives outside the scroller, so mark its images as visible
     var els = box.querySelectorAll('img[data-img]');
     for (var k = 0; k < els.length; k++) els[k].setAttribute('data-vis', '1');
+  }
+
+  /** Move a photo between the Jobsheet and Waybill groups. */
+  function transferPhoto(g, i) {
+    var from = grp(g), to = g === 'js' ? state.upload.wb : state.upload.js;
+    var p = from.splice(i, 1)[0];
+    if (!p) return;
+    to.push(p);
+    renderAllThumbs();
+    toast(g === 'js' ? '🏷️ Moved to Waybill' : '📄 Moved to Jobsheet');
   }
   function renderAllThumbs() {
     if (state.tab === 'postage') { renderThumbsG('js'); renderThumbsG('wb'); }

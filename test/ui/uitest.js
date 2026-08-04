@@ -366,6 +366,18 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#wb-file', IMG3);
   await sleep(500);
   check((await page.locator('#wb-thumbs .thumb').count()) === 1, 'waybill photo added in its own group');
+
+  console.log('\n-- move photos BETWEEN Jobsheet and Waybill (wrong upload fix) --');
+  check((await page.locator('#js-thumbs .thumb-move').count()) === 2, "jobsheet photos have '⬇️ To Waybill' buttons");
+  check((await page.locator('#wb-thumbs .thumb-move').count()) === 1, "waybill photos have '⬆️ To Jobsheet' buttons");
+  await page.locator('#js-thumbs .thumb-move').last().click();
+  await sleep(250);
+  check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 2,
+    'one tap moves a jobsheet photo into the Waybill group');
+  await page.locator('#wb-thumbs .thumb-move').last().click();
+  await sleep(250);
+  check((await page.locator('#js-thumbs .thumb').count()) === 2 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
+    'and one tap moves it back to Jobsheet');
   await page.click('#btn-submit');
   await sleep(900);
   check((await page.locator('#postage-list .photo-pair').count()) >= 1, 'card shows Jobsheet | Waybill side by side');
