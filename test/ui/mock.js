@@ -58,8 +58,7 @@
         id: p.clientId || ('j' + uid), tab: p.tab, category: p.category || '', note: p.note || '',
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
-        status: p.tab === 'defect' ? 'done' : 'pending',
-        createdAt: Date.now(), doneAt: p.tab === 'defect' ? Date.now() : '',
+        status: 'pending', createdAt: Date.now(), doneAt: '',
         proofPhotoId: '', proofThumbId: '',
         dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0,
         customer: (p.customer || '').trim() || 'Unassigned'

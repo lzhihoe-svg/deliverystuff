@@ -312,14 +312,11 @@ function addJob(payload) {
       var row = findRow_(sh, id);
       if (row > 0) existing = sh.getRange(row, 1, 1, 18).getValues()[0];
     }
-    // A defect entry is a RECORD, not a task: it is saved already done.
-    var status = payload.tab === 'defect' ? 'done' : 'pending';
-    var doneAt = payload.tab === 'defect' ? createdAt : '';
     if (!existing) {
       sh.appendRow([
         id, payload.tab, payload.category || '', payload.note || '',
-        JSON.stringify(photoIds), status,
-        '', createdAt, '', doneAt, '',
+        JSON.stringify(photoIds), 'pending',
+        '', createdAt, '', '', '',
         JSON.stringify(thumbIds), '', dueAt, '', jsCount,
         customer, folderId
       ]);
@@ -334,8 +331,8 @@ function addJob(payload) {
   }
   return {
     id: id, tab: payload.tab, category: payload.category || '',
-    note: payload.note || '', photoIds: photoIds, status: status,
-    createdAt: createdAt, doneAt: doneAt, proofPhotoId: '',
+    note: payload.note || '', photoIds: photoIds, status: 'pending',
+    createdAt: createdAt, doneAt: '', proofPhotoId: '',
     thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
     jsCount: jsCount, customer: customer
   };

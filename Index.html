@@ -1519,29 +1519,10 @@
   }
 
   // ------------------------------------------------------------ TAB 4: defect
-  // Defect entries are RECORDS (saved already-done): jobsheet photos on the
-  // left, defect photos on the right — evidence, not a task to complete.
+  // Same workflow as Postage: To Do → staff fixes the defect and takes a
+  // PROOF photo → Done. Cards show Jobsheet | Defect photos side by side.
   function renderDefect() {
-    var jobs = state.jobs.defect.filter(function (j) { return j.status !== 'archived'; });
-    var el = document.getElementById('defect-list');
-    if (!jobs.length) {
-      el.innerHTML = '<div class="empty"><span class="big">🎉</span>No defects recorded.' +
-        '<br><span class="hint">Tap ＋ Post below to record one</span></div>';
-      return;
-    }
-    var html = '<div class="section-title" style="color:#b91c1c">🚨 Defect Records (' + jobs.length + ')</div><div class="grid">';
-    jobs.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).forEach(function (j) {
-      var media = (j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1]) ? pairHtml(j) : carouselHtml(j);
-      html += '<div class="card">' + media + '<div class="body">' +
-        (j.uploading ? '<span class="chip up">📤 Uploading…</span> ' : '') +
-        (j.customer && j.customer !== 'Unassigned' ? '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ' : '') +
-        (j.note ? '<div class="note">📢 ' + esc(j.note) + '</div>' : '') +
-        '<div class="meta">Recorded ' + timeAgo(j.createdAt) + '</div>' +
-        '<div class="spacer"></div>' +
-        (j.uploading ? '' : toolBtns(j, true)) +
-        '</div></div>';
-    });
-    el.innerHTML = html + '</div>';
+    document.getElementById('defect-list').innerHTML = renderJobList(state.jobs.defect);
   }
 
   function renderJobList(jobs) {
@@ -1623,7 +1604,7 @@
 
   function jobCard(j, isDone) {
     var old = !isDone && (Date.now() - j.createdAt > DAY);
-    var media = (j.tab === 'postage' && j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1])
+    var media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1])
       ? pairHtml(j) : carouselHtml(j);
     var html = '<div class="card">' + media;
 
@@ -2172,11 +2153,8 @@
     }
     var tempJob = {
       id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
-      photoIds: tempPhotoIds, thumbIds: tempThumbIds,
-      // a defect entry is a RECORD — saved as already done
-      status: postTab === 'defect' ? 'done' : 'pending',
-      createdAt: Date.now(), doneAt: postTab === 'defect' ? Date.now() : '',
-      proofPhotoId: '', proofThumbId: '',
+      photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
+      createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
       dueAt: dueMs, jsCount: jsCount, customer: customer || 'Unassigned', uploading: true
     };
     state.jobs[postTab].unshift(tempJob);

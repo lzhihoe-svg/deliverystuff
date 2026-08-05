@@ -593,21 +593,26 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
 }
 
-console.log('\n== defect tab (jobsheet + defect photos, saved as a done record) ==');
+console.log('\n== defect tab (jobsheet + defect photos + PROOF to finish) ==');
 {
   const { ctx, files } = makeEnv();
   const d = ctx.addJob({ tab: 'defect', category: '', note: 'Torn sleeve', customer: 'Nurul', photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 1 });
-  check(d.status === 'done' && d.doneAt === d.createdAt, 'defect entry saved as DONE (a record, not a task)');
+  check(d.status === 'pending', 'defect entry starts as To Do — needs a PROOF photo to finish');
   check(files[d.photoIds[0]].blob.name.indexOf('Jobsheet 1') === 0, 'first group still named Jobsheet');
   check(files[d.photoIds[1]].blob.name.indexOf('Defect 1') === 0 &&
         files[d.photoIds[2]].blob.name.indexOf('Defect 2') === 0, "second-group photos named 'Defect N' (not Waybill)");
   check(files[d.photoIds[0]].folder.indexOf('/Nurul/DEFECT') > 0, 'filed under customer / DEFECT job folder');
   const all = ctx.getAllData();
-  check(all.jobs.defect.length === 1 && all.counts.defect === 0, 'getAllData returns the defect tab, 0 pending');
+  check(all.jobs.defect.length === 1 && all.counts.defect === 1, 'getAllData returns the defect tab (1 pending, badge counts it)');
   check(ctx.searchHistory('defect', PIN).total === 1, 'history finds defect records by tab name');
+  throws(() => ctx.updateStatus(d.id, 'done', null, null, null), 'defect cannot be done WITHOUT a proof photo');
+  const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
+  check(files[r.proofPhotoId].folder === files[d.photoIds[0]].folder, 'PROOF lands in the same defect job folder');
+  check(ctx.getJobs('defect')[0].status === 'done' && ctx.getAllData().counts.defect === 0, 'proof photo completes the defect');
   ctx.resetDone(PIN);
-  check(ctx.getJobs('defect').length === 0, 'CLEAR DONE archives defect records (they are done)');
-  check(ctx.searchHistory('torn', PIN).total === 1, 'still findable in history after clearing');
+  check(ctx.getJobs('defect').length === 0, 'CLEAR DONE archives finished defects');
+  check(ctx.searchHistory('torn', PIN).total === 1 && ctx.searchHistory('torn', PIN).results[0].proofPhotoId,
+    'still findable in history after clearing, WITH its proof');
 }
 
 console.log('\n== addJob idempotency (safe retry via clientId) ==');

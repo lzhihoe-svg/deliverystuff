@@ -770,20 +770,31 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(900);
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs.find(x => x.note === 'Torn sleeve x3');
-    return !!(j && j.tab === 'defect' && j.status === 'done' && j.jsCount === 1 && j.photoIds.length === 3);
-  }), 'record saved as DONE with 1 jobsheet + 2 defect photos');
+    return !!(j && j.tab === 'defect' && j.status === 'pending' && j.jsCount === 1 && j.photoIds.length === 3);
+  }), 'saved with 1 jobsheet + 2 defect photos, waiting in To Do');
   const defCard = page.locator('#defect-list .card').filter({ hasText: 'Torn sleeve x3' });
-  check((await defCard.count()) === 1, 'record card shows on the Defect page');
+  check((await defCard.count()) === 1, 'card shows on the Defect page');
   check((await defCard.locator('.photo-pair .lbl').nth(1).textContent()).indexOf('Defect') >= 0,
     'card shows Jobsheet | Defect side by side');
-  check((await defCard.locator('.btn.green').count()) === 0, "no 'Take Proof' button — a record is already done");
-  check(!await page.locator('#badge-defect').isVisible(), 'no red badge (nothing pending on Defect)');
+  check((await defCard.locator('.btn.green').count()) === 1, "defect needs a PROOF: 'Done! Take Proof Photo' button shown");
+  check((await page.locator('#badge-defect').textContent()) === '1', 'red badge counts the open defect');
+  check((await page.locator('#defect-list .stat-row').count()) === 1, 'Balance/Completed boxes on the Defect page too');
   await clickSafe(defCard.locator('.t-edit').first());
   await sleep(300);
   check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 2,
     'edit splits jobsheet / defect photos back into their groups');
   await page.click('#upload-overlay .x-close');
   await sleep(200);
+  // fixing the defect: proof photo completes it
+  await clickSafe(defCard.locator('.btn.green').first());
+  await page.setInputFiles('#proof-file', IMG);
+  await sleep(800);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Torn sleeve x3');
+    return j.status === 'done' && !!j.proofPhotoId;
+  }), 'proof photo marks the defect DONE on the server');
+  check((await defCard.locator('.proof-tools .t-reproof').count()) === 1, 'Retake/Remove proof tools available on defects too');
+  check(!await page.locator('#badge-defect').isVisible(), 'badge clears when the defect is fixed');
   await page.click('#nav-postage');
   await sleep(300);
 
