@@ -498,34 +498,60 @@ console.log('\n== askAgain (re-check with staff) ==');
   throws(() => ctx.askAgain('ghost', PIN), 'unknown id throws');
 }
 
-console.log('\n== tidy Drive storage (month folders + readable names) ==');
+console.log('\n== evidence filing: month / customer / one folder per job ==');
 {
   const { ctx, files } = makeEnv();
   const now = new Date();
   const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
   const day = ym + '-' + ('0' + now.getDate()).slice(-2);
 
-  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'Nurul Syifa jersey', photos: [B64], thumbs: [B64] });
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '2 jersey', customer: 'Nurul Syifa', photos: [B64], thumbs: [B64] });
+  check(d.customer === 'Nurul Syifa', 'addJob stores the customer');
   const jf = files[d.photoIds[0]];
-  check(jf.folder === 'folder1/' + ym, 'photos are filed into a month subfolder (' + ym + ')');
-  check(jf.blob.name.indexOf('DELIVERY bus') === 0, 'file name starts with the tab + category');
-  check(jf.blob.name.indexOf(day) > 0, 'file name contains the date');
-  check(jf.blob.name.indexOf('Nurul Syifa jersey') > 0, 'file name contains the customer note');
+  check(jf.folder.indexOf('folder1/' + ym + '/Nurul Syifa/DELIVERY bus') === 0,
+    'photo filed under month / CUSTOMER / job folder');
+  check(jf.folder.indexOf(day) > 0, 'job folder name contains the date');
+  check(jf.folder.indexOf('2 jersey') > 0, 'job folder name contains the note');
+  check(jf.blob.name.indexOf('Photo 1 — Nurul Syifa') === 0, 'file named by its role + customer');
 
+  // proof lands in the SAME job folder — jobsheet + proof together
   const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
   const pf = files[r.proofPhotoId];
-  check(pf.blob.name.indexOf('PROOF · DELIVERY bus') === 0, "proof file name starts with 'PROOF'");
-  check(pf.blob.name.indexOf('Nurul Syifa jersey') > 0, 'proof file name contains the customer note');
-  check(pf.folder === 'folder1/' + ym, 'proof stored in the month subfolder too');
+  check(pf.folder === jf.folder, 'PROOF stored in the SAME job folder as the photos');
+  check(pf.blob.name.indexOf('PROOF — Nurul Syifa') === 0, "proof file named 'PROOF — customer'");
 
-  // notes with characters Drive dislikes are cleaned, not crashed
-  const w = ctx.addJob({ tab: 'want', category: '', note: 'A/B:C*D?"E<F>G|H\nI', photos: [B64] });
-  check(files[w.photoIds[0]].blob.name.indexOf('/') < 0 || files[w.photoIds[0]].blob.name.indexOf('A/B') < 0,
-    'unsafe characters cleaned from file names');
-
-  // retake keeps the readable naming
+  // retake keeps the filing
   const r2 = ctx.updateProof(d.id, B64, B64);
-  check(files[r2.proofPhotoId].blob.name.indexOf('PROOF') === 0, 'retaken proof also gets a PROOF name');
+  check(files[r2.proofPhotoId].folder === jf.folder && files[r2.proofPhotoId].blob.name.indexOf('PROOF') === 0,
+    'retaken proof lands in the same job folder');
+
+  // blank customer → Unassigned folder
+  const u = ctx.addJob({ tab: 'delivery', category: 'pickup', note: 'no name', photos: [B64] });
+  check(u.customer === 'Unassigned', 'blank customer becomes Unassigned');
+  check(files[u.photoIds[0]].folder.indexOf('/Unassigned/') > 0, 'filed under the Unassigned folder');
+
+  // postage: files named Jobsheet / Waybill by their group
+  const p = ctx.addJob({ tab: 'postage', category: '', note: '', customer: 'Humaira', photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 2 });
+  check(files[p.photoIds[0]].blob.name.indexOf('Jobsheet 1') === 0 &&
+        files[p.photoIds[1]].blob.name.indexOf('Jobsheet 2') === 0 &&
+        files[p.photoIds[2]].blob.name.indexOf('Waybill 1') === 0,
+    'postage files named Jobsheet 1/2 and Waybill 1');
+
+  // background-uploaded photos (photo 2+) land in the same job folder
+  const bg = ctx.addJob({ tab: 'postage', category: '', note: '', customer: 'Humaira', photos: [B64], thumbs: [B64], jsCount: 1 });
+  const add = ctx.addPhotoToJob(bg.id, 1, B64, B64);
+  check(files[add.photoId].folder === files[bg.photoIds[0]].folder, 'parallel-uploaded photo joins the same folder');
+  check(files[add.photoId].blob.name.indexOf('Waybill 1') === 0, 'and is named by its group');
+
+  // unsafe characters cleaned from folder/file names
+  const w = ctx.addJob({ tab: 'want', category: '', note: 'x', customer: 'A/B:C*D?"E<F>G|H\nI', photos: [B64] });
+  check(files[w.photoIds[0]].folder.indexOf('A/B') < 0, 'unsafe characters cleaned from the customer folder');
+
+  // edit can change the customer; search finds by customer
+  ctx.editJob(d.id, { note: '2 jersey', category: 'bus', customer: 'Nurul Syifa Binti Ali', photos: [{ id: d.photoIds[0], thumbId: d.thumbIds[0] }] }, PIN);
+  check(ctx.getJobs('delivery').find(j => j.id === d.id).customer === 'Nurul Syifa Binti Ali', 'edit updates the customer');
+  const s = ctx.searchHistory('binti ali', PIN);
+  check(s.total === 1 && s.results[0].id === d.id, 'history finds the job by CUSTOMER name');
 }
 
 console.log('\n== searchHistory (evidence lookup, survives RESET) ==');

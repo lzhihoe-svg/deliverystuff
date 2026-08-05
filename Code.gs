@@ -55,7 +55,8 @@ function ensureSetup_() {
       sh.setName('Jobs');
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
                     'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
-                    'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt', 'jsCount']);
+                    'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt', 'jsCount',
+                    'customer', 'folderId']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -108,6 +109,7 @@ var TAB_TAG = { want: 'CHECKING', delivery: 'DELIVERY', postage: 'POSTAGE' };
 /**
  * Human-readable Drive file name, so evidence is findable in Drive alone:
  * "PROOF · DELIVERY bus · 2026-08-05 14.32 — Nurul Syifa jersey"
+ * (fallback naming for old jobs that have no folder of their own)
  */
 function photoName_(tab, category, note, kind) {
   var s = (kind ? kind + ' · ' : '') +
@@ -118,17 +120,61 @@ function photoName_(tab, category, note, kind) {
   return s;
 }
 
-/** Quick unlocked read of a job's tab/category/note (for file names). */
+/** Quick unlocked read of the job fields needed for filing photos. */
 function jobLabel_(id) {
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row > 0) {
-      var v = sh.getRange(row, 2, 1, 3).getValues()[0];
-      return { tab: v[0], category: v[1], note: v[2] };
+      var v = sh.getRange(row, 1, 1, 18).getValues()[0];
+      return { tab: v[1], category: v[2], note: v[3], jsCount: Number(v[15]) || 0,
+               customer: v[16] || '', folderId: v[17] || '' };
     }
   } catch (e) {}
-  return { tab: '', category: '', note: '' };
+  return { tab: '', category: '', note: '', jsCount: 0, customer: '', folderId: '' };
+}
+
+/** Get-or-create a child folder by name. */
+function childFolder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+/**
+ * Evidence filing: Kilang App Photos / 2026-08 / <Customer> / <one folder
+ * per job>. Everything belonging to a job — jobsheet, waybill, proof —
+ * lives together in that job's folder.
+ */
+function makeJobFolder_(customer, tab, category, note, createdAt) {
+  var cf = childFolder_(monthFolder_(), cleanName_(customer) || 'Unassigned');
+  var d = new Date(Number(createdAt));
+  var jname = (TAB_TAG[tab] || 'JOB') + (category ? ' ' + category : '') +
+    ' · ' + dayStr_(createdAt) + ' ' + pad2_(d.getHours()) + '.' + pad2_(d.getMinutes());
+  var n = cleanName_(note);
+  if (n) jname += ' — ' + n;
+  return childFolder_(cf, jname);
+}
+
+/** The folder a job's photos belong in (falls back for old jobs). */
+function jobFolderOf_(lbl) {
+  if (lbl && lbl.folderId) {
+    try { return DriveApp.getFolderById(lbl.folderId); } catch (e) {}
+  }
+  return monthFolder_();
+}
+
+/** "Jobsheet 1" / "Waybill 2" / "Photo 3" — what a photo IS in its job. */
+function photoKind_(tab, jsCount, index) {
+  if (tab === 'postage' && jsCount > 0) {
+    return index < jsCount ? 'Jobsheet ' + (index + 1) : 'Waybill ' + (index - jsCount + 1);
+  }
+  return 'Photo ' + (index + 1);
+}
+
+/** File name inside a job folder: "Jobsheet 1 — Nurul Syifa · 2026-08-05 14.32" */
+function fileLabel_(kind, customer) {
+  var c = cleanName_(customer);
+  return kind + (c && c !== 'Unassigned' ? ' — ' + c : '') + ' · ' + stamp_();
 }
 
 /**
@@ -151,11 +197,11 @@ function monthFolder_() {
   return f;
 }
 
-/** Saves a base64 JPEG to Drive (this month's subfolder), returns the file id. */
-function savePhoto_(base64Data, name) {
+/** Saves a base64 JPEG into a given Drive folder, returns the file id. */
+function savePhotoTo_(folder, base64Data, name) {
   var bytes = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(bytes, 'image/jpeg', name + '.jpg');
-  var file = monthFolder_().createFile(blob);
+  var file = folder.createFile(blob);
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (e) {
@@ -163,6 +209,11 @@ function savePhoto_(base64Data, name) {
     // getImagesData anyway, so this is not required.
   }
   return file.getId();
+}
+
+/** Saves into this month's folder (fallback for jobs without their own folder). */
+function savePhoto_(base64Data, name) {
+  return savePhotoTo_(monthFolder_(), base64Data, name);
 }
 
 function trashFile_(fileId) {
@@ -208,7 +259,8 @@ function rowToJob_(r) {
     createdAt: r[7], doneAt: r[9], proofPhotoId: r[10],
     thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || '',
     dueAt: r[13] || '', pinnedAt: r[14] || '',
-    jsCount: Number(r[15]) || 0   // postage: first N photos are Jobsheet, rest Waybill
+    jsCount: Number(r[15]) || 0,  // postage: first N photos are Jobsheet, rest Waybill
+    customer: r[16] || ''
   };
 }
 
@@ -229,16 +281,23 @@ function addJob(payload) {
   }
   if (payload.photos.length > 6) throw new Error('Max 6 photos per job');
   var id = Utilities.getUuid();
-  var photoIds = [], thumbIds = [];
-  for (var i = 0; i < payload.photos.length; i++) {
-    var base = photoName_(payload.tab, payload.category, payload.note, '');
-    photoIds.push(savePhoto_(payload.photos[i], base + ' (photo ' + (i + 1) + ')'));
-    var t = payload.thumbs && payload.thumbs[i];
-    thumbIds.push(t ? savePhoto_(t, base + ' (thumb ' + (i + 1) + ')') : '');
-  }
   var createdAt = new Date().getTime();
   var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
   var jsCount = payload.jsCount ? Number(payload.jsCount) : 0;
+  var customer = cleanName_(payload.customer) || 'Unassigned';
+
+  // Every job gets its OWN Drive folder: month / customer / job.
+  // Jobsheet, waybill and (later) the proof all land together in it.
+  var folder = makeJobFolder_(customer, payload.tab, payload.category, payload.note, createdAt);
+  var folderId = folder.getId();
+
+  var photoIds = [], thumbIds = [];
+  for (var i = 0; i < payload.photos.length; i++) {
+    var kind = photoKind_(payload.tab, jsCount, i);
+    photoIds.push(savePhotoTo_(folder, payload.photos[i], fileLabel_(kind, customer)));
+    var t = payload.thumbs && payload.thumbs[i];
+    thumbIds.push(t ? savePhotoTo_(folder, t, fileLabel_(kind + ' (thumb)', customer)) : '');
+  }
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -247,7 +306,8 @@ function addJob(payload) {
       id, payload.tab, payload.category || '', payload.note || '',
       JSON.stringify(photoIds), 'pending',
       '', createdAt, '', '', '',
-      JSON.stringify(thumbIds), '', dueAt, '', jsCount
+      JSON.stringify(thumbIds), '', dueAt, '', jsCount,
+      customer, folderId
     ]);
   } finally {
     lock.releaseLock();
@@ -257,7 +317,7 @@ function addJob(payload) {
     note: payload.note || '', photoIds: photoIds, status: 'pending',
     createdAt: createdAt, doneAt: '', proofPhotoId: '',
     thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
-    jsCount: jsCount
+    jsCount: jsCount, customer: customer
   };
 }
 
@@ -321,10 +381,12 @@ function addPhotoToJob(id, index, fullB64, thumbB64) {
   if (!(index >= 0 && index < 6)) throw new Error('Bad photo index');
 
   // Save to Drive BEFORE taking the lock (Drive is the slow part).
+  // Photos file into the SAME job folder photo 1 created.
   var lbl = jobLabel_(id);
-  var base = photoName_(lbl.tab, lbl.category, lbl.note, '');
-  var pId = savePhoto_(fullB64, base + ' (photo ' + (index + 1) + ')');
-  var tId = thumbB64 ? savePhoto_(thumbB64, base + ' (thumb ' + (index + 1) + ')') : '';
+  var folder = jobFolderOf_(lbl);
+  var kind = photoKind_(lbl.tab, lbl.jsCount, index);
+  var pId = savePhotoTo_(folder, fullB64, fileLabel_(kind, lbl.customer));
+  var tId = thumbB64 ? savePhotoTo_(folder, thumbB64, fileLabel_(kind + ' (thumb)', lbl.customer)) : '';
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -363,11 +425,14 @@ function editJob(id, changes, pin) {
 
   // Save new photos BEFORE taking the lock (Drive is the slow part).
   var lbl = jobLabel_(id);
+  var folder = jobFolderOf_(lbl);
+  var editCustomer = changes.customer !== undefined ? (cleanName_(changes.customer) || 'Unassigned') : lbl.customer;
+  var editJs = changes.jsCount ? Number(changes.jsCount) : 0;
   var newIds = [], newThumbIds = [];
   for (var i = 0; i < spec.length; i++) {
-    var base = photoName_(lbl.tab, lbl.category || changes.category, changes.note || lbl.note, '');
-    newIds.push(spec[i].b64 ? savePhoto_(spec[i].b64, base + ' (photo ' + (i + 1) + ')') : null);
-    newThumbIds.push(spec[i].b64 && spec[i].thumb ? savePhoto_(spec[i].thumb, base + ' (thumb ' + (i + 1) + ')') : null);
+    var kind = photoKind_(lbl.tab, editJs, i);
+    newIds.push(spec[i].b64 ? savePhotoTo_(folder, spec[i].b64, fileLabel_(kind, editCustomer)) : null);
+    newThumbIds.push(spec[i].b64 && spec[i].thumb ? savePhotoTo_(folder, spec[i].thumb, fileLabel_(kind + ' (thumb)', editCustomer)) : null);
   }
 
   var toTrash = [];
@@ -381,7 +446,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 16).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 18).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -403,6 +468,7 @@ function editJob(id, changes, pin) {
     sh.getRange(row, 12).setValue(JSON.stringify(finalThumbs));
     sh.getRange(row, 14).setValue(dueAt);
     sh.getRange(row, 16).setValue(jsCount);
+    sh.getRange(row, 17).setValue(editCustomer);
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
@@ -410,6 +476,7 @@ function editJob(id, changes, pin) {
     vals[11] = JSON.stringify(finalThumbs);
     vals[13] = dueAt;
     vals[15] = jsCount;
+    vals[16] = editCustomer;
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
@@ -552,8 +619,9 @@ function updateProof(id, proofBase64, proofThumbBase64) {
   if (!proofBase64) throw new Error('Proof photo required');
   // Save the new proof BEFORE taking the lock (Drive is the slow part).
   var lbl = jobLabel_(id);
-  var proofId = savePhoto_(proofBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF'));
-  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF thumb')) : '';
+  var pFolder = jobFolderOf_(lbl);
+  var proofId = savePhotoTo_(pFolder, proofBase64, fileLabel_('PROOF', lbl.customer));
+  var proofThumbId = proofThumbBase64 ? savePhotoTo_(pFolder, proofThumbBase64, fileLabel_('PROOF (thumb)', lbl.customer)) : '';
   var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -607,7 +675,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 17).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -633,7 +701,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [] };
   var counts = { want: 0, delivery: 0, postage: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
-  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 17).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
@@ -659,11 +727,11 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
     throw new Error('Proof photo required');
   }
   // Save the proof photo BEFORE taking the lock (Drive is the slow part).
-  // PROOF files get a readable name (date + job note) — customer evidence
-  // must be findable in Drive by eye.
+  // The PROOF lands in the SAME job folder as the jobsheet/waybill photos.
   var lbl = proofBase64 ? jobLabel_(id) : null;
-  var proofId = proofBase64 ? savePhoto_(proofBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF')) : '';
-  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF thumb')) : '';
+  var pFolder = lbl ? jobFolderOf_(lbl) : null;
+  var proofId = proofBase64 ? savePhotoTo_(pFolder, proofBase64, fileLabel_('PROOF', lbl.customer)) : '';
+  var proofThumbId = proofThumbBase64 ? savePhotoTo_(pFolder, proofThumbBase64, fileLabel_('PROOF (thumb)', lbl.customer)) : '';
   var doneAt = new Date().getTime();
 
   var lock = LockService.getScriptLock();
@@ -699,12 +767,12 @@ function searchHistory(q, pin) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { results: [], total: 0 };
-  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 18).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
     if (q) {
-      var hay = (String(r[3]) + ' ' + r[2] + ' ' + r[1] + ' ' +
+      var hay = (String(r[3]) + ' ' + String(r[16]) + ' ' + r[2] + ' ' + r[1] + ' ' +
         dayStr_(r[7]) + ' ' + dayStr_(r[9])).toLowerCase();
       if (hay.indexOf(q) < 0) continue;
     }

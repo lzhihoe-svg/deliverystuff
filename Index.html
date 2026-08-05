@@ -173,6 +173,7 @@
   .chip.due      { background: var(--lime-soft); color: var(--blue); }
   .chip.soon     { background: #fef3c7; color: #92400e; }
   .chip.late     { background: #fee2e2; color: #991b1b; }
+  .chip.cust     { background: #e0e7ff; color: #3730a3; }
 
   .btn {
     display: block; width: 100%; border: 0; border-radius: 14px;
@@ -551,6 +552,11 @@
       <div class="thumbs" id="wb-thumbs"></div>
       <button class="photo-btn" onclick="document.getElementById('wb-file').click()">📷 Add Waybill Photo(s)</button>
       <input type="file" id="wb-file" accept="image/*" multiple onchange="photosPickedG(this, 'wb')">
+    </div>
+
+    <div id="customer-wrap" style="display:none">
+      <label>👤 Customer name</label>
+      <input type="text" id="upload-customer" placeholder="Example: Nurul Syifa (blank = Unassigned)">
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -1523,6 +1529,7 @@
 
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
+    if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     if (!isDone) html += dueChip(j);
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
@@ -1692,8 +1699,10 @@
         imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') +
         '<span>PROOF</span></div>';
     }
+    var cust = (j.customer && j.customer !== 'Unassigned') ? j.customer : '';
     return '<div class="h-card">' +
-      '<div class="h-note">' + (esc(j.note) || 'No note') + '</div>' +
+      '<div class="h-note">' + (cust ? '👤 ' + esc(cust) + (j.note ? ' — ' : '') : '') +
+        (esc(j.note) || (cust ? '' : 'No note')) + '</div>' +
       '<div class="h-meta">' + (TAB_EMOJI[j.tab] || j.tab) +
         (j.category ? ' · ' + (CAT_LABEL[j.category] || j.category) : '') +
         ' · Posted ' + fmtDT(j.createdAt) + '</div>' +
@@ -1847,6 +1856,11 @@
     document.getElementById('postage-groups').style.display = isPost ? 'block' : 'none';
     document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
+    // customer name (delivery + postage): files the evidence by customer
+    document.getElementById('customer-wrap').style.display =
+      (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
+    document.getElementById('upload-customer').value =
+      (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
     document.getElementById('upload-due').value = (job && job.dueAt) ? msToHHMM(job.dueAt) : '';
@@ -1952,6 +1966,7 @@
     var note = document.getElementById('upload-note').value.trim();
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
     var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
+    var customer = hasDue ? document.getElementById('upload-customer').value.trim() : '';
 
     var photos, jsCount = 0;
     if (state.tab === 'postage') {
@@ -1991,6 +2006,7 @@
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
           dueAt: dueMs,
           jsCount: jsCount,
+          customer: customer,
           photos: spec
         }, state.pin);
       return;
@@ -2016,7 +2032,7 @@
       id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
       photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
       createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-      dueAt: dueMs, jsCount: jsCount, uploading: true
+      dueAt: dueMs, jsCount: jsCount, customer: customer || 'Unassigned', uploading: true
     };
     state.jobs[postTab].unshift(tempJob);
     inflightJobs.push(tempJob);
@@ -2076,6 +2092,7 @@
         tab: postTab,
         category: tempJob.category,
         note: note,
+        customer: customer,
         photos: [fulls[0]],
         thumbs: [thumbs[0]],
         dueAt: dueMs,

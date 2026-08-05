@@ -55,7 +55,8 @@
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
         status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-        dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0
+        dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0,
+        customer: (p.customer || '').trim() || 'Unassigned'
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -77,6 +78,7 @@
       j.note = ch.note || ''; j.category = ch.category || '';
       j.dueAt = ch.dueAt || '';
       j.jsCount = ch.jsCount || 0;
+      if (ch.customer !== undefined) j.customer = (ch.customer || '').trim() || 'Unassigned';
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
@@ -86,7 +88,7 @@
       q = String(q || '').toLowerCase().trim();
       var all = db.jobs.slice().reverse().filter(function (j) {
         if (!q) return true;
-        return (j.note + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
+        return (j.note + ' ' + (j.customer || '') + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
       });
       return { results: JSON.parse(JSON.stringify(all.slice(0, 50))), total: all.length };
     },

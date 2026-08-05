@@ -323,6 +323,61 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(200);
 
+  console.log('\n-- 👤 customer name field (delivery & postage) --');
+  await page.click('#nav-delivery');
+  await sleep(400);
+  await page.click('#nav-post');
+  await sleep(200);
+  check(await page.locator('#customer-wrap').isVisible(), 'customer field shows for delivery');
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="pickup"]');
+  await page.fill('#upload-customer', 'Nurul Syifa');
+  await page.fill('#upload-note', 'Cust-test 2 jersey');
+  await page.click('#btn-submit');
+  await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Cust-test 2 jersey' && j.customer === 'Nurul Syifa')),
+    'customer stored on the server');
+  const custCard = page.locator('#delivery-list .card').filter({ hasText: 'Cust-test' });
+  check((await custCard.locator('.chip.cust').textContent()).indexOf('Nurul Syifa') >= 0,
+    'card shows the 👤 customer chip');
+  await page.click('#nav-post');
+  await sleep(200);
+  await page.setInputFiles('#photos-file', IMG2);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  await page.fill('#upload-note', 'Blank-cust');
+  await page.click('#btn-submit');
+  await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Blank-cust' && j.customer === 'Unassigned')),
+    'blank customer saved as Unassigned');
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'Blank-cust' }).locator('.chip.cust').count()) === 0,
+    'no customer chip when Unassigned');
+  await clickSafe(custCard.locator('.t-edit').first());
+  await sleep(300);
+  check((await page.locator('#upload-customer').inputValue()) === 'Nurul Syifa', 'edit window prefills the customer');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
+  await page.click('#nav-want');
+  await sleep(300);
+  await page.click('#nav-post');
+  await sleep(200);
+  check(!await page.locator('#customer-wrap').isVisible(), 'no customer field on Checking');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
+  await page.click('#nav-delivery');
+  await sleep(300);
+  await page.click('#history-btn');
+  await sleep(500);
+  await page.fill('#history-q', 'nurul syifa');
+  await page.click('#history-overlay .btn.blue');
+  await sleep(500);
+  check((await page.locator('#history-results .h-card').count()) === 1 &&
+        (await page.locator('#history-results .h-card').first().textContent()).indexOf('👤 Nurul Syifa') >= 0,
+    'History finds the job by CUSTOMER name');
+  await page.click('#history-overlay .x-close');
+  await sleep(200);
+
   console.log('\n-- refresh button: all 3 tabs, word label, updated-at time --');
   // seed jobs in OTHER tabs; one Refresh must pick them all up
   await page.evaluate(() => {
