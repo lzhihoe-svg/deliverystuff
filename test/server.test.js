@@ -57,6 +57,28 @@ function makeEnv() {
 
   const ss = { getSheets: () => [sheet], getSheetByName: () => sheet, getId: () => 'ss1' };
 
+  // Drive folders: root + month subfolders (savePhoto_ files by month)
+  const folderReg = {};
+  function makeFolder(name) {
+    if (folderReg[name]) return folderReg[name];
+    const sub = {};
+    const f = {
+      getId: () => name,
+      createFile(blob) {
+        const id = 'file' + (++fileCounter);
+        files[id] = { trashed: false, blob, folder: name };
+        return { getId: () => id, setSharing() {} };
+      },
+      getFoldersByName(n) {
+        let left = sub[n] ? 1 : 0;
+        return { hasNext: () => left > 0, next: () => { left = 0; return sub[n]; } };
+      },
+      createFolder(n) { sub[n] = makeFolder(name + '/' + n); return sub[n]; }
+    };
+    folderReg[name] = f;
+    return f;
+  }
+
   const ctx = {
     console,
     PropertiesService: {
@@ -74,14 +96,8 @@ function makeEnv() {
     },
     SpreadsheetApp: { create: () => ss, openById: () => ss },
     DriveApp: {
-      createFolder: () => ({ getId: () => 'folder1' }),
-      getFolderById: () => ({
-        createFile(blob) {
-          const id = 'file' + (++fileCounter);
-          files[id] = { trashed: false, blob };
-          return { getId: () => id, setSharing() {} };
-        }
-      }),
+      createFolder: () => makeFolder('folder1'),
+      getFolderById: id => folderReg[id] || makeFolder(id),
       getFileById(id) {
         if (!files[id]) throw new Error('no such file: ' + id);
         return {
@@ -480,6 +496,75 @@ console.log('\n== askAgain (re-check with staff) ==');
   const r2 = ctx.askAgain(j2.id, PIN);
   check(r2.status === 'pending', 'works from notseen too');
   throws(() => ctx.askAgain('ghost', PIN), 'unknown id throws');
+}
+
+console.log('\n== tidy Drive storage (month folders + readable names) ==');
+{
+  const { ctx, files } = makeEnv();
+  const now = new Date();
+  const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+  const day = ym + '-' + ('0' + now.getDate()).slice(-2);
+
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'Nurul Syifa jersey', photos: [B64], thumbs: [B64] });
+  const jf = files[d.photoIds[0]];
+  check(jf.folder === 'folder1/' + ym, 'photos are filed into a month subfolder (' + ym + ')');
+  check(jf.blob.name.indexOf('DELIVERY bus') === 0, 'file name starts with the tab + category');
+  check(jf.blob.name.indexOf(day) > 0, 'file name contains the date');
+  check(jf.blob.name.indexOf('Nurul Syifa jersey') > 0, 'file name contains the customer note');
+
+  const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
+  const pf = files[r.proofPhotoId];
+  check(pf.blob.name.indexOf('PROOF · DELIVERY bus') === 0, "proof file name starts with 'PROOF'");
+  check(pf.blob.name.indexOf('Nurul Syifa jersey') > 0, 'proof file name contains the customer note');
+  check(pf.folder === 'folder1/' + ym, 'proof stored in the month subfolder too');
+
+  // notes with characters Drive dislikes are cleaned, not crashed
+  const w = ctx.addJob({ tab: 'want', category: '', note: 'A/B:C*D?"E<F>G|H\nI', photos: [B64] });
+  check(files[w.photoIds[0]].blob.name.indexOf('/') < 0 || files[w.photoIds[0]].blob.name.indexOf('A/B') < 0,
+    'unsafe characters cleaned from file names');
+
+  // retake keeps the readable naming
+  const r2 = ctx.updateProof(d.id, B64, B64);
+  check(files[r2.proofPhotoId].blob.name.indexOf('PROOF') === 0, 'retaken proof also gets a PROOF name');
+}
+
+console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
+{
+  const { ctx } = makeEnv();
+  const a = ctx.addJob({ tab: 'delivery', category: 'lalamove', note: 'Nurul Syifa 2 jersey', photos: [B64], thumbs: [B64] });
+  const b = ctx.addJob({ tab: 'postage', category: '', note: 'Humaira SMK Bandar', photos: [B64, B64], thumbs: [B64, B64], jsCount: 1 });
+  ctx.addJob({ tab: 'want', category: '', note: 'Baju batik 50pcs', photos: [B64] });
+  ctx.updateStatus(a.id, 'done', B64, B64, null);
+
+  throws(() => ctx.searchHistory('nurul', ''), 'staff cannot search history');
+  throws(() => ctx.searchHistory('nurul', '9999'), 'wrong PIN cannot search');
+
+  const r1 = ctx.searchHistory('nurul', PIN);
+  check(r1.total === 1 && r1.results[0].id === a.id, 'finds the job by customer name (case-insensitive)');
+  check(r1.results[0].proofPhotoId, 'result includes the proof photo');
+
+  const r2 = ctx.searchHistory('POSTAGE', PIN);
+  check(r2.total === 1 && r2.results[0].id === b.id, 'finds by tab name');
+
+  const today = new Date();
+  const dayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+  const r3 = ctx.searchHistory(dayStr, PIN);
+  check(r3.total === 3, 'finds all of today\'s jobs by date string');
+
+  const r4 = ctx.searchHistory('', PIN);
+  check(r4.total === 3 && r4.results[0].id !== a.id, 'empty query lists recent jobs, newest first');
+
+  // THE KEY: evidence survives a full reset
+  ctx.resetAll(PIN);
+  const r5 = ctx.searchHistory('nurul', PIN);
+  check(r5.total === 1 && r5.results[0].status === 'archived' && r5.results[0].proofPhotoId,
+    'after RESET the job is still findable WITH its proof (archived, not deleted)');
+  check(ctx.searchHistory('no-such-customer', PIN).total === 0, 'no match returns empty');
+
+  // cap at 50
+  for (let i = 0; i < 55; i++) ctx.addJob({ tab: 'want', category: '', note: 'bulk' + i, photos: [B64] });
+  const r6 = ctx.searchHistory('bulk', PIN);
+  check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
 }
 
 console.log('\n== undoSwipe (staff fix a wrong swipe, no PIN) ==');

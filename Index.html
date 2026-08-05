@@ -281,11 +281,27 @@
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea, .sheet input[type=password], .sheet input[type=time] {
+  .sheet textarea, .sheet input[type=password], .sheet input[type=time], .sheet input[type=text] {
     width: 100%; border: 2px solid #d3dcc3; border-radius: 12px;
     padding: 12px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
   }
-  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus { border-color: var(--lime); }
+  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus { border-color: var(--lime); }
+
+  /* history (evidence) search results */
+  .h-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; margin-top: 12px; }
+  .h-card .h-note { font-size: 15px; font-weight: 700; }
+  .h-card .h-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .h-card .h-status { font-size: 13.5px; font-weight: 700; margin-top: 4px; color: var(--blue); }
+  .h-pics { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .h-pic { position: relative; }
+  .h-pic img { width: 74px; height: 74px; object-fit: cover; border-radius: 10px; cursor: pointer; background: #e2e8f0; display: block; }
+  .h-pic.proof-pic img { border: 2.5px solid var(--green); }
+  .h-pic.proof-pic span {
+    position: absolute; bottom: 3px; left: 3px; right: 3px; text-align: center;
+    background: var(--green); color: #fff; font-size: 10px; font-weight: 800;
+    border-radius: 6px; padding: 1px 0; pointer-events: none;
+  }
+  #history-btn { border-color: #a5b4fc; color: #e0e7ff; display: none; }
   .x-close {
     position: absolute; top: 12px; right: 12px;
     width: 38px; height: 38px; border-radius: 50%; border: 0;
@@ -435,6 +451,7 @@
       <span>ARA<span class="dot">MEGA</span></span>
     </h1>
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
+    <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
     <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
     <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
@@ -560,6 +577,24 @@
       <button class="btn gray" onclick="closeConfirm()">Cancel</button>
       <button class="btn red" id="confirm-yes" onclick="confirmYes()"></button>
     </div>
+  </div>
+</div>
+
+<!-- ================= HISTORY (evidence search — even after RESET) ================= -->
+<div class="overlay" id="history-overlay">
+  <div class="sheet">
+    <button class="x-close" onclick="closeHistory()">✕</button>
+    <h2>🗂️ Evidence History</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 10px">
+      Searches EVERY job ever posted — even after RESET.
+      Try a customer name, or a date like <b>2026-08-05</b>.
+    </p>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="history-q" placeholder="Customer / note / date…"
+             onkeydown="if(event.key==='Enter')doHistorySearch()">
+      <button class="btn blue small" style="width:auto;flex:0 0 auto" onclick="doHistorySearch()">Search</button>
+    </div>
+    <div id="history-results"></div>
   </div>
 </div>
 
@@ -1022,6 +1057,7 @@
     document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
     document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('cleardone-btn').style.display = isAdmin() ? 'block' : 'none';
+    document.getElementById('history-btn').style.display = isAdmin() ? 'block' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -1616,6 +1652,81 @@
       .undoReset(state.pin);
   }
 
+  // ------------------------------------------------------------ evidence history
+  function fmtDT(ms) {
+    if (!ms) return '';
+    var d = new Date(Number(ms));
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+      ('0' + d.getDate()).slice(-2) + ' ' + fmtTime(ms);
+  }
+
+  function openHistory() {
+    document.getElementById('history-overlay').classList.add('show');
+    doHistorySearch(); // show the most recent jobs right away
+  }
+  function closeHistory() {
+    document.getElementById('history-overlay').classList.remove('show');
+  }
+
+  var TAB_EMOJI = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage' };
+
+  function historyCard(j) {
+    var status;
+    if (j.status === 'done') status = '✅ Done · ' + fmtDT(j.doneAt);
+    else if (j.status === 'got') status = '❤️ Got It · ' + fmtDT(j.doneAt);
+    else if (j.status === 'notseen') status = '❌ Not Seen · ' + fmtDT(j.doneAt);
+    else if (j.status === 'archived') {
+      status = '🗄️ Archived' + (j.proofPhotoId ? ' · was ✅ Done ' + fmtDT(j.doneAt)
+        : (j.doneAt ? ' · answered ' + fmtDT(j.doneAt) : ''));
+    } else status = '🕐 Still waiting';
+
+    var csv = j.photoIds.join(',');
+    var tcsv = j.photoIds.map(function (_, k) { return thumbOf(j, k); }).join(',');
+    var pics = '';
+    j.photoIds.forEach(function (pid, i) {
+      pics += '<div class="h-pic">' +
+        imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + i + ', \'' + tcsv + '\')"') + '</div>';
+    });
+    if (j.proofPhotoId) {
+      pics += '<div class="h-pic proof-pic">' +
+        imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') +
+        '<span>PROOF</span></div>';
+    }
+    return '<div class="h-card">' +
+      '<div class="h-note">' + (esc(j.note) || 'No note') + '</div>' +
+      '<div class="h-meta">' + (TAB_EMOJI[j.tab] || j.tab) +
+        (j.category ? ' · ' + (CAT_LABEL[j.category] || j.category) : '') +
+        ' · Posted ' + fmtDT(j.createdAt) + '</div>' +
+      '<div class="h-status">' + status + '</div>' +
+      '<div class="h-pics">' + pics + '</div>' +
+      '</div>';
+  }
+
+  function doHistorySearch() {
+    var q = document.getElementById('history-q').value.trim();
+    var box = document.getElementById('history-results');
+    box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">🔎 Searching…</div>';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res.results.length) {
+          box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">Nothing found for "' + esc(q) + '"</div>';
+          return;
+        }
+        var head = '<div style="font-size:12.5px;color:var(--muted);margin-top:10px;font-weight:700">' +
+          (q ? res.total + ' result' + (res.total === 1 ? '' : 's') : 'Most recent jobs') +
+          (res.total > res.results.length ? ' · showing first ' + res.results.length : '') + '</div>';
+        box.innerHTML = head + res.results.map(historyCard).join('');
+        // images inside the modal live outside the scroller: fetch directly
+        var imgs = box.querySelectorAll('img[data-img]');
+        for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');
+        loadImages();
+      })
+      .withFailureHandler(function (e) {
+        box.innerHTML = '<div style="text-align:center;color:#b91c1c;padding:18px;font-weight:700">⚠️ ' + esc(e.message) + '</div>';
+      })
+      .searchHistory(q, state.pin);
+  }
+
   /** CLEAR DONE (admin): archive ONLY finished work — done Delivery/Postage
       jobs + Got It jobsheets. Unfinished jobs carry forward to the next day. */
   function askClearDone() {
@@ -1973,12 +2084,13 @@
   }
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
       else if (id === 'confirm-overlay') closeConfirm();
       else if (id === 'reset-overlay') closeResetMenu();
+      else if (id === 'history-overlay') closeHistory();
       else closeUpload();
     });
   });

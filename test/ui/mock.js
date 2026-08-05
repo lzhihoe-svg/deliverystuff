@@ -81,6 +81,15 @@
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
     },
+    searchHistory: function (q, pin) {
+      requireAdmin(pin);
+      q = String(q || '').toLowerCase().trim();
+      var all = db.jobs.slice().reverse().filter(function (j) {
+        if (!q) return true;
+        return (j.note + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
+      });
+      return { results: JSON.parse(JSON.stringify(all.slice(0, 50))), total: all.length };
+    },
     undoSwipe: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');

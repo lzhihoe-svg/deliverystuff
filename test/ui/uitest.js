@@ -297,6 +297,31 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => refresh());
   await sleep(500);
 
+  console.log('\n-- 🗂️ History: find evidence even after CLEAR DONE / RESET --');
+  check(await page.locator('#history-btn').isVisible(), 'admin sees the History button');
+  await page.click('#history-btn');
+  await sleep(600);
+  check(await page.locator('#history-overlay').isVisible(), 'history window opens');
+  check((await page.locator('#history-results .h-card').count()) > 0, 'recent jobs listed right away');
+  await page.fill('#history-q', 'CD-done');
+  await page.click('#history-overlay .btn.blue');
+  await sleep(500);
+  check((await page.locator('#history-results .h-card').count()) === 1, 'search narrows to the matching job');
+  check((await page.locator('#history-results .h-card').first().textContent()).indexOf('Archived') >= 0,
+    'ARCHIVED job (cleared from the tabs) is still findable');
+  check((await page.locator('#history-results .proof-pic').count()) === 1, 'its PROOF photo is shown, marked PROOF');
+  await clickSafe(page.locator('#history-results .proof-pic img'));
+  await sleep(300);
+  check(await page.locator('#viewer').isVisible(), 'tapping the proof opens the fullscreen viewer');
+  await page.locator('.viewer-x').click();
+  await sleep(200);
+  await page.click('#history-overlay .x-close');
+  await sleep(200);
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(200);
+  check(!await page.locator('#history-btn').isVisible(), 'staff does NOT see the History button');
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(200);
 
   console.log('\n-- refresh button: all 3 tabs, word label, updated-at time --');
   // seed jobs in OTHER tabs; one Refresh must pick them all up

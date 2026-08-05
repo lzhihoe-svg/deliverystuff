@@ -82,11 +82,80 @@ function getFolder_() {
 
 // ---------------------------------------------------------------- photos
 
-/** Saves a base64 JPEG to Drive, returns the file id. */
+function pad2_(n) { return (n < 10 ? '0' : '') + n; }
+
+/** "2026-08-05 14.32" — date+time stamp used in photo file names. */
+function stamp_() {
+  var d = new Date();
+  return d.getFullYear() + '-' + pad2_(d.getMonth() + 1) + '-' + pad2_(d.getDate()) +
+    ' ' + pad2_(d.getHours()) + '.' + pad2_(d.getMinutes());
+}
+
+/** "2026-08-05" for a ms timestamp (used by the history search). */
+function dayStr_(ts) {
+  if (!ts) return '';
+  var d = new Date(Number(ts));
+  return d.getFullYear() + '-' + pad2_(d.getMonth() + 1) + '-' + pad2_(d.getDate());
+}
+
+/** Make a note safe + short for a Drive file name. */
+function cleanName_(s) {
+  return String(s || '').replace(/[\r\n\/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+var TAB_TAG = { want: 'CHECKING', delivery: 'DELIVERY', postage: 'POSTAGE' };
+
+/**
+ * Human-readable Drive file name, so evidence is findable in Drive alone:
+ * "PROOF · DELIVERY bus · 2026-08-05 14.32 — Nurul Syifa jersey"
+ */
+function photoName_(tab, category, note, kind) {
+  var s = (kind ? kind + ' · ' : '') +
+    (TAB_TAG[tab] || 'JOB') + (category ? ' ' + category : '') +
+    ' · ' + stamp_();
+  var n = cleanName_(note);
+  if (n) s += ' — ' + n;
+  return s;
+}
+
+/** Quick unlocked read of a job's tab/category/note (for file names). */
+function jobLabel_(id) {
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row > 0) {
+      var v = sh.getRange(row, 2, 1, 3).getValues()[0];
+      return { tab: v[0], category: v[1], note: v[2] };
+    }
+  } catch (e) {}
+  return { tab: '', category: '', note: '' };
+}
+
+/**
+ * Month subfolder ("2026-08") inside the app folder — photos are filed by
+ * month instead of piling up in one endless folder.
+ */
+function monthFolder_() {
+  var d = new Date();
+  var name = d.getFullYear() + '-' + pad2_(d.getMonth() + 1);
+  var props = PropertiesService.getScriptProperties();
+  var key = 'MF_' + name;
+  var fid = props.getProperty(key);
+  if (fid) {
+    try { return DriveApp.getFolderById(fid); } catch (e) {}
+  }
+  var root = getFolder_();
+  var it = root.getFoldersByName(name);
+  var f = it.hasNext() ? it.next() : root.createFolder(name);
+  props.setProperty(key, f.getId());
+  return f;
+}
+
+/** Saves a base64 JPEG to Drive (this month's subfolder), returns the file id. */
 function savePhoto_(base64Data, name) {
   var bytes = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(bytes, 'image/jpeg', name + '.jpg');
-  var file = getFolder_().createFile(blob);
+  var file = monthFolder_().createFile(blob);
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (e) {
@@ -162,9 +231,10 @@ function addJob(payload) {
   var id = Utilities.getUuid();
   var photoIds = [], thumbIds = [];
   for (var i = 0; i < payload.photos.length; i++) {
-    photoIds.push(savePhoto_(payload.photos[i], payload.tab + '-' + id + '-' + i));
+    var base = photoName_(payload.tab, payload.category, payload.note, '');
+    photoIds.push(savePhoto_(payload.photos[i], base + ' (photo ' + (i + 1) + ')'));
     var t = payload.thumbs && payload.thumbs[i];
-    thumbIds.push(t ? savePhoto_(t, payload.tab + '-' + id + '-' + i + '-t') : '');
+    thumbIds.push(t ? savePhoto_(t, base + ' (thumb ' + (i + 1) + ')') : '');
   }
   var createdAt = new Date().getTime();
   var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
@@ -251,8 +321,10 @@ function addPhotoToJob(id, index, fullB64, thumbB64) {
   if (!(index >= 0 && index < 6)) throw new Error('Bad photo index');
 
   // Save to Drive BEFORE taking the lock (Drive is the slow part).
-  var pId = savePhoto_(fullB64, 'job-' + id + '-' + index);
-  var tId = thumbB64 ? savePhoto_(thumbB64, 'job-' + id + '-' + index + '-t') : '';
+  var lbl = jobLabel_(id);
+  var base = photoName_(lbl.tab, lbl.category, lbl.note, '');
+  var pId = savePhoto_(fullB64, base + ' (photo ' + (index + 1) + ')');
+  var tId = thumbB64 ? savePhoto_(thumbB64, base + ' (thumb ' + (index + 1) + ')') : '';
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -290,10 +362,12 @@ function editJob(id, changes, pin) {
   if (spec.length > 6) throw new Error('Max 6 photos per job');
 
   // Save new photos BEFORE taking the lock (Drive is the slow part).
+  var lbl = jobLabel_(id);
   var newIds = [], newThumbIds = [];
   for (var i = 0; i < spec.length; i++) {
-    newIds.push(spec[i].b64 ? savePhoto_(spec[i].b64, 'edit-' + id + '-' + i) : null);
-    newThumbIds.push(spec[i].b64 && spec[i].thumb ? savePhoto_(spec[i].thumb, 'edit-' + id + '-' + i + '-t') : null);
+    var base = photoName_(lbl.tab, lbl.category || changes.category, changes.note || lbl.note, '');
+    newIds.push(spec[i].b64 ? savePhoto_(spec[i].b64, base + ' (photo ' + (i + 1) + ')') : null);
+    newThumbIds.push(spec[i].b64 && spec[i].thumb ? savePhoto_(spec[i].thumb, base + ' (thumb ' + (i + 1) + ')') : null);
   }
 
   var toTrash = [];
@@ -477,8 +551,9 @@ function resetDone(pin) {
 function updateProof(id, proofBase64, proofThumbBase64) {
   if (!proofBase64) throw new Error('Proof photo required');
   // Save the new proof BEFORE taking the lock (Drive is the slow part).
-  var proofId = savePhoto_(proofBase64, 'proof-' + id);
-  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, 'proof-' + id + '-t') : '';
+  var lbl = jobLabel_(id);
+  var proofId = savePhoto_(proofBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF'));
+  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF thumb')) : '';
   var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -584,8 +659,11 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
     throw new Error('Proof photo required');
   }
   // Save the proof photo BEFORE taking the lock (Drive is the slow part).
-  var proofId = proofBase64 ? savePhoto_(proofBase64, 'proof-' + id) : '';
-  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, 'proof-' + id + '-t') : '';
+  // PROOF files get a readable name (date + job note) — customer evidence
+  // must be findable in Drive by eye.
+  var lbl = proofBase64 ? jobLabel_(id) : null;
+  var proofId = proofBase64 ? savePhoto_(proofBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF')) : '';
+  var proofThumbId = proofThumbBase64 ? savePhoto_(proofThumbBase64, photoName_(lbl.tab, lbl.category, lbl.note, 'PROOF thumb')) : '';
   var doneAt = new Date().getTime();
 
   var lock = LockService.getScriptLock();
@@ -607,6 +685,32 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
     lock.releaseLock();
   }
   return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId, proofThumbId: proofThumbId };
+}
+
+/**
+ * ADMIN ONLY. Evidence history: search EVERY job ever posted — including
+ * archived ones (RESET never deletes records). Matches the query against
+ * the note, category, tab and the posted/finished dates ("2026-08-05").
+ * Empty query = the 50 most recent jobs. Newest first, capped at 50.
+ */
+function searchHistory(q, pin) {
+  requireAdmin_(pin);
+  q = String(q || '').toLowerCase().trim();
+  var sh = getSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return { results: [], total: 0 };
+  var rows = sh.getRange(2, 1, last - 1, 16).getValues();
+  var out = [];
+  for (var i = rows.length - 1; i >= 0; i--) { // newest first
+    var r = rows[i];
+    if (q) {
+      var hay = (String(r[3]) + ' ' + r[2] + ' ' + r[1] + ' ' +
+        dayStr_(r[7]) + ' ' + dayStr_(r[9])).toLowerCase();
+      if (hay.indexOf(q) < 0) continue;
+    }
+    out.push(rowToJob_(r));
+  }
+  return { results: out.slice(0, 50), total: out.length };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */
