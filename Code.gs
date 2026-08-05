@@ -140,14 +140,33 @@ function childFolder_(parent, name) {
   return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
+/** Master evidence folder in Drive: "Delivery Check". */
+function masterFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var fid = props.getProperty('MASTER_FOLDER_ID');
+  if (fid) {
+    try { return DriveApp.getFolderById(fid); } catch (e) {}
+  }
+  var f = DriveApp.createFolder('Delivery Check');
+  props.setProperty('MASTER_FOLDER_ID', f.getId());
+  return f;
+}
+
+var TAB_FOLDER = { want: 'Checking', delivery: 'Delivery', postage: 'Postage', defect: 'Defect' };
+
 /**
- * Evidence filing: Kilang App Photos / 2026-08 / <Customer> / <one folder
- * per job>. Everything belonging to a job — jobsheet, waybill, proof —
- * lives together in that job's folder.
+ * Evidence filing:
+ *   Delivery Check / Delivery (or Postage, Checking, Defect) /
+ *   2026-08 / <Customer> / <one folder per job>
+ * Everything belonging to a job — jobsheet, waybill/defect photos and
+ * the proof — lives together in that job's folder.
  */
 function makeJobFolder_(customer, tab, category, note, createdAt) {
-  var cf = childFolder_(monthFolder_(), cleanName_(customer) || 'Unassigned');
   var d = new Date(Number(createdAt));
+  var month = d.getFullYear() + '-' + pad2_(d.getMonth() + 1);
+  var tf = childFolder_(masterFolder_(), TAB_FOLDER[tab] || 'Other');
+  var mf = childFolder_(tf, month);
+  var cf = childFolder_(mf, cleanName_(customer) || 'Unassigned');
   var jname = (TAB_TAG[tab] || 'JOB') + (category ? ' ' + category : '') +
     ' · ' + dayStr_(createdAt) + ' ' + pad2_(d.getHours()) + '.' + pad2_(d.getMinutes());
   var n = cleanName_(note);

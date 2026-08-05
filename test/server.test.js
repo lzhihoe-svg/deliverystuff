@@ -96,7 +96,7 @@ function makeEnv() {
     },
     SpreadsheetApp: { create: () => ss, openById: () => ss },
     DriveApp: {
-      createFolder: () => makeFolder('folder1'),
+      createFolder: name => makeFolder(name || 'folder1'),
       getFolderById: id => folderReg[id] || makeFolder(id),
       getFileById(id) {
         if (!files[id]) throw new Error('no such file: ' + id);
@@ -508,8 +508,8 @@ console.log('\n== evidence filing: month / customer / one folder per job ==');
   const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: '2 jersey', customer: 'Nurul Syifa', photos: [B64], thumbs: [B64] });
   check(d.customer === 'Nurul Syifa', 'addJob stores the customer');
   const jf = files[d.photoIds[0]];
-  check(jf.folder.indexOf('folder1/' + ym + '/Nurul Syifa/DELIVERY bus') === 0,
-    'photo filed under month / CUSTOMER / job folder');
+  check(jf.folder.indexOf('Delivery Check/Delivery/' + ym + '/Nurul Syifa/DELIVERY bus') === 0,
+    'photo filed under Delivery Check / Delivery / month / CUSTOMER / job folder');
   check(jf.folder.indexOf(day) > 0, 'job folder name contains the date');
   check(jf.folder.indexOf('2 jersey') > 0, 'job folder name contains the note');
   check(jf.blob.name.indexOf('Photo 1 — Nurul Syifa') === 0, 'file named by its role + customer');
@@ -536,6 +536,8 @@ console.log('\n== evidence filing: month / customer / one folder per job ==');
         files[p.photoIds[1]].blob.name.indexOf('Jobsheet 2') === 0 &&
         files[p.photoIds[2]].blob.name.indexOf('Waybill 1') === 0,
     'postage files named Jobsheet 1/2 and Waybill 1');
+  check(files[p.photoIds[0]].folder.indexOf('Delivery Check/Postage/' + ym + '/Humaira/') === 0,
+    'postage filed under its own Postage subfolder');
 
   // background-uploaded photos (photo 2+) land in the same job folder
   const bg = ctx.addJob({ tab: 'postage', category: '', note: '', customer: 'Humaira', photos: [B64], thumbs: [B64], jsCount: 1 });
@@ -601,7 +603,9 @@ console.log('\n== defect tab (jobsheet + defect photos + PROOF to finish) ==');
   check(files[d.photoIds[0]].blob.name.indexOf('Jobsheet 1') === 0, 'first group still named Jobsheet');
   check(files[d.photoIds[1]].blob.name.indexOf('Defect 1') === 0 &&
         files[d.photoIds[2]].blob.name.indexOf('Defect 2') === 0, "second-group photos named 'Defect N' (not Waybill)");
-  check(files[d.photoIds[0]].folder.indexOf('/Nurul/DEFECT') > 0, 'filed under customer / DEFECT job folder');
+  check(files[d.photoIds[0]].folder.indexOf('Delivery Check/Defect/') === 0 &&
+        files[d.photoIds[0]].folder.indexOf('/Nurul/DEFECT') > 0,
+    'filed under Delivery Check / Defect / month / customer');
   const all = ctx.getAllData();
   check(all.jobs.defect.length === 1 && all.counts.defect === 1, 'getAllData returns the defect tab (1 pending, badge counts it)');
   check(ctx.searchHistory('defect', PIN).total === 1, 'history finds defect records by tab name');
