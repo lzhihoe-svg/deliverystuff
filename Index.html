@@ -499,6 +499,11 @@
   <div class="page" id="page-postage">
     <div id="postage-list"></div>
   </div>
+
+  <!-- ================= TAB 4 : DEFECT (jobsheet + defect photos, saved as a record) ================= -->
+  <div class="page" id="page-defect">
+    <div id="defect-list"></div>
+  </div>
 </div>
 
 <!-- ================= BOTTOM NAV ================= -->
@@ -514,6 +519,10 @@
   <button id="nav-postage" onclick="switchTab('postage')">
     <span class="ico">📦</span><span class="nav-lbl">Postage</span>
     <span class="badge" id="badge-postage"></span>
+  </button>
+  <button id="nav-defect" onclick="switchTab('defect')">
+    <span class="ico">🚨</span><span class="nav-lbl">Defect</span>
+    <span class="badge" id="badge-defect"></span>
   </button>
   <button id="nav-post" onclick="openUpload(null)">
     <span class="post-circle">＋</span><span class="nav-lbl">Post</span>
@@ -567,9 +576,9 @@
       <button class="photo-btn" onclick="document.getElementById('js-file').click()">📷 Add Jobsheet Photo(s)</button>
       <input type="file" id="js-file" accept="image/*" multiple onchange="photosPickedG(this, 'js')">
 
-      <label>🏷️ Waybill photos (J&amp;T)</label>
+      <label id="wb-label">🏷️ Waybill photos (J&amp;T)</label>
       <div class="thumbs" id="wb-thumbs"></div>
-      <button class="photo-btn" onclick="document.getElementById('wb-file').click()">📷 Add Waybill Photo(s)</button>
+      <button class="photo-btn" id="wb-add-btn" onclick="document.getElementById('wb-file').click()">📷 Add Waybill Photo(s)</button>
       <input type="file" id="wb-file" accept="image/*" multiple onchange="photosPickedG(this, 'wb')">
     </div>
 
@@ -663,7 +672,7 @@
     role: localStorage.getItem('kilangRole') || '',
     pin: localStorage.getItem('kilangPin') || '',
     deliveryCat: '',
-    jobs: { want: [], delivery: [], postage: [] },
+    jobs: { want: [], delivery: [], postage: [], defect: [] },
     upload: { photos: [], js: [], wb: [], cat: '' },   // entries: {b64,thumb} new, {id,thumbId} existing
     editing: null,
     proofJobId: null,
@@ -1176,7 +1185,7 @@
   // ------------------------------------------------------------ tabs
   function switchTab(tab) {
     state.tab = tab;
-    ['want', 'delivery', 'postage'].forEach(function (x) {
+    ['want', 'delivery', 'postage', 'defect'].forEach(function (x) {
       document.getElementById('page-' + x).classList.toggle('active', x === tab);
       document.getElementById('nav-' + x).classList.toggle('active', x === tab);
     });
@@ -1192,7 +1201,7 @@
     setSync('🔄 Updating…');
     google.script.run
       .withSuccessHandler(function (res) {
-        ['want', 'delivery', 'postage'].forEach(function (tb) {
+        ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
           state.jobs[tb] = res.jobs[tb] || [];
           // keep background-uploading jobs visible through a refresh
           inflightJobs.forEach(function (j) {
@@ -1219,7 +1228,7 @@
       .getAllData();
   }
   function renderBadges(c) {
-    ['want', 'delivery', 'postage'].forEach(function (x) {
+    ['want', 'delivery', 'postage', 'defect'].forEach(function (x) {
       var b = document.getElementById('badge-' + x);
       b.style.display = c[x] > 0 ? 'block' : 'none';
       b.textContent = c[x];
@@ -1227,7 +1236,7 @@
   }
 
   function renderAll() {
-    renderWant(); renderDelivery(); renderPostage();
+    renderWant(); renderDelivery(); renderPostage(); renderDefect();
     attachCarousels();
     observeImages();
     loadImages();
@@ -1509,6 +1518,32 @@
     document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage);
   }
 
+  // ------------------------------------------------------------ TAB 4: defect
+  // Defect entries are RECORDS (saved already-done): jobsheet photos on the
+  // left, defect photos on the right — evidence, not a task to complete.
+  function renderDefect() {
+    var jobs = state.jobs.defect.filter(function (j) { return j.status !== 'archived'; });
+    var el = document.getElementById('defect-list');
+    if (!jobs.length) {
+      el.innerHTML = '<div class="empty"><span class="big">🎉</span>No defects recorded.' +
+        '<br><span class="hint">Tap ＋ Post below to record one</span></div>';
+      return;
+    }
+    var html = '<div class="section-title" style="color:#b91c1c">🚨 Defect Records (' + jobs.length + ')</div><div class="grid">';
+    jobs.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).forEach(function (j) {
+      var media = (j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1]) ? pairHtml(j) : carouselHtml(j);
+      html += '<div class="card">' + media + '<div class="body">' +
+        (j.uploading ? '<span class="chip up">📤 Uploading…</span> ' : '') +
+        (j.customer && j.customer !== 'Unassigned' ? '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ' : '') +
+        (j.note ? '<div class="note">📢 ' + esc(j.note) + '</div>' : '') +
+        '<div class="meta">Recorded ' + timeAgo(j.createdAt) + '</div>' +
+        '<div class="spacer"></div>' +
+        (j.uploading ? '' : toolBtns(j, true)) +
+        '</div></div>';
+    });
+    el.innerHTML = html + '</div>';
+  }
+
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
@@ -1582,7 +1617,7 @@
     var n = jsCountOf(j);
     return '<div class="photo-pair">' +
       miniCarousel(j, 0, n, '📄 Jobsheet') +
-      miniCarousel(j, n, j.photoIds.length, '🏷️ Waybill') +
+      miniCarousel(j, n, j.photoIds.length, j.tab === 'defect' ? '🚨 Defect' : '🏷️ Waybill') +
       '</div>';
   }
 
@@ -1724,8 +1759,8 @@
     closeResetMenu();
     askConfirm('⚠️ Wipe ALL jobs in ALL tabs — finished AND unfinished? (You can UNDO from the Reset menu.)',
       '🧹 Yes, RESET ALL', function () {
-        state.jobs = { want: [], delivery: [], postage: [] };
-        ['want', 'delivery', 'postage'].forEach(saveJobsCache);
+        state.jobs = { want: [], delivery: [], postage: [], defect: [] };
+        ['want', 'delivery', 'postage', 'defect'].forEach(saveJobsCache);
         renderAll();
         renderBadges({ want: 0, delivery: 0, postage: 0 });
         toast('🔄 Fresh day! All tabs cleared.');
@@ -1763,7 +1798,7 @@
     document.getElementById('history-overlay').classList.remove('show');
   }
 
-  var TAB_EMOJI = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage' };
+  var TAB_EMOJI = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage', defect: '🚨 Defect' };
 
   function historyCard(j) {
     var status;
@@ -1829,7 +1864,7 @@
   function askClearDone() {
     askConfirm('Clear FINISHED work only? Completed jobs and ❤️ Got It jobsheets are archived. Unfinished jobs stay for the next day.',
       '✅ Yes, Clear Done', function () {
-        ['want', 'delivery', 'postage'].forEach(function (tb) {
+        ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
           state.jobs[tb] = state.jobs[tb].filter(function (j) {
             return !(j.status === 'done' || (tb === 'want' && j.status === 'got'));
           });
@@ -1922,7 +1957,7 @@
     state.editing = job;
     state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '' };
     if (job) {
-      var split = state.tab === 'postage' ? jsCountOf(job) : -1;
+      var split = (state.tab === 'postage' || state.tab === 'defect') ? jsCountOf(job) : -1;
       job.photoIds.forEach(function (id, i) {
         var item = { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
         if (split < 0) state.upload.photos.push(item);
@@ -1933,19 +1968,24 @@
     var titles = {
       want: '🔍 Post New Jobsheet',
       delivery: '🚚 Post Delivery Instruction',
-      postage: '📦 Post Airway Bill + Jobsheet'
+      postage: '📦 Post Airway Bill + Jobsheet',
+      defect: '🚨 Record Defect'
     };
     document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    // postage: two separate photo groups (Jobsheet / Waybill)
-    var isPost = state.tab === 'postage';
-    document.getElementById('generic-photos').style.display = isPost ? 'none' : 'block';
-    document.getElementById('postage-groups').style.display = isPost ? 'block' : 'none';
-    document.getElementById('btn-submit').textContent = job ? '💾 Save' : '📤 Post';
+    // postage & defect: two separate photo groups (Jobsheet / Waybill-or-Defect)
+    var isPair = state.tab === 'postage' || state.tab === 'defect';
+    document.getElementById('generic-photos').style.display = isPair ? 'none' : 'block';
+    document.getElementById('postage-groups').style.display = isPair ? 'block' : 'none';
+    document.getElementById('wb-label').textContent =
+      state.tab === 'defect' ? '🚨 Defect photos' : '🏷️ Waybill photos (J&T)';
+    document.getElementById('wb-add-btn').textContent =
+      state.tab === 'defect' ? '📷 Add Defect Photo(s)' : '📷 Add Waybill Photo(s)';
+    document.getElementById('btn-submit').textContent =
+      job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
-    // customer name (delivery + postage): files the evidence by customer
-    document.getElementById('customer-wrap').style.display =
-      (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
+    // customer name (all tabs except Checking): files the evidence by customer
+    document.getElementById('customer-wrap').style.display = state.tab !== 'want' ? 'block' : 'none';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     document.getElementById('due-wrap').style.display =
@@ -2000,7 +2040,8 @@
             '</div>'
           : '') +
         // uploaded to the wrong group? one tap moves it to the other one
-        (g === 'js' ? '<button class="thumb-move" onclick="transferPhoto(\'js\',' + i + ')">⬇️ To Waybill</button>' : '') +
+        (g === 'js' ? '<button class="thumb-move" onclick="transferPhoto(\'js\',' + i + ')">' +
+          (state.tab === 'defect' ? '⬇️ To Defect' : '⬇️ To Waybill') + '</button>' : '') +
         (g === 'wb' ? '<button class="thumb-move" onclick="transferPhoto(\'wb\',' + i + ')">⬆️ To Jobsheet</button>' : '') +
         '</div>';
     });
@@ -2018,10 +2059,10 @@
     if (!p) return;
     to.push(p);
     renderAllThumbs();
-    toast(g === 'js' ? '🏷️ Moved to Waybill' : '📄 Moved to Jobsheet');
+    toast(g === 'js' ? (state.tab === 'defect' ? '🚨 Moved to Defect' : '🏷️ Moved to Waybill') : '📄 Moved to Jobsheet');
   }
   function renderAllThumbs() {
-    if (state.tab === 'postage') { renderThumbsG('js'); renderThumbsG('wb'); }
+    if (state.tab === 'postage' || state.tab === 'defect') { renderThumbsG('js'); renderThumbsG('wb'); }
     else renderThumbsG('main');
     loadImages();
   }
@@ -2064,12 +2105,15 @@
     var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
                                  document.getElementById('upload-due-month').value,
                                  document.getElementById('upload-due').value) : '';
-    var customer = hasDue ? document.getElementById('upload-customer').value.trim() : '';
+    var customer = state.tab !== 'want' ? document.getElementById('upload-customer').value.trim() : '';
 
     var photos, jsCount = 0;
-    if (state.tab === 'postage') {
+    if (state.tab === 'postage' || state.tab === 'defect') {
       if (!state.upload.js.length) { toast('Please add a Jobsheet photo 📄'); return; }
-      if (!state.upload.wb.length) { toast('Please add a Waybill photo 🏷️'); return; }
+      if (!state.upload.wb.length) {
+        toast(state.tab === 'defect' ? 'Please add a Defect photo 🚨' : 'Please add a Waybill photo 🏷️');
+        return;
+      }
       photos = state.upload.js.concat(state.upload.wb);
       jsCount = state.upload.js.length;
     } else {
@@ -2128,8 +2172,11 @@
     }
     var tempJob = {
       id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
-      photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
-      createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+      photoIds: tempPhotoIds, thumbIds: tempThumbIds,
+      // a defect entry is a RECORD — saved as already done
+      status: postTab === 'defect' ? 'done' : 'pending',
+      createdAt: Date.now(), doneAt: postTab === 'defect' ? Date.now() : '',
+      proofPhotoId: '', proofThumbId: '',
       dueAt: dueMs, jsCount: jsCount, customer: customer || 'Unassigned', uploading: true
     };
     state.jobs[postTab].unshift(tempJob);
@@ -2258,6 +2305,7 @@
   state.jobs.want = readJobsCache('want');
   state.jobs.delivery = readJobsCache('delivery');
   state.jobs.postage = readJobsCache('postage');
+  state.jobs.defect = readJobsCache('defect');
   switchTab('want');
   window.__kilang = state; // debugging/test hook
   setInterval(function () {

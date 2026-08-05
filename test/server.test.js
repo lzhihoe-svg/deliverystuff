@@ -593,6 +593,23 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
 }
 
+console.log('\n== defect tab (jobsheet + defect photos, saved as a done record) ==');
+{
+  const { ctx, files } = makeEnv();
+  const d = ctx.addJob({ tab: 'defect', category: '', note: 'Torn sleeve', customer: 'Nurul', photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 1 });
+  check(d.status === 'done' && d.doneAt === d.createdAt, 'defect entry saved as DONE (a record, not a task)');
+  check(files[d.photoIds[0]].blob.name.indexOf('Jobsheet 1') === 0, 'first group still named Jobsheet');
+  check(files[d.photoIds[1]].blob.name.indexOf('Defect 1') === 0 &&
+        files[d.photoIds[2]].blob.name.indexOf('Defect 2') === 0, "second-group photos named 'Defect N' (not Waybill)");
+  check(files[d.photoIds[0]].folder.indexOf('/Nurul/DEFECT') > 0, 'filed under customer / DEFECT job folder');
+  const all = ctx.getAllData();
+  check(all.jobs.defect.length === 1 && all.counts.defect === 0, 'getAllData returns the defect tab, 0 pending');
+  check(ctx.searchHistory('defect', PIN).total === 1, 'history finds defect records by tab name');
+  ctx.resetDone(PIN);
+  check(ctx.getJobs('defect').length === 0, 'CLEAR DONE archives defect records (they are done)');
+  check(ctx.searchHistory('torn', PIN).total === 1, 'still findable in history after clearing');
+}
+
 console.log('\n== addJob idempotency (safe retry via clientId) ==');
 {
   const { ctx, files } = makeEnv();

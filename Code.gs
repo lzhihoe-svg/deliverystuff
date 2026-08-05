@@ -104,7 +104,7 @@ function cleanName_(s) {
   return String(s || '').replace(/[\r\n\/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
-var TAB_TAG = { want: 'CHECKING', delivery: 'DELIVERY', postage: 'POSTAGE' };
+var TAB_TAG = { want: 'CHECKING', delivery: 'DELIVERY', postage: 'POSTAGE', defect: 'DEFECT' };
 
 /**
  * Human-readable Drive file name, so evidence is findable in Drive alone:
@@ -163,10 +163,11 @@ function jobFolderOf_(lbl) {
   return monthFolder_();
 }
 
-/** "Jobsheet 1" / "Waybill 2" / "Photo 3" — what a photo IS in its job. */
+/** "Jobsheet 1" / "Waybill 2" / "Defect 1" / "Photo 3" — what a photo IS in its job. */
 function photoKind_(tab, jsCount, index) {
-  if (tab === 'postage' && jsCount > 0) {
-    return index < jsCount ? 'Jobsheet ' + (index + 1) : 'Waybill ' + (index - jsCount + 1);
+  if ((tab === 'postage' || tab === 'defect') && jsCount > 0) {
+    if (index < jsCount) return 'Jobsheet ' + (index + 1);
+    return (tab === 'defect' ? 'Defect ' : 'Waybill ') + (index - jsCount + 1);
   }
   return 'Photo ' + (index + 1);
 }
@@ -311,11 +312,14 @@ function addJob(payload) {
       var row = findRow_(sh, id);
       if (row > 0) existing = sh.getRange(row, 1, 1, 18).getValues()[0];
     }
+    // A defect entry is a RECORD, not a task: it is saved already done.
+    var status = payload.tab === 'defect' ? 'done' : 'pending';
+    var doneAt = payload.tab === 'defect' ? createdAt : '';
     if (!existing) {
       sh.appendRow([
         id, payload.tab, payload.category || '', payload.note || '',
-        JSON.stringify(photoIds), 'pending',
-        '', createdAt, '', '', '',
+        JSON.stringify(photoIds), status,
+        '', createdAt, '', doneAt, '',
         JSON.stringify(thumbIds), '', dueAt, '', jsCount,
         customer, folderId
       ]);
@@ -330,8 +334,8 @@ function addJob(payload) {
   }
   return {
     id: id, tab: payload.tab, category: payload.category || '',
-    note: payload.note || '', photoIds: photoIds, status: 'pending',
-    createdAt: createdAt, doneAt: '', proofPhotoId: '',
+    note: payload.note || '', photoIds: photoIds, status: status,
+    createdAt: createdAt, doneAt: doneAt, proofPhotoId: '',
     thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
     jsCount: jsCount, customer: customer
   };
@@ -714,8 +718,8 @@ function getInitData(tab) {
 function getAllData() {
   var sh = getSheet_();
   var last = sh.getLastRow();
-  var jobs = { want: [], delivery: [], postage: [] };
-  var counts = { want: 0, delivery: 0, postage: 0 };
+  var jobs = { want: [], delivery: [], postage: [], defect: [] };
+  var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
   var rows = sh.getRange(2, 1, last - 1, 17).getValues();
   for (var i = 0; i < rows.length; i++) {
@@ -725,7 +729,7 @@ function getAllData() {
     jobs[r[1]].push(j);
     if (j.status === 'pending') counts[r[1]]++;
   }
-  jobs.want.reverse(); jobs.delivery.reverse(); jobs.postage.reverse();
+  jobs.want.reverse(); jobs.delivery.reverse(); jobs.postage.reverse(); jobs.defect.reverse();
   return { jobs: jobs, counts: counts };
 }
 
@@ -801,7 +805,7 @@ function searchHistory(q, pin) {
 function getCounts() {
   var sh = getSheet_();
   var last = sh.getLastRow();
-  var counts = { want: 0, delivery: 0, postage: 0 };
+  var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
   if (last < 2) return counts;
   var rows = sh.getRange(2, 2, last - 1, 5).getValues(); // tab .. status
   for (var i = 0; i < rows.length; i++) {

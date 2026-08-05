@@ -43,7 +43,7 @@
         .map(function (j) { return JSON.parse(JSON.stringify(j)); });
     },
     getCounts: function () {
-      var c = { want: 0, delivery: 0, postage: 0 };
+      var c = { want: 0, delivery: 0, postage: 0, defect: 0 };
       db.jobs.forEach(function (j) { if (j.status === 'pending') c[j.tab]++; });
       return c;
     },
@@ -58,7 +58,9 @@
         id: p.clientId || ('j' + uid), tab: p.tab, category: p.category || '', note: p.note || '',
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
-        status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+        status: p.tab === 'defect' ? 'done' : 'pending',
+        createdAt: Date.now(), doneAt: p.tab === 'defect' ? Date.now() : '',
+        proofPhotoId: '', proofThumbId: '',
         dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0,
         customer: (p.customer || '').trim() || 'Unassigned'
       };
@@ -70,7 +72,7 @@
     },
     getAllData: function () {
       return {
-        jobs: { want: api.getJobs('want'), delivery: api.getJobs('delivery'), postage: api.getJobs('postage') },
+        jobs: { want: api.getJobs('want'), delivery: api.getJobs('delivery'), postage: api.getJobs('postage'), defect: api.getJobs('defect') },
         counts: api.getCounts()
       };
     },

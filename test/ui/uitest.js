@@ -745,6 +745,48 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(800);
   check((await page.locator('#postage-list .proof').count()) === 1, 'postage proof photo works');
 
+  console.log('\n-- DEFECT tab: jobsheet + defect photos, DONE button --');
+  check((await page.locator('#nav-defect').count()) === 1, 'Defect tab in the bottom nav');
+  await page.click('#nav-defect');
+  await sleep(400);
+  check(await page.locator('#page-defect').isVisible(), 'defect page opens');
+  await page.click('#nav-post');
+  await sleep(200);
+  check((await page.locator('#upload-title').textContent()).indexOf('Defect') >= 0, "post window titled 'Record Defect'");
+  check((await page.locator('#wb-label').textContent()).indexOf('Defect photos') >= 0,
+    "second group is called 'Defect photos' (not Waybill)");
+  check((await page.locator('#btn-submit').textContent()).indexOf('DONE') >= 0, "submit button says '✅ DONE'");
+  check(!await page.locator('#due-wrap').isVisible(), 'no Ready-by field for defect records');
+  await page.setInputFiles('#js-file', IMG);
+  await sleep(500);
+  await page.click('#btn-submit');
+  await sleep(300);
+  check((await page.locator('#toast').textContent()).indexOf('Defect photo') >= 0, 'blocked without a defect photo');
+  await page.setInputFiles('#wb-file', [IMG2, IMG3]);
+  await sleep(600);
+  await page.fill('#upload-customer', 'Aina');
+  await page.fill('#upload-note', 'Torn sleeve x3');
+  await page.click('#btn-submit');
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Torn sleeve x3');
+    return !!(j && j.tab === 'defect' && j.status === 'done' && j.jsCount === 1 && j.photoIds.length === 3);
+  }), 'record saved as DONE with 1 jobsheet + 2 defect photos');
+  const defCard = page.locator('#defect-list .card').filter({ hasText: 'Torn sleeve x3' });
+  check((await defCard.count()) === 1, 'record card shows on the Defect page');
+  check((await defCard.locator('.photo-pair .lbl').nth(1).textContent()).indexOf('Defect') >= 0,
+    'card shows Jobsheet | Defect side by side');
+  check((await defCard.locator('.btn.green').count()) === 0, "no 'Take Proof' button — a record is already done");
+  check(!await page.locator('#badge-defect').isVisible(), 'no red badge (nothing pending on Defect)');
+  await clickSafe(defCard.locator('.t-edit').first());
+  await sleep(300);
+  check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 2,
+    'edit splits jobsheet / defect photos back into their groups');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
+  await page.click('#nav-postage');
+  await sleep(300);
+
   console.log('\n-- bottom nav: icons stay put when tapped --');
   const icoB = await page.locator('#nav-want .ico').boundingBox();
   const lblB = await page.locator('#nav-want .nav-lbl').boundingBox();
