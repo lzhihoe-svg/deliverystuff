@@ -299,7 +299,13 @@
   }
   .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus, .sheet input[type=date]:focus { border-color: var(--lime); }
   .due-inputs { display: flex; gap: 8px; }
-  .due-inputs input { flex: 1; min-width: 0; }
+  .due-inputs input, .due-inputs select {
+    flex: 1; min-width: 0; border: 2px solid #d3dcc3; border-radius: 12px;
+    padding: 12px 8px; font-size: 16px; font-family: inherit; background: #fff; outline: none;
+  }
+  .due-inputs select:focus, .due-inputs input:focus { border-color: var(--lime); }
+  #upload-due-day { flex: .8; }
+  #upload-due { flex: 1.15; }
 
   /* history (evidence) search results */
   .h-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; margin-top: 12px; }
@@ -573,9 +579,10 @@
     </div>
 
     <div id="due-wrap" style="display:none">
-      <label>Ready by (optional) ⏰ <span style="font-weight:600;color:var(--muted);font-size:12px">— blank date = today</span></label>
+      <label>Ready by (optional) ⏰ <span style="font-weight:600;color:var(--muted);font-size:12px">— blank = today</span></label>
       <div class="due-inputs">
-        <input type="date" id="upload-due-date">
+        <select id="upload-due-day"><option value="">Day</option></select>
+        <select id="upload-due-month"><option value="">Month</option></select>
         <input type="time" id="upload-due">
       </div>
     </div>
@@ -1034,17 +1041,35 @@
     var d = new Date(Number(ms));
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
-  function msToYMD(ms) {
-    var d = new Date(Number(ms));
-    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-  }
-  /** date (optional, defaults to today) + time → deadline timestamp. */
-  function dueToMs(dateV, timeV) {
-    if (!timeV) return '';
-    var p = timeV.split(':');
-    var d = dateV ? new Date(dateV + 'T00:00:00') : new Date();
-    d.setHours(Number(p[0]), Number(p[1]), 0, 0);
+  /**
+   * Day + month (no year — nearest future year is chosen automatically)
+   * + optional time → deadline timestamp.
+   * Date without time = "ready by end of that day" (stored as 23:59:59,
+   * which also marks it as date-only for display and editing).
+   */
+  function dueToMs(dayV, monthV, timeV) {
+    var hasDate = dayV !== '' || monthV !== '';
+    if (!hasDate && !timeV) return '';
+    var now = new Date();
+    var day = dayV !== '' ? Number(dayV) : now.getDate();
+    var month = monthV !== '' ? Number(monthV) : now.getMonth();
+    var d = new Date(now.getFullYear(), month, day);
+    if (hasDate) {
+      var eod = new Date(now.getFullYear(), month, day, 23, 59, 59, 0);
+      if (eod.getTime() < now.getTime()) d.setFullYear(now.getFullYear() + 1); // e.g. "2 Jan" picked in December
+    }
+    if (timeV) {
+      var p = timeV.split(':');
+      d.setHours(Number(p[0]), Number(p[1]), 0, 0);
+    } else {
+      d.setHours(23, 59, 59, 0); // date-only marker
+    }
     return d.getTime();
+  }
+  /** Was this deadline set with a date but no time? */
+  function isDateOnly_(ms) {
+    var d = new Date(Number(ms));
+    return d.getHours() === 23 && d.getMinutes() === 59 && d.getSeconds() === 59;
   }
   function fmtTime(ms) {
     var d = new Date(Number(ms));
@@ -1053,15 +1078,18 @@
     h = h % 12; if (h === 0) h = 12;
     return h + ':' + ('0' + m).slice(-2) + ' ' + ap;
   }
-  /** "4:30 PM" for today, "Wed 6 Aug 4:30 PM" for any other day. */
+  /** "4:30 PM" for today, "Wed 6 Aug 4:30 PM" for other days;
+      date-only deadlines read "today" / "Wed 6 Aug" without a time. */
   function dueLabel_(ms) {
     var d = new Date(Number(ms)), now = new Date();
     var sameDay = d.getFullYear() === now.getFullYear() &&
       d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-    if (sameDay) return fmtTime(ms);
+    var dateOnly = isDateOnly_(ms);
+    if (sameDay) return dateOnly ? 'today' : fmtTime(ms);
     var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     var MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONS[d.getMonth()] + ' ' + fmtTime(ms);
+    var s = DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONS[d.getMonth()];
+    return dateOnly ? s : s + ' ' + fmtTime(ms);
   }
   function dueChip(j) {
     if (!j.dueAt) return '';
@@ -1922,8 +1950,16 @@
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
-    document.getElementById('upload-due').value = (job && job.dueAt) ? msToHHMM(job.dueAt) : '';
-    document.getElementById('upload-due-date').value = (job && job.dueAt) ? msToYMD(job.dueAt) : '';
+    if (job && job.dueAt) {
+      var dd = new Date(Number(job.dueAt));
+      document.getElementById('upload-due-day').value = String(dd.getDate());
+      document.getElementById('upload-due-month').value = String(dd.getMonth());
+      document.getElementById('upload-due').value = isDateOnly_(job.dueAt) ? '' : msToHHMM(job.dueAt);
+    } else {
+      document.getElementById('upload-due-day').value = '';
+      document.getElementById('upload-due-month').value = '';
+      document.getElementById('upload-due').value = '';
+    }
 
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
@@ -2025,7 +2061,8 @@
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
-    var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-date').value,
+    var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
+                                 document.getElementById('upload-due-month').value,
                                  document.getElementById('upload-due').value) : '';
     var customer = hasDue ? document.getElementById('upload-customer').value.trim() : '';
 
@@ -2163,6 +2200,15 @@
         toast('⚠️ Post failed: ' + errMsg_(e));
       });
   }
+
+  // fill the Ready-by day/month dropdowns (no year — chosen automatically)
+  (function () {
+    var ds = document.getElementById('upload-due-day');
+    for (var i = 1; i <= 31; i++) ds.appendChild(new Option(i, i));
+    var ms = document.getElementById('upload-due-month');
+    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      .forEach(function (m, i) { ms.appendChild(new Option(m, i)); });
+  })();
 
   // close any modal by clicking/tapping the dark backdrop
   ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay'].forEach(function (id) {
