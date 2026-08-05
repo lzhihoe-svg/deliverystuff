@@ -110,6 +110,17 @@
 
   .grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 6px; }
 
+  /* balance / completed counter boxes (Delivery + Postage) */
+  .stat-row { display: flex; gap: 10px; margin: 4px 0 6px; }
+  .stat-box {
+    flex: 1; border-radius: 14px; padding: 10px 8px; text-align: center;
+    box-shadow: 0 1px 4px rgba(15,23,42,.07);
+  }
+  .stat-box .num { font-size: 27px; font-weight: 800; line-height: 1.1; }
+  .stat-box .lbl { font-size: 12px; font-weight: 700; margin-top: 2px; }
+  .stat-box.todo { background: #fef3c7; color: #92400e; border: 1.5px solid #fde68a; }
+  .stat-box.done { background: var(--lime-soft); color: var(--blue); border: 1.5px solid #d9f99d; }
+
   .card {
     background: var(--card); border-radius: 16px; overflow: hidden;
     box-shadow: 0 1px 4px rgba(15,23,42,.08);
@@ -665,7 +676,7 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 4, BATCH = 4;
+  var MAX_PARALLEL = 5, BATCH = 5;
 
   // Interactive work (PIN check, saves) and photo uploads get the network to
   // themselves: background image downloads pause while they run. This is what
@@ -705,25 +716,25 @@
     return v;
   }
   function persistImg(id, data) {
-    if (!data || data.length > 90000) return; // persist small images (thumbs) only
+    if (!data || data.length > 160000) return; // persist thumbs (bigger ones were silently re-downloading every visit)
     if (String(id).indexOf('local') === 0) return; // temp upload previews stay in memory
     try { localStorage.setItem('ki_' + id, data); }
     catch (e) {
-      // storage full: clear old cached images and retry once
+      // storage full: drop HALF the cached images (not all!) and retry
       try {
         var kill = [];
         for (var i = 0; i < localStorage.length; i++) {
           var k = localStorage.key(i);
           if (k && k.indexOf('ki_') === 0) kill.push(k);
         }
-        kill.forEach(function (k) { localStorage.removeItem(k); });
+        kill.slice(0, Math.ceil(kill.length / 2)).forEach(function (k) { localStorage.removeItem(k); });
         localStorage.setItem('ki_' + id, data);
       } catch (e2) {}
     }
   }
 
   function imgTag(id, style, extra) {
-    return '<img data-img="' + id + '" src="' + (cachedImg(id) || PLACEHOLDER) + '" ' +
+    return '<img data-img="' + id + '" decoding="async" src="' + (cachedImg(id) || PLACEHOLDER) + '" ' +
       (style ? 'style="' + style + '" ' : '') + (extra || '') + '>';
   }
 
@@ -1102,7 +1113,7 @@
       .withFailureHandler(function (e) {
         if (settled) return;
         settled = true; clearTimeout(dog);
-        busy(false); toast('⚠️ ' + e.message);
+        busy(false); toast('⚠️ ' + errMsg_(e));
       })
       .checkPin(p);
   }
@@ -1155,7 +1166,7 @@
       .withFailureHandler(function (e) {
         refreshSpin(false);
         setSync('⚠️ Update failed — tap Refresh to retry');
-        toast('⚠️ ' + e.message);
+        toast('⚠️ ' + errMsg_(e));
       })
       .getAllData();
   }
@@ -1467,6 +1478,12 @@
         '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
     }
 
+    // today at a glance: how many left vs finished
+    html += '<div class="stat-row">' +
+      '<div class="stat-box todo"><div class="num">' + pending.length + '</div><div class="lbl">⏳ Balance To Do</div></div>' +
+      '<div class="stat-box done"><div class="num">' + done.length + '</div><div class="lbl">✅ Completed</div></div>' +
+      '</div>';
+
     if (pending.length) {
       html += '<div class="section-title">⏳ To Do (' + pending.length + ')</div><div class="grid">';
       pending.forEach(function (j) { html += jobCard(j, false); });
@@ -1559,7 +1576,30 @@
   }
 
   // ------------------------------------------------------------ status updates / delete / reset
-  function bgFail(e) { toast('⚠️ ' + e.message); refresh(); }
+  /** Human-readable error text — never shows "undefined" to the user. */
+  function errMsg_(e) {
+    var m = e && (e.message || e.error || (typeof e === 'string' ? e : ''));
+    return (m && String(m) !== 'undefined') ? String(m) : 'Connection problem — please try again';
+  }
+
+  /**
+   * Server call with AUTOMATIC RETRY: a flaky connection retries twice
+   * (1.5s apart) by itself before bothering the user. Uploads that used
+   * to fail with "undefined" and need re-picking now just quietly recover.
+   */
+  function gsCall(fn, args, ok, fail, tries) {
+    tries = (tries == null) ? 2 : tries;
+    var r = google.script.run
+      .withSuccessHandler(ok)
+      .withFailureHandler(function (e) {
+        if (tries > 0) {
+          setTimeout(function () { gsCall(fn, args, ok, fail, tries - 1); }, 1500);
+        } else if (fail) fail(e);
+      });
+    r[fn].apply(r, args);
+  }
+
+  function bgFail(e) { toast('⚠️ ' + errMsg_(e)); refresh(); }
 
   function updateBadgeLocal() {
     var n = state.jobs[state.tab].filter(function (j) { return j.status === 'pending'; }).length;
@@ -1642,7 +1682,7 @@
         renderBadges({ want: 0, delivery: 0, postage: 0 });
         toast('🔄 Fresh day! All tabs cleared.');
         google.script.run
-          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(); })
+          .withFailureHandler(function (e) { toast('⚠️ ' + errMsg_(e)); refresh(); })
           .resetAll(state.pin);
       });
   }
@@ -1655,7 +1695,7 @@
         toast('↩️ Restored ' + res.restored + ' jobs — welcome back!');
         refresh();
       })
-      .withFailureHandler(function (e) { toast('⚠️ ' + e.message); })
+      .withFailureHandler(function (e) { toast('⚠️ ' + errMsg_(e)); })
       .undoReset(state.pin);
   }
 
@@ -1731,7 +1771,7 @@
         loadImages();
       })
       .withFailureHandler(function (e) {
-        box.innerHTML = '<div style="text-align:center;color:#b91c1c;padding:18px;font-weight:700">⚠️ ' + esc(e.message) + '</div>';
+        box.innerHTML = '<div style="text-align:center;color:#b91c1c;padding:18px;font-weight:700">⚠️ ' + esc(errMsg_(e)) + '</div>';
       })
       .searchHistory(q, state.pin);
   }
@@ -1750,7 +1790,7 @@
         renderAll(); updateBadgeLocal();
         toast('✅ Finished work cleared — unfinished carried forward.');
         google.script.run
-          .withFailureHandler(function (e) { toast('⚠️ ' + e.message); refresh(); })
+          .withFailureHandler(function (e) { toast('⚠️ ' + errMsg_(e)); refresh(); })
           .resetDone(state.pin);
       });
   }
@@ -1787,26 +1827,25 @@
       renderAll(); updateBadgeLocal();
       toast(redo ? '📷 New proof photo uploading… 🙏' : '✅ Done! Proof uploading… 🙏');
       uploadsPending++; updatePill();
-      var run = google.script.run
-        .withSuccessHandler(function (res) {
-          uploadsPending--; updatePill();
-          seedImage(res.proofPhotoId, img.full);
-          seedImage(res.proofThumbId, img.thumb);
-          if (j) {
-            j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
-            if (res.doneAt) j.doneAt = res.doneAt;
-            delete j.proofUploading;
-            inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
-            saveJobsCache(jobTab); renderAll();
-          }
-        })
-        .withFailureHandler(function (e) {
-          uploadsPending--; updatePill();
-          if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
-          toast('⚠️ ' + e.message); refresh();
-        });
-      if (redo) run.updateProof(id, img.full, img.thumb);
-      else run.updateStatus(id, 'done', img.full, img.thumb, null);
+      var okH = function (res) {
+        uploadsPending--; updatePill();
+        seedImage(res.proofPhotoId, img.full);
+        seedImage(res.proofThumbId, img.thumb);
+        if (j) {
+          j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
+          if (res.doneAt) j.doneAt = res.doneAt;
+          delete j.proofUploading;
+          inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
+          saveJobsCache(jobTab); renderAll();
+        }
+      };
+      var failH = function (e) {
+        uploadsPending--; updatePill();
+        if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
+        toast('⚠️ ' + errMsg_(e)); refresh();
+      };
+      if (redo) gsCall('updateProof', [id, img.full, img.thumb], okH, failH);
+      else gsCall('updateStatus', [id, 'done', img.full, img.thumb, null], okH, failH);
     });
     input.value = '';
   }
@@ -2000,7 +2039,7 @@
           busy(false); closeUpload(); renderAll(); updateBadgeLocal();
           toast('💾 Saved!');
         })
-        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + e.message); })
+        .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + errMsg_(e)); })
         .editJob(state.editing.id, {
           note: note,
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
@@ -2048,8 +2087,22 @@
       toast('✅ Posted!');
     }
 
-    google.script.run
-      .withSuccessHandler(function (job) {
+    // A client-made id makes retrying SAFE: if the network drops after the
+    // server saved the job, the retry finds it instead of double-posting.
+    var clientKey = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+    gsCall('addJob', [{
+        tab: postTab,
+        category: tempJob.category,
+        note: note,
+        customer: customer,
+        clientId: clientKey,
+        photos: [fulls[0]],
+        thumbs: [thumbs[0]],
+        dueAt: dueMs,
+        jsCount: jsCount
+      }],
+      function (job) {
         uploadsPending--; updatePill();
         seedImage(job.photoIds[0], fulls[0]);
         seedImage(job.thumbIds[0], thumbs[0]);
@@ -2061,8 +2114,8 @@
         if (remaining === 0) { finishPost(); return; }
         for (var idx = 1; idx < fulls.length; idx++) {
           (function (ix) {
-            google.script.run
-              .withSuccessHandler(function (res) {
+            gsCall('addPhotoToJob', [tempJob.id, ix, fulls[ix], thumbs[ix]],
+              function (res) {
                 uploadsPending--; updatePill();
                 seedImage(res.photoId, fulls[ix]);
                 seedImage(res.thumbId, thumbs[ix]);
@@ -2070,33 +2123,22 @@
                 tempJob.thumbIds[ix] = res.thumbId;
                 remaining--;
                 if (remaining === 0) finishPost();
-              })
-              .withFailureHandler(function (e) {
+              },
+              function (e) {
                 uploadsPending--; updatePill();
                 remaining--;
-                toast('⚠️ One photo failed: ' + e.message);
+                toast('⚠️ One photo failed: ' + errMsg_(e));
                 if (remaining === 0) finishPost();
-              })
-              .addPhotoToJob(tempJob.id, ix, fulls[ix], thumbs[ix]);
+              });
           })(idx);
         }
-      })
-      .withFailureHandler(function (e) {
+      },
+      function (e) {
         uploadsPending -= fulls.length; updatePill();
         inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
         state.jobs[postTab] = state.jobs[postTab].filter(function (x) { return x !== tempJob; });
         renderAll(); updateBadgeLocal();
-        toast('⚠️ Post failed: ' + e.message + ' — please try again');
-      })
-      .addJob({
-        tab: postTab,
-        category: tempJob.category,
-        note: note,
-        customer: customer,
-        photos: [fulls[0]],
-        thumbs: [thumbs[0]],
-        dueAt: dueMs,
-        jsCount: jsCount
+        toast('⚠️ Post failed: ' + errMsg_(e));
       });
   }
 
@@ -2130,7 +2172,9 @@
           c.getContext('2d').drawImage(img, 0, 0, w, h);
           return c.toDataURL('image/jpeg', q).split(',')[1];
         }
-        cb({ full: scale(1280, 0.8), thumb: scale(480, 0.7) });
+        // 1100px q0.75 keeps waybill text readable at ~35% fewer bytes
+        // than the old 1280 q0.8 — uploads finish noticeably faster on 4G
+        cb({ full: scale(1100, 0.75), thumb: scale(480, 0.7) });
       };
       img.src = e.target.result;
     };

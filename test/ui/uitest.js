@@ -378,6 +378,65 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#history-overlay .x-close');
   await sleep(200);
 
+  console.log('\n-- stat boxes: Balance To Do vs Completed --');
+  check((await page.locator('#delivery-list .stat-row').count()) === 1, 'delivery has the two counter boxes');
+  check(await page.evaluate(() => document.getElementById('delivery-list').firstElementChild.className.indexOf('stat-row') >= 0),
+    'boxes sit at the top, directly below the Lalamove/Bus pills');
+  const st = await page.evaluate(() => {
+    const d = window.__kilang.jobs.delivery;
+    return { t: d.filter(j => j.status === 'pending').length, d: d.filter(j => j.status === 'done').length };
+  });
+  let nums = await page.locator('#delivery-list .stat-box .num').allTextContents();
+  check(nums[0] === String(st.t) && nums[1] === String(st.d), 'counts correct (' + nums.join(' / ') + ')');
+  const bcCard = page.locator('#delivery-list .card').filter({ hasText: 'Blank-cust' });
+  await clickSafe(bcCard.locator('.btn.green').first());
+  await page.setInputFiles('#proof-file', IMG3);
+  await sleep(900);
+  nums = await page.locator('#delivery-list .stat-box .num').allTextContents();
+  check(nums[0] === String(st.t - 1) && nums[1] === String(st.d + 1),
+    'finishing a job moves the counters instantly (balance -1, completed +1)');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Stat-post', photos: ['sp1', 'sp2'], thumbs: ['spt1', 'spt2'], jsCount: 1 });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(500);
+  await page.click('#nav-postage');
+  await sleep(500);
+  const ph = await page.locator('#postage-list').innerHTML();
+  check(ph.indexOf('stat-row') >= 0 && ph.indexOf('stat-row') < ph.indexOf('To Do ('),
+    'postage boxes sit ABOVE the To Do section');
+  // tidy the helper job so later postage sections see their expected state
+  await page.evaluate(() => { window.__mockdb.jobs.find(j => j.note === 'Stat-post').status = 'archived'; });
+  await page.click('#nav-delivery');
+  await sleep(400);
+
+  console.log('\n-- upload reliability: automatic retry, no lost photos --');
+  await page.evaluate(() => { window.__mockfail = { addJob: 1 }; });
+  await page.click('#nav-post');
+  await sleep(200);
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  await page.fill('#upload-note', 'Retry-post');
+  await page.click('#btn-submit');
+  await sleep(3000); // first try fails; the automatic retry fires at 1.5s
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.note === 'Retry-post').length === 1),
+    'failed post retried automatically — exactly ONE job created (no duplicate)');
+  await page.evaluate(() => { window.__mockfail = { addPhotoToJob: 1 }; });
+  await page.click('#nav-post');
+  await sleep(200);
+  await page.setInputFiles('#photos-file', [IMG, IMG2]);
+  await sleep(600);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  await page.fill('#upload-note', 'Retry-photo');
+  await page.click('#btn-submit');
+  await sleep(3500);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Retry-photo');
+    return !!(j && j.photoIds.length === 2 && j.photoIds[1]);
+  }), 'failed background photo retried automatically — no need to re-upload');
+  await page.evaluate(() => { window.__mockfail = {}; });
+
   console.log('\n-- refresh button: all 3 tabs, word label, updated-at time --');
   // seed jobs in OTHER tabs; one Refresh must pick them all up
   await page.evaluate(() => {
@@ -604,7 +663,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#postage-list .photo-pair .lbl').nth(1).textContent()).indexOf('Waybill') >= 0, 'Waybill label on the right');
   check((await page.locator('#postage-list .photo-pair .car-track').count()) === 1, 'jobsheet side is its own mini-carousel (2 pages)');
   check((await page.locator('#postage-list .photo-pair .car-dots span').count()) === 2, 'dots show 2 jobsheet pages');
-  const bgJob = await page.evaluate(() => window.__mockdb.jobs.find(jj => jj.tab === 'postage' && jj.jsCount));
+  const bgJob = await page.evaluate(() => window.__mockdb.jobs.find(jj => jj.tab === 'postage' && jj.jsCount && jj.status !== 'archived'));
   check(bgJob && bgJob.jsCount === 2 && bgJob.photoIds.length === 3, 'server stored the split (2 jobsheet + 1 waybill)');
   // swipe inside the jobsheet half only
   const mini = page.locator('#postage-list .photo-pair .car-track').first();

@@ -593,6 +593,21 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
 }
 
+console.log('\n== addJob idempotency (safe retry via clientId) ==');
+{
+  const { ctx, files } = makeEnv();
+  const a1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'idem', clientId: 'ckey1', photos: [B64], thumbs: [B64] });
+  check(a1.id === 'ckey1', 'client-supplied id becomes the job id');
+  const a2 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'idem', clientId: 'ckey1', photos: [B64], thumbs: [B64] });
+  check(a2.id === 'ckey1', 'retry returns the SAME job');
+  check(ctx.getJobs('delivery').length === 1, 'retrying addJob does NOT create a duplicate job');
+  check(JSON.stringify(a2.photoIds) === JSON.stringify(a1.photoIds), 'retry returns the original photos');
+  const dupTrashed = Object.keys(files).filter(k => files[k].trashed).length;
+  check(dupTrashed >= 2, "the retry's duplicate photo files are trashed (" + dupTrashed + ")");
+  const b = ctx.addJob({ tab: 'want', category: '', note: 'no key', photos: [B64] });
+  check(b.id !== 'ckey1' && ctx.getJobs('want').length === 1, 'jobs without clientId still work');
+}
+
 console.log('\n== undoSwipe (staff fix a wrong swipe, no PIN) ==');
 {
   const { ctx } = makeEnv();

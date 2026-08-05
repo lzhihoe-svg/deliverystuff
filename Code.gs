@@ -280,7 +280,10 @@ function addJob(payload) {
     throw new Error('Photo required');
   }
   if (payload.photos.length > 6) throw new Error('Max 6 photos per job');
-  var id = Utilities.getUuid();
+  // The page sends its own clientId so a network RETRY is safe: if the
+  // first attempt actually reached the server, the retry finds the job
+  // instead of creating a duplicate.
+  var id = payload.clientId ? String(payload.clientId).slice(0, 40) : Utilities.getUuid();
   var createdAt = new Date().getTime();
   var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
   var jsCount = payload.jsCount ? Number(payload.jsCount) : 0;
@@ -299,18 +302,31 @@ function addJob(payload) {
     thumbIds.push(t ? savePhotoTo_(folder, t, fileLabel_(kind + ' (thumb)', customer)) : '');
   }
 
+  var existing = null;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    getSheet_().appendRow([
-      id, payload.tab, payload.category || '', payload.note || '',
-      JSON.stringify(photoIds), 'pending',
-      '', createdAt, '', '', '',
-      JSON.stringify(thumbIds), '', dueAt, '', jsCount,
-      customer, folderId
-    ]);
+    var sh = getSheet_();
+    if (payload.clientId) {
+      var row = findRow_(sh, id);
+      if (row > 0) existing = sh.getRange(row, 1, 1, 18).getValues()[0];
+    }
+    if (!existing) {
+      sh.appendRow([
+        id, payload.tab, payload.category || '', payload.note || '',
+        JSON.stringify(photoIds), 'pending',
+        '', createdAt, '', '', '',
+        JSON.stringify(thumbIds), '', dueAt, '', jsCount,
+        customer, folderId
+      ]);
+    }
   } finally {
     lock.releaseLock();
+  }
+  if (existing) {
+    // duplicate retry: this run's photo copies are not needed
+    for (var k = 0; k < photoIds.length; k++) { trashFile_(photoIds[k]); trashFile_(thumbIds[k]); }
+    return rowToJob_(existing);
   }
   return {
     id: id, tab: payload.tab, category: payload.category || '',

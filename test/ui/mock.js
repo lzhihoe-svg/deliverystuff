@@ -49,9 +49,13 @@
     },
     addJob: function (p) {
       if (!p.photos || !p.photos.length) throw new Error('Photo required');
+      if (p.clientId) {
+        var dup = db.jobs.find(function (x) { return x.id === p.clientId; });
+        if (dup) return JSON.parse(JSON.stringify(dup)); // idempotent retry
+      }
       uid++;
       var job = {
-        id: 'j' + uid, tab: p.tab, category: p.category || '', note: p.note || '',
+        id: p.clientId || ('j' + uid), tab: p.tab, category: p.category || '', note: p.note || '',
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
         status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
@@ -186,6 +190,12 @@
         var args = Array.prototype.slice.call(arguments);
         window.__mockcalls.push({ name: name, at: Date.now() });
         var lat = (window.__mocklat && window.__mocklat[name] != null) ? window.__mocklat[name] : LAT;
+        // test hook: window.__mockfail = { addJob: 2 } fails the next 2 calls
+        if (window.__mockfail && window.__mockfail[name] > 0) {
+          window.__mockfail[name]--;
+          setTimeout(function () { if (r._f) r._f(new Error('Network glitch')); }, lat);
+          return;
+        }
         setTimeout(function () {
           try {
             var res = api[name].apply(null, args);
