@@ -293,11 +293,13 @@
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea, .sheet input[type=password], .sheet input[type=time], .sheet input[type=text] {
+  .sheet textarea, .sheet input[type=password], .sheet input[type=time], .sheet input[type=text], .sheet input[type=date] {
     width: 100%; border: 2px solid #d3dcc3; border-radius: 12px;
     padding: 12px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
   }
-  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus { border-color: var(--lime); }
+  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus, .sheet input[type=date]:focus { border-color: var(--lime); }
+  .due-inputs { display: flex; gap: 8px; }
+  .due-inputs input { flex: 1; min-width: 0; }
 
   /* history (evidence) search results */
   .h-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; margin-top: 12px; }
@@ -571,8 +573,11 @@
     </div>
 
     <div id="due-wrap" style="display:none">
-      <label>Ready by (optional) ⏰</label>
-      <input type="time" id="upload-due">
+      <label>Ready by (optional) ⏰ <span style="font-weight:600;color:var(--muted);font-size:12px">— blank date = today</span></label>
+      <div class="due-inputs">
+        <input type="date" id="upload-due-date">
+        <input type="time" id="upload-due">
+      </div>
     </div>
 
     <label>Instruction (optional)</label>
@@ -1029,10 +1034,15 @@
     var d = new Date(Number(ms));
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
-  function hhmmToMs(v) {
-    if (!v) return '';
-    var p = v.split(':');
-    var d = new Date();
+  function msToYMD(ms) {
+    var d = new Date(Number(ms));
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  /** date (optional, defaults to today) + time → deadline timestamp. */
+  function dueToMs(dateV, timeV) {
+    if (!timeV) return '';
+    var p = timeV.split(':');
+    var d = dateV ? new Date(dateV + 'T00:00:00') : new Date();
     d.setHours(Number(p[0]), Number(p[1]), 0, 0);
     return d.getTime();
   }
@@ -1043,12 +1053,22 @@
     h = h % 12; if (h === 0) h = 12;
     return h + ':' + ('0' + m).slice(-2) + ' ' + ap;
   }
+  /** "4:30 PM" for today, "Wed 6 Aug 4:30 PM" for any other day. */
+  function dueLabel_(ms) {
+    var d = new Date(Number(ms)), now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    if (sameDay) return fmtTime(ms);
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONS[d.getMonth()] + ' ' + fmtTime(ms);
+  }
   function dueChip(j) {
     if (!j.dueAt) return '';
     var left = Number(j.dueAt) - Date.now();
-    if (left < 0) return '<span class="chip late">🚨 LATE — was due ' + fmtTime(j.dueAt) + '</span> ';
-    if (left < 3600000) return '<span class="chip soon">⏰ Ready by ' + fmtTime(j.dueAt) + ' — ' + Math.max(1, Math.round(left / 60000)) + ' min left!</span> ';
-    return '<span class="chip due">🕒 Ready by ' + fmtTime(j.dueAt) + '</span> ';
+    if (left < 0) return '<span class="chip late">🚨 LATE — was due ' + dueLabel_(j.dueAt) + '</span> ';
+    if (left < 3600000) return '<span class="chip soon">⏰ Ready by ' + dueLabel_(j.dueAt) + ' — ' + Math.max(1, Math.round(left / 60000)) + ' min left!</span> ';
+    return '<span class="chip due">🕒 Ready by ' + dueLabel_(j.dueAt) + '</span> ';
   }
 
   // ---- background upload progress pill ----
@@ -1903,6 +1923,7 @@
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
     document.getElementById('upload-due').value = (job && job.dueAt) ? msToHHMM(job.dueAt) : '';
+    document.getElementById('upload-due-date').value = (job && job.dueAt) ? msToYMD(job.dueAt) : '';
 
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
@@ -2004,7 +2025,8 @@
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
     var hasDue = state.tab === 'delivery' || state.tab === 'postage';
-    var dueMs = hasDue ? hhmmToMs(document.getElementById('upload-due').value) : '';
+    var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-date').value,
+                                 document.getElementById('upload-due').value) : '';
     var customer = hasDue ? document.getElementById('upload-customer').value.trim() : '';
 
     var photos, jsCount = 0;

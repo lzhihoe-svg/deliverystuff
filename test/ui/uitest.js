@@ -485,6 +485,36 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#delivery-list .chip.due, #delivery-list .chip.soon, #delivery-list .chip.late').count()) >= 1,
     'Ready-by chip shows on the card');
   check(await page.evaluate(() => !!window.__mockdb.jobs.find(j => j.note === 'Due tonight' && j.dueAt)), 'deadline stored on server');
+
+  // NEW: a deadline on ANOTHER DAY (date + time)
+  await page.click('#nav-post');
+  await sleep(150);
+  check(await page.locator('#upload-due-date').isVisible(), 'date field shows next to the time');
+  await page.setInputFiles('#photos-file', IMG2);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  const tmr = await page.evaluate(() => {
+    const d = new Date(Date.now() + 86400000);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  });
+  await page.fill('#upload-due-date', tmr);
+  await page.fill('#upload-due', '16:30');
+  await page.fill('#upload-note', 'Tomorrow bus');
+  await page.click('#btn-submit');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Tomorrow bus');
+    return !!(j && j.dueAt > Date.now() + 12 * 3600000);
+  }), "deadline stored with TOMORROW's date");
+  const tCard = page.locator('#delivery-list .card').filter({ hasText: 'Tomorrow bus' });
+  check(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d/.test(await tCard.locator('.chip.due').textContent()),
+    'chip shows the DAY for deadlines not today');
+  await clickSafe(tCard.locator('.t-edit').first());
+  await sleep(300);
+  check((await page.locator('#upload-due-date').inputValue()) === tmr, 'edit prefills the date');
+  check((await page.locator('#upload-due').inputValue()) === '16:30', 'edit prefills the time');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
   // Checking tab must NOT have a due field
   await page.click('#nav-want');
   await sleep(300);
