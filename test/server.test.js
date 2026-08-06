@@ -582,6 +582,16 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   const r4 = ctx.searchHistory('', PIN);
   check(r4.total === 3 && r4.results[0].id !== a.id, 'empty query lists recent jobs, newest first');
 
+  // page + sub-type filters, and Drive folder links
+  const r7 = ctx.searchHistory('', PIN, 'delivery');
+  check(r7.total === 1 && r7.results[0].id === a.id, 'tab filter: Delivery only');
+  check(ctx.searchHistory('', PIN, 'delivery', 'lalamove').total === 1, 'sub-type filter: Lalamove finds it');
+  check(ctx.searchHistory('', PIN, 'delivery', 'bus').total === 0, 'sub-type filter: Bus excludes it');
+  check(ctx.searchHistory('humaira', PIN, 'postage').total === 1, 'text search combines with the tab filter');
+  check(!!r7.results[0].folderId, "each result carries its job's Drive folder id");
+  check(typeof r7.driveFolderId === 'string' && r7.driveFolderId.length > 0,
+    "response includes the master 'Delivery Check' folder id");
+
   // THE KEY: evidence survives a full reset
   ctx.resetAll(PIN);
   const r5 = ctx.searchHistory('nurul', PIN);

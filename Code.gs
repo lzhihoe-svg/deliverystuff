@@ -280,7 +280,8 @@ function rowToJob_(r) {
     thumbIds: JSON.parse(r[11] || '[]'), proofThumbId: r[12] || '',
     dueAt: r[13] || '', pinnedAt: r[14] || '',
     jsCount: Number(r[15]) || 0,  // postage: first N photos are Jobsheet, rest Waybill
-    customer: r[16] || ''
+    customer: r[16] || '',
+    folderId: r[17] || ''         // the job's own Drive folder (History links to it)
   };
 }
 
@@ -797,16 +798,18 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
  * the note, category, tab and the posted/finished dates ("2026-08-05").
  * Empty query = the 50 most recent jobs. Newest first, capped at 50.
  */
-function searchHistory(q, pin) {
+function searchHistory(q, pin, tab, category) {
   requireAdmin_(pin);
   q = String(q || '').toLowerCase().trim();
   var sh = getSheet_();
   var last = sh.getLastRow();
-  if (last < 2) return { results: [], total: 0 };
+  if (last < 2) return { results: [], total: 0, driveFolderId: masterFolder_().getId() };
   var rows = sh.getRange(2, 1, last - 1, 18).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
+    if (tab && r[1] !== tab) continue;           // page filter (delivery / postage / …)
+    if (category && r[2] !== category) continue; // delivery sub-type (bus / lalamove / pickup)
     if (q) {
       var hay = (String(r[3]) + ' ' + String(r[16]) + ' ' + r[2] + ' ' + r[1] + ' ' +
         dayStr_(r[7]) + ' ' + dayStr_(r[9])).toLowerCase();
@@ -814,7 +817,9 @@ function searchHistory(q, pin) {
     }
     out.push(rowToJob_(r));
   }
-  return { results: out.slice(0, 50), total: out.length };
+  // driveFolderId: the "Delivery Check" master folder, so the page can
+  // offer an "open in Google Drive" link next to the results.
+  return { results: out.slice(0, 50), total: out.length, driveFolderId: masterFolder_().getId() };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */

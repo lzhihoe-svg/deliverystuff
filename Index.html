@@ -308,6 +308,18 @@
   #upload-due { flex: 1.15; }
 
   /* history (evidence) search results */
+  .hist-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .hist-pills button {
+    border: 1.5px solid #d3dcc3; background: #fff; color: #475569;
+    font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+  }
+  .hist-pills button.active { background: var(--green); border-color: var(--green); color: #fff; }
+  .h-drive {
+    display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700;
+    color: var(--blue); text-decoration: none; background: #f7fee7;
+    border: 1.5px solid var(--lime-soft); border-radius: 999px; padding: 6px 12px;
+  }
+  .h-drive.master { margin-top: 12px; }
   .h-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; margin-top: 12px; }
   .h-card .h-note { font-size: 15px; font-weight: 700; }
   .h-card .h-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
@@ -322,6 +334,21 @@
     border-radius: 6px; padding: 1px 0; pointer-events: none;
   }
   #history-btn { border-color: #a5b4fc; color: #e0e7ff; display: none; }
+  #stats-btn { border-color: #7dd3fc; color: #e0f2fe; display: none; }
+
+  /* admin stats — all 4 pages at a glance */
+  .st-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 12px; margin-top: 12px; }
+  .st-head { font-size: 14.5px; font-weight: 800; margin-bottom: 9px; }
+  .st-row { display: flex; gap: 8px; }
+  .st-cell { flex: 1; border-radius: 10px; padding: 8px 4px 9px; text-align: center; }
+  .st-cell .n { font-size: 22px; font-weight: 800; line-height: 1.1; }
+  .st-cell .l { font-size: 10.5px; font-weight: 700; margin-top: 2px; }
+  .st-cell.neutral { background: #f1f5f9; color: #475569; }
+  .st-cell.good { background: var(--lime-soft); color: var(--blue); }
+  .st-cell.bad { background: #fee2e2; color: #991b1b; }
+  .st-bar { height: 7px; background: #e2e8f0; border-radius: 999px; margin-top: 10px; overflow: hidden; }
+  .st-bar span { display: block; height: 100%; background: linear-gradient(135deg, var(--lime), var(--green)); border-radius: 999px; }
+  .st-pct { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 5px; }
   .x-close {
     position: absolute; top: 12px; right: 12px;
     width: 38px; height: 38px; border-radius: 50%; border: 0;
@@ -471,6 +498,7 @@
       <span>ARA<span class="dot">MEGA</span></span>
     </h1>
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
+    <button class="role-btn" id="stats-btn" onclick="openStats()">📊 Stats</button>
     <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
     <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
     <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
@@ -618,6 +646,15 @@
   </div>
 </div>
 
+<!-- ================= ADMIN STATS (all 4 pages at a glance) ================= -->
+<div class="overlay" id="stats-overlay">
+  <div class="sheet">
+    <button class="x-close" onclick="closeStats()">✕</button>
+    <h2>📊 Today at a glance</h2>
+    <div id="stats-body"></div>
+  </div>
+</div>
+
 <!-- ================= HISTORY (evidence search — even after RESET) ================= -->
 <div class="overlay" id="history-overlay">
   <div class="sheet">
@@ -631,6 +668,19 @@
       <input type="text" id="history-q" placeholder="Customer / note / date…"
              onkeydown="if(event.key==='Enter')doHistorySearch()">
       <button class="btn blue small" style="width:auto;flex:0 0 auto" onclick="doHistorySearch()">Search</button>
+    </div>
+    <div class="hist-pills" id="hist-tabs">
+      <button data-t="" class="active">All</button>
+      <button data-t="want">🔍 Checking</button>
+      <button data-t="delivery">🚚 Delivery</button>
+      <button data-t="postage">📦 Postage</button>
+      <button data-t="defect">🚨 Defect</button>
+    </div>
+    <div class="hist-pills" id="hist-cats" style="display:none">
+      <button data-c="" class="active">All types</button>
+      <button data-c="lalamove">🛵 Lalamove</button>
+      <button data-c="bus">🚌 Bus</button>
+      <button data-c="pickup">🤝 Pickup</button>
     </div>
     <div id="history-results"></div>
   </div>
@@ -1132,6 +1182,7 @@
     document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('cleardone-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('history-btn').style.display = isAdmin() ? 'block' : 'none';
+    document.getElementById('stats-btn').style.display = isAdmin() ? 'block' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -1763,6 +1814,55 @@
       .undoReset(state.pin);
   }
 
+  // ------------------------------------------------------------ admin stats
+  function openStats() {
+    renderStats();
+    document.getElementById('stats-overlay').classList.add('show');
+  }
+  function closeStats() {
+    document.getElementById('stats-overlay').classList.remove('show');
+  }
+  function statCard_(title, cells, pctLabel, pct) {
+    var html = '<div class="st-card"><div class="st-head">' + title + '</div><div class="st-row">';
+    cells.forEach(function (c) {
+      html += '<div class="st-cell ' + c[2] + '"><div class="n">' + c[0] + '</div><div class="l">' + c[1] + '</div></div>';
+    });
+    html += '</div>';
+    html += '<div class="st-bar"><span style="width:' + pct + '%"></span></div>' +
+      '<div class="st-pct">' + pct + '% ' + pctLabel + '</div>';
+    return html + '</div>';
+  }
+  /** All 4 pages summarized from the live board (archived jobs excluded). */
+  function renderStats() {
+    var now = Date.now();
+    function split(tab) {
+      var l = state.jobs[tab];
+      function c(fn) { return l.filter(fn).length; }
+      return {
+        pend: c(function (j) { return j.status === 'pending'; }),
+        done: c(function (j) { return j.status === 'done'; }),
+        got: c(function (j) { return j.status === 'got'; }),
+        ns: c(function (j) { return j.status === 'notseen'; }),
+        late: c(function (j) { return j.status === 'pending' && j.dueAt && Number(j.dueAt) < now; })
+      };
+    }
+    function pct(doneN, pendN) { return (doneN + pendN) === 0 ? 0 : Math.round(doneN * 100 / (doneN + pendN)); }
+    var w = split('want'), d = split('delivery'), p = split('postage'), f = split('defect');
+    document.getElementById('stats-body').innerHTML =
+      statCard_('🔍 Checking',
+        [[w.pend, 'Waiting swipe', 'neutral'], [w.got, '❤️ Got It', 'good'], [w.ns, '❌ Not Seen', 'bad']],
+        'answered', pct(w.got + w.ns, w.pend)) +
+      statCard_('🚚 Delivery',
+        [[d.pend, 'Balance', 'neutral'], [d.done, 'Completed', 'good'], [d.late, '🚨 Late', 'bad']],
+        'completed', pct(d.done, d.pend)) +
+      statCard_('📦 Postage',
+        [[p.pend, 'Balance', 'neutral'], [p.done, 'Completed', 'good'], [p.late, '🚨 Late', 'bad']],
+        'completed', pct(p.done, p.pend)) +
+      statCard_('🚨 Defect',
+        [[f.pend, 'Open', 'bad'], [f.done, 'Fixed', 'good'], [f.pend + f.done, 'Total', 'neutral']],
+        'fixed', pct(f.done, f.pend));
+  }
+
   // ------------------------------------------------------------ evidence history
   function fmtDT(ms) {
     if (!ms) return '';
@@ -1778,6 +1878,30 @@
   function closeHistory() {
     document.getElementById('history-overlay').classList.remove('show');
   }
+
+  // history filters: page (tab) + delivery sub-type (Lalamove / Bus / Pickup)
+  var histTab = '', histCat = '';
+  document.getElementById('hist-tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    histTab = b.getAttribute('data-t');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    var showCats = histTab === 'delivery';
+    document.getElementById('hist-cats').style.display = showCats ? 'flex' : 'none';
+    if (!showCats) {
+      histCat = '';
+      var cb = document.getElementById('hist-cats').querySelectorAll('button');
+      cb.forEach(function (x, i) { x.classList.toggle('active', i === 0); });
+    }
+    doHistorySearch();
+  });
+  document.getElementById('hist-cats').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    histCat = b.getAttribute('data-c');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    doHistorySearch();
+  });
 
   var TAB_EMOJI = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage', defect: '🚨 Defect' };
 
@@ -1812,6 +1936,10 @@
         ' · Posted ' + fmtDT(j.createdAt) + '</div>' +
       '<div class="h-status">' + status + '</div>' +
       '<div class="h-pics">' + pics + '</div>' +
+      (j.folderId
+        ? '<a class="h-drive" href="https://drive.google.com/drive/folders/' + j.folderId +
+          '" target="_blank" rel="noopener">📁 Open this job in Drive</a>'
+        : '') +
       '</div>';
   }
 
@@ -1821,14 +1949,18 @@
     box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">🔎 Searching…</div>';
     google.script.run
       .withSuccessHandler(function (res) {
+        var driveLink = res.driveFolderId
+          ? '<a class="h-drive master" href="https://drive.google.com/drive/folders/' + res.driveFolderId +
+            '" target="_blank" rel="noopener">📁 Open "Delivery Check" in Google Drive</a>'
+          : '';
         if (!res.results.length) {
-          box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">Nothing found for "' + esc(q) + '"</div>';
+          box.innerHTML = driveLink + '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">Nothing found' + (q ? ' for "' + esc(q) + '"' : '') + '</div>';
           return;
         }
         var head = '<div style="font-size:12.5px;color:var(--muted);margin-top:10px;font-weight:700">' +
-          (q ? res.total + ' result' + (res.total === 1 ? '' : 's') : 'Most recent jobs') +
+          (q || histTab ? res.total + ' result' + (res.total === 1 ? '' : 's') : 'Most recent jobs') +
           (res.total > res.results.length ? ' · showing first ' + res.results.length : '') + '</div>';
-        box.innerHTML = head + res.results.map(historyCard).join('');
+        box.innerHTML = driveLink + head + res.results.map(historyCard).join('');
         // images inside the modal live outside the scroller: fetch directly
         var imgs = box.querySelectorAll('img[data-img]');
         for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');
@@ -1837,7 +1969,7 @@
       .withFailureHandler(function (e) {
         box.innerHTML = '<div style="text-align:center;color:#b91c1c;padding:18px;font-weight:700">⚠️ ' + esc(errMsg_(e)) + '</div>';
       })
-      .searchHistory(q, state.pin);
+      .searchHistory(q, state.pin, histTab, histCat);
   }
 
   /** CLEAR DONE (admin): archive ONLY finished work — done Delivery/Postage
@@ -2236,13 +2368,14 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
       else if (id === 'confirm-overlay') closeConfirm();
       else if (id === 'reset-overlay') closeResetMenu();
       else if (id === 'history-overlay') closeHistory();
+      else if (id === 'stats-overlay') closeStats();
       else closeUpload();
     });
   });

@@ -315,11 +315,76 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.locator('#viewer').isVisible(), 'tapping the proof opens the fullscreen viewer');
   await page.locator('.viewer-x').click();
   await sleep(200);
+
+  // page + sub-type filters, and Drive folder links
+  check(await page.locator('#hist-tabs').isVisible(), 'history has page filter pills');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'HF-bus', photos: ['hb1'], thumbs: ['hbt1'] });
+    window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'HF-lala', photos: ['hl1'], thumbs: ['hlt1'] });
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'HF-post', photos: ['hp1', 'hp2'], thumbs: ['hpt1', 'hpt2'], jsCount: 1 });
+  });
+  await page.fill('#history-q', 'HF-');
+  await page.click('#history-overlay .btn.blue');
+  await sleep(400);
+  check((await page.locator('#history-results .h-card').count()) === 3, 'search finds all 3 seeded jobs');
+  await page.click('#hist-tabs button[data-t="delivery"]');
+  await sleep(400);
+  check(await page.locator('#hist-cats').isVisible(), 'Delivery shows its sub-choices (Lalamove/Bus/Pickup)');
+  check((await page.locator('#history-results .h-card').count()) === 2, 'Delivery filter narrows to 2');
+  await page.click('#hist-cats button[data-c="bus"]');
+  await sleep(400);
+  check((await page.locator('#history-results .h-card').count()) === 1 &&
+        (await page.locator('#history-results').textContent()).indexOf('HF-bus') >= 0,
+    'Bus sub-choice → only the bus job');
+  await page.click('#hist-tabs button[data-t="postage"]');
+  await sleep(400);
+  check(!await page.locator('#hist-cats').isVisible(), 'sub-choices hide for Postage');
+  check((await page.locator('#history-results .h-card').count()) === 1, 'Postage filter → 1 result');
+  check((await page.locator('#history-results .h-card .h-drive').count()) === 1,
+    "job card has an 'Open this job in Drive' link");
+  check((await page.locator('#history-results .h-card .h-drive').getAttribute('href')).indexOf('drive.google.com/drive/folders/') >= 0,
+    'link points to the Drive folder');
+  check((await page.locator('#history-results .h-drive.master').count()) === 1,
+    "master 'Delivery Check' Drive link shown on top");
+  await page.click('#hist-tabs button[data-t=""]');
+  await sleep(300);
+  await page.fill('#history-q', '');
+  await page.evaluate(() => { // tidy the seeded filter jobs so later sections see their expected state
+    window.__mockdb.jobs.forEach(j => { if (j.note && j.note.indexOf('HF-') === 0) j.status = 'archived'; });
+  });
   await page.click('#history-overlay .x-close');
   await sleep(200);
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
   check(!await page.locator('#history-btn').isVisible(), 'staff does NOT see the History button');
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(200);
+
+  console.log('\n-- 📊 admin stats: all 4 pages at a glance --');
+  check(await page.locator('#stats-btn').isVisible(), 'admin sees the Stats button');
+  await page.click('#stats-btn');
+  await sleep(300);
+  check(await page.locator('#stats-overlay').isVisible(), 'stats window opens');
+  check((await page.locator('#stats-body .st-card').count()) === 4, 'one card per page (Checking, Delivery, Postage, Defect)');
+  const stTxt = await page.locator('#stats-body').textContent();
+  check(stTxt.indexOf('Checking') >= 0 && stTxt.indexOf('Delivery') >= 0 &&
+        stTxt.indexOf('Postage') >= 0 && stTxt.indexOf('Defect') >= 0, 'all 4 sections named');
+  const stExpect = await page.evaluate(() => {
+    const d = window.__kilang.jobs.delivery;
+    return {
+      pend: String(d.filter(j => j.status === 'pending').length),
+      done: String(d.filter(j => j.status === 'done').length)
+    };
+  });
+  const dNums = await page.locator('#stats-body .st-card').nth(1).locator('.st-cell .n').allTextContents();
+  check(dNums[0] === stExpect.pend && dNums[1] === stExpect.done,
+    'delivery numbers match the live board (' + dNums.join('/') + ')');
+  check((await page.locator('#stats-body .st-bar').count()) === 4, 'progress bar on every page');
+  await page.click('#stats-overlay .x-close');
+  await sleep(200);
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(200);
+  check(!await page.locator('#stats-btn').isVisible(), 'staff does NOT see the Stats button');
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(200);
 

@@ -61,7 +61,8 @@
         status: 'pending', createdAt: Date.now(), doneAt: '',
         proofPhotoId: '', proofThumbId: '',
         dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0,
-        customer: (p.customer || '').trim() || 'Unassigned'
+        customer: (p.customer || '').trim() || 'Unassigned',
+        folderId: 'fold-' + (uid)
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -88,14 +89,16 @@
       j.thumbIds = ch.photos.map(function (p, i) { return p.b64 ? ('thnew-' + id + '-' + i) : (p.thumbId || ''); });
       return JSON.parse(JSON.stringify(j));
     },
-    searchHistory: function (q, pin) {
+    searchHistory: function (q, pin, tab, category) {
       requireAdmin(pin);
       q = String(q || '').toLowerCase().trim();
       var all = db.jobs.slice().reverse().filter(function (j) {
+        if (tab && j.tab !== tab) return false;
+        if (category && j.category !== category) return false;
         if (!q) return true;
         return (j.note + ' ' + (j.customer || '') + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
       });
-      return { results: JSON.parse(JSON.stringify(all.slice(0, 50))), total: all.length };
+      return { results: JSON.parse(JSON.stringify(all.slice(0, 50))), total: all.length, driveFolderId: 'MASTERFOLD' };
     },
     undoSwipe: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });
