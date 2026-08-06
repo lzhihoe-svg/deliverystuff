@@ -140,23 +140,14 @@ function childFolder_(parent, name) {
   return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
-/** Master evidence folder in Drive: "Delivery Check". */
-function masterFolder_() {
-  var props = PropertiesService.getScriptProperties();
-  var fid = props.getProperty('MASTER_FOLDER_ID');
-  if (fid) {
-    try { return DriveApp.getFolderById(fid); } catch (e) {}
-  }
-  var f = DriveApp.createFolder('Delivery Check');
-  props.setProperty('MASTER_FOLDER_ID', f.getId());
-  return f;
-}
+/** Master evidence folder — the app's own "Kilang App Photos" folder. */
+function masterFolder_() { return getFolder_(); }
 
 var TAB_FOLDER = { want: 'Checking', delivery: 'Delivery', postage: 'Postage', defect: 'Defect' };
 
 /**
  * Evidence filing:
- *   Delivery Check / Delivery (or Postage, Checking, Defect) /
+ *   Kilang App Photos / Delivery (or Postage, Checking, Defect) /
  *   2026-08 / <Customer> / <one folder per job>
  * Everything belonging to a job — jobsheet, waybill/defect photos and
  * the proof — lives together in that job's folder.
@@ -817,7 +808,7 @@ function searchHistory(q, pin, tab, category) {
     }
     out.push(rowToJob_(r));
   }
-  // driveFolderId: the "Delivery Check" master folder, so the page can
+  // driveFolderId: the "Kilang App Photos" master folder, so the page can
   // offer an "open in Google Drive" link next to the results.
   return { results: out.slice(0, 50), total: out.length, driveFolderId: masterFolder_().getId() };
 }

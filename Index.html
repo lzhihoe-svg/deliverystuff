@@ -1951,7 +1951,7 @@
       .withSuccessHandler(function (res) {
         var driveLink = res.driveFolderId
           ? '<a class="h-drive master" href="https://drive.google.com/drive/folders/' + res.driveFolderId +
-            '" target="_blank" rel="noopener">📁 Open "Delivery Check" in Google Drive</a>'
+            '" target="_blank" rel="noopener">📁 Open "Kilang App Photos" in Google Drive</a>'
           : '';
         if (!res.results.length) {
           box.innerHTML = driveLink + '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">Nothing found' + (q ? ' for "' + esc(q) + '"' : '') + '</div>';
