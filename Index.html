@@ -1,16 +1,18 @@
 <style>
   :root {
-    /* Lime green theme */
+    /* 2026 light theme — porcelain ground, lime glow accent */
     --green: #65a30d;        /* success / go actions (lime-600) */
     --red: #dc2626;          /* destructive actions stay red */
-    --blue: #4d7c0f;         /* primary accent (lime-700, readable on white) */
-    --lime: #84cc16;         /* bright lime highlights */
+    --blue: #3f6212;         /* primary accent, readable on white */
+    --lime: #a3e635;         /* bright lime highlights */
     --lime-soft: #ecfccb;    /* pale lime fills */
-    --header: #1f2b13;       /* deep olive header */
-    --bg: #f4f9ea;           /* soft lime-tinted background */
+    --header: #ffffff;
+    --bg: #f1f3ea;           /* warm porcelain background */
     --card: #ffffff;
-    --ink: #1a2408;
-    --muted: #66735a;
+    --ink: #171b10;
+    --muted: #8b937d;
+    --soft: #eef1e4;         /* quiet fills (tool pills, chips) */
+    --shadow: 0 1px 2px rgba(23,27,16,.05), 0 10px 26px rgba(23,27,16,.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -28,39 +30,50 @@
     overflow-y: auto; overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
-    /* room to scroll the last card's buttons clear of the nav bar */
-    padding-bottom: 180px;
+    /* room to scroll the last card's buttons clear of the floating nav */
+    padding-bottom: 200px;
   }
 
   /* ---------- header ---------- */
   header {
     position: sticky; top: 0; z-index: 20;
-    background: var(--header); color: #fff;
-    border-bottom: 3px solid var(--lime);
-    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; flex-wrap: wrap;
+    background:
+      radial-gradient(130% 160% at 88% -30%, rgba(163,230,53,.30), transparent 55%),
+      linear-gradient(150deg, #ffffff, #f2f8e3);
+    color: var(--ink);
+    border-radius: 0 0 24px 24px;
+    box-shadow: 0 6px 18px rgba(23,27,16,.06);
+    padding: 12px 16px 12px; display: flex; align-items: center; justify-content: flex-end;
+    gap: 6px; flex-wrap: wrap;
   }
-  header h1 { font-size: 18px; margin-right: auto; display: flex; align-items: center; gap: 8px; letter-spacing: .5px; }
-  header h1 .dot { color: var(--lime); }
-  header h1 .logo { width: 27px; height: 27px; flex: 0 0 auto; }
-  #refresh-btn { padding: 6px 12px; border-color: var(--lime); color: var(--lime-soft); }
+  header h1 { font-size: 15px; margin-right: auto; display: flex; align-items: center; gap: 8px; letter-spacing: .12em; font-weight: 800; }
+  header h1 .dot { color: var(--green); }
+  header h1 .logo { width: 26px; height: 26px; flex: 0 0 auto; }
+  #hello { flex-basis: 100%; font-size: 20px; font-weight: 800; letter-spacing: -.01em; margin-top: 2px; }
+  #refresh-btn { border-color: #cfe3ad; color: var(--blue); }
   #sync-row {
-    flex-basis: 100%; display: none; text-align: center;
-    font-size: 12px; font-weight: 700; color: var(--lime); padding-top: 6px;
+    flex-basis: 100%; display: none; text-align: left;
+    font-size: 11.5px; font-weight: 700; color: var(--blue); margin-top: 7px;
+  }
+  #sync-row .sync-chip {
+    display: inline-block; background: var(--lime-soft); border-radius: 999px; padding: 4px 11px;
   }
   .role-btn {
-    border: 1px solid rgba(255,255,255,.4); background: none; color: #fff;
-    border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+    border: 1px solid #e4e8d8; background: #fff; color: #4b5142;
+    border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(23,27,16,.05); white-space: nowrap;
   }
-  #reset-btn { border-color: #fbbf24; color: #fde68a; display: none; }
-  #cleardone-btn { border-color: #86efac; color: #dcfce7; display: none; }
+  #reset-btn { color: #b45309; display: none; }
+  #cleardone-btn { color: var(--blue); display: none; }
 
   /* ---------- bottom nav ---------- */
   nav {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
-    display: flex; background: #fff; border-top: 1px solid #e2e8f0;
-    box-shadow: 0 -2px 12px rgba(15,23,42,.06);
-    padding-bottom: env(safe-area-inset-bottom);
+    position: fixed; z-index: 30;
+    left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
+    display: flex; background: rgba(255,255,255,.93);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 999px; padding: 6px 8px;
+    box-shadow: 0 12px 30px rgba(23,27,16,.16);
   }
   /* Icon stacked ABOVE the label, and NOTHING changes size on tap (only
      colors), so the icons never jump out of position when you click. */
@@ -72,13 +85,17 @@
     -webkit-tap-highlight-color: transparent;
   }
   nav button .ico {
-    display: block; font-size: 23px; line-height: 30px; height: 30px;
-    padding: 0 17px; border-radius: 999px;
-    background: transparent; transition: background .15s;
+    display: block; font-size: 21px; line-height: 30px; height: 30px;
+    padding: 0 14px; border-radius: 14px;
+    background: transparent; transition: background .15s, transform .15s, box-shadow .15s;
   }
   .nav-lbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .2px; }
-  nav button.active { color: var(--blue); }
-  nav button.active .ico { background: var(--lime-soft); }
+  nav button.active { color: var(--ink); }
+  nav button.active .ico {
+    background: linear-gradient(135deg, var(--lime), var(--green));
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(101,163,13,.4);
+  }
   nav button .badge {
     position: absolute; top: 3px; left: 50%; margin-left: 10px;
     background: var(--red); color: #fff; border-radius: 999px;
@@ -88,18 +105,18 @@
   }
   #nav-post { color: var(--blue); }
   #nav-post .post-circle {
-    display: block; width: 30px; height: 30px; border-radius: 50%;
+    display: block; width: 31px; height: 31px; border-radius: 50%;
     background: linear-gradient(135deg, var(--lime), var(--green));
-    color: #fff; font-size: 22px; line-height: 29px; font-weight: 700; text-align: center;
-    box-shadow: 0 2px 6px rgba(101,163,13,.4);
+    color: #16200a; font-size: 22px; line-height: 30px; font-weight: 800; text-align: center;
+    box-shadow: 0 6px 14px rgba(101,163,13,.4);
   }
 
   /* ---------- generic ---------- */
   .page { display: none; padding: 14px; max-width: 560px; margin: 0 auto; }
   .page.active { display: block; }
   .section-title {
-    font-size: 13px; font-weight: 800; color: var(--blue);
-    text-transform: uppercase; letter-spacing: .5px; margin: 20px 0 10px;
+    font-size: 12px; font-weight: 800; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em; margin: 20px 0 10px;
   }
   .empty { text-align: center; color: var(--muted); padding: 44px 10px; font-size: 17px; font-weight: 600; grid-column: 1 / -1; }
   .empty .big { font-size: 56px; display: block; margin-bottom: 12px; }
@@ -110,32 +127,34 @@
 
   .grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 6px; }
 
-  /* balance / completed counter boxes (Delivery + Postage) */
-  .stat-row { display: flex; gap: 10px; margin: 4px 0 6px; }
+  /* balance / completed bento tiles (Delivery + Postage + Defect) */
+  .stat-row { display: flex; gap: 10px; margin: 4px 0 8px; }
   .stat-box {
-    flex: 1; border-radius: 14px; padding: 10px 8px; text-align: center;
-    box-shadow: 0 1px 4px rgba(15,23,42,.07);
+    flex: 1; border-radius: 18px; padding: 11px 10px; text-align: center;
+    background: #fff; box-shadow: var(--shadow);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
   }
-  .stat-box .num { font-size: 27px; font-weight: 800; line-height: 1.1; }
-  .stat-box .lbl { font-size: 12px; font-weight: 700; margin-top: 2px; }
-  .stat-box.todo { background: #fef3c7; color: #92400e; border: 1.5px solid #fde68a; }
-  .stat-box.done { background: var(--lime-soft); color: var(--blue); border: 1.5px solid #d9f99d; }
+  .stat-box .num { font-size: 26px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .stat-box .lbl { font-size: 10px; font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .stat-ring { width: 38px; height: 38px; flex: 0 0 auto; }
+  .stat-box.todo .num { color: #c2410c; }
+  .stat-box.done .num { color: var(--green); }
 
   .card {
-    background: var(--card); border-radius: 16px; overflow: hidden;
-    box-shadow: 0 1px 4px rgba(15,23,42,.08);
+    background: var(--card); border-radius: 22px; overflow: hidden; padding: 9px;
+    box-shadow: var(--shadow);
     display: flex; flex-direction: column;
     /* skip rendering offscreen cards — smoother scrolling on long lists */
     content-visibility: auto;
     contain-intrinsic-size: 420px;
   }
-  .card .body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; }
+  .card .body { padding: 11px 6px 4px; display: flex; flex-direction: column; flex: 1; }
   .card .note { font-size: 16px; margin-bottom: 8px; white-space: pre-wrap; }
   .card .meta { font-size: 12px; color: var(--muted); }
   .card .spacer { flex: 1; }
 
   /* ---------- photo carousel (swipe left/right between photos) ---------- */
-  .carousel { position: relative; background: #e2e8f0; }
+  .carousel { position: relative; background: #e3e7d8; border-radius: 15px; overflow: hidden; }
   .car-track {
     display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
     scrollbar-width: none; -webkit-overflow-scrolling: touch;
@@ -185,16 +204,17 @@
   .chip.soon     { background: #fef3c7; color: #92400e; }
   .chip.late     { background: #fee2e2; color: #991b1b; }
   .chip.cust     { background: #e0e7ff; color: #3730a3; }
+  .chip.passed   { background: #ecfccb; color: #3f6212; }
 
   .btn {
-    display: block; width: 100%; border: 0; border-radius: 14px;
-    padding: 16px; font-size: 18px; font-weight: 800; cursor: pointer; color: #fff;
+    display: block; width: 100%; border: 0; border-radius: 999px;
+    padding: 15px; font-size: 17px; font-weight: 800; cursor: pointer; color: #fff;
   }
-  .btn.green { background: linear-gradient(135deg, var(--lime), var(--green)); box-shadow: 0 2px 8px rgba(101,163,13,.35); }
-  .btn.red { background: var(--red); }
-  .btn.blue { background: linear-gradient(135deg, var(--green), var(--blue)); box-shadow: 0 2px 8px rgba(77,124,15,.35); }
-  .btn.gray { background: #9aa78e; }
-  .btn.small { padding: 10px; font-size: 15px; border-radius: 10px; }
+  .btn.green { background: linear-gradient(135deg, var(--lime), var(--green)); color: #16200a; box-shadow: 0 8px 20px rgba(101,163,13,.38); }
+  .btn.red { background: #fff; color: var(--red); border: 1.5px solid #f0c3c3; }
+  .btn.blue { background: linear-gradient(135deg, #84cc16, var(--green)); color: #16200a; box-shadow: 0 6px 16px rgba(101,163,13,.3); }
+  .btn.gray { background: var(--soft); color: #4b5142; }
+  .btn.small { padding: 10px; font-size: 15px; border-radius: 999px; }
   .btn:active { transform: scale(.97); }
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
   .btn-row .btn { flex: 1; }
@@ -202,15 +222,15 @@
   /* small outline edit/delete buttons (admin only) */
   .tools { display: flex; gap: 8px; margin-top: 10px; }
   .tools button {
-    flex: 1; background: #fff; border-radius: 10px; padding: 8px;
-    font-size: 14px; font-weight: 700; cursor: pointer;
+    flex: 1; background: var(--soft); border: 0; border-radius: 999px; padding: 9px;
+    font-size: 13.5px; font-weight: 700; cursor: pointer; color: #4b5142;
   }
-  .tools .t-edit { border: 2px solid var(--blue); color: var(--blue); }
-  .tools .t-del  { border: 2px solid var(--red); color: var(--red); }
-  .tools .t-arch { border: 2px solid #94a3b8; color: #64748b; }
+  .tools .t-edit { color: var(--blue); }
+  .tools .t-del  { color: var(--red); }
+  .tools .t-arch { color: #64748b; }
   /* proof photo tools — for EVERYONE (staff fix their own proof mistakes) */
-  .tools .t-reproof  { border: 2px solid var(--blue); color: var(--blue); }
-  .tools .t-delproof { border: 2px solid var(--red); color: var(--red); }
+  .tools .t-reproof  { color: var(--blue); }
+  .tools .t-delproof { color: var(--red); }
 
   /* undo bar after a swipe — fix a wrong swipe with one tap */
   .undo-bar {
@@ -246,7 +266,7 @@
     touch-action: pan-y;
     user-select: none; -webkit-user-select: none;
   }
-  .swipe-card img { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: var(--header); pointer-events: none; }
+  .swipe-card img { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: var(--soft); pointer-events: none; }
   .swipe-card .foot { padding: 8px 12px; background: #fff; }
   .swipe-card .foot .cap { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .stack-dots { position: absolute; top: 10px; left: 0; right: 0; text-align: center; pointer-events: none; }
@@ -270,14 +290,18 @@
   /* ---------- category pills (tab 2) ---------- */
   .pills { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; }
   .pills button {
-    border: 2px solid #d3dcc3; background: #fff; border-radius: 999px;
-    padding: 10px 16px; font-size: 15px; font-weight: 700; color: var(--muted);
+    border: 0; background: rgba(255,255,255,.85); border-radius: 999px;
+    padding: 10px 16px; font-size: 14px; font-weight: 700; color: #5b6152;
     white-space: nowrap; cursor: pointer; transition: all .15s;
+    box-shadow: 0 1px 3px rgba(23,27,16,.07);
   }
-  .pills button.active { border-color: var(--blue); background: var(--blue); color: #fff; }
+  .pills button.active {
+    background: linear-gradient(135deg, var(--lime), var(--green)); color: #16200a;
+    box-shadow: 0 4px 12px rgba(101,163,13,.35);
+  }
 
-  .proof { display: flex; align-items: center; gap: 10px; background: #f7fee7; border: 1px solid var(--lime-soft); border-radius: 10px; padding: 8px; margin-top: 10px; }
-  .proof img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: pointer; }
+  .proof { display: flex; align-items: center; gap: 10px; background: #f6fbea; border-radius: 14px; padding: 9px; margin-top: 10px; }
+  .proof img { width: 60px; height: 60px; object-fit: cover; border-radius: 12px; cursor: pointer; box-shadow: 0 0 0 2.5px var(--lime); }
   .proof .txt { font-size: 13px; color: #3f6212; font-weight: 700; }
 
   /* ---------- modals (always centered) ---------- */
@@ -287,8 +311,8 @@
   }
   .overlay.show { display: flex; }
   .sheet {
-    position: relative; background: #fff; width: 100%; max-width: 480px;
-    border-radius: 20px; padding: 22px 18px; max-height: 92vh;
+    position: relative; background: #fdfdfb; width: 100%; max-width: 480px;
+    border-radius: 26px; padding: 22px 18px; max-height: 92vh;
     overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
@@ -301,11 +325,15 @@
   /* quick-pick agent/customer chips in the post window */
   .agent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
   .agent-chip {
-    border: 1.5px solid #d3dcc3; background: #fff; color: #475569;
-    font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 7px 13px;
+    border: 0; background: #fff; color: #4b5142;
+    font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 8px 14px;
     cursor: pointer; font-family: inherit;
+    box-shadow: 0 1px 3px rgba(23,27,16,.09);
   }
-  .agent-chip.active { background: var(--green); border-color: var(--green); color: #fff; }
+  .agent-chip.active {
+    background: linear-gradient(135deg, var(--lime), var(--green)); color: #16200a;
+    box-shadow: 0 4px 12px rgba(101,163,13,.35);
+  }
 
   .due-inputs { display: flex; gap: 8px; }
   .due-inputs input, .due-inputs select {
@@ -318,11 +346,16 @@
 
   /* history (evidence) search results */
   .hist-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .hist-pills { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .hist-pills::-webkit-scrollbar { display: none; }
   .hist-pills button {
-    border: 1.5px solid #d3dcc3; background: #fff; color: #475569;
-    font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+    border: 0; background: #fff; color: #5b6152; flex: 0 0 auto;
+    font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 7px 11px; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(23,27,16,.07);
   }
-  .hist-pills button.active { background: var(--green); border-color: var(--green); color: #fff; }
+  .hist-pills button.active {
+    background: linear-gradient(135deg, var(--lime), var(--green)); color: #16200a;
+  }
   .h-drive {
     display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700;
     color: var(--blue); text-decoration: none; background: #f7fee7;
@@ -342,8 +375,8 @@
     background: var(--green); color: #fff; font-size: 10px; font-weight: 800;
     border-radius: 6px; padding: 1px 0; pointer-events: none;
   }
-  #history-btn { border-color: #a5b4fc; color: #e0e7ff; display: none; }
-  #stats-btn { border-color: #7dd3fc; color: #e0f2fe; display: none; }
+  #history-btn { color: #4338ca; display: none; }
+  #stats-btn { color: #0369a1; display: none; }
 
   /* admin stats — all 4 pages at a glance */
   .st-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 12px; margin-top: 12px; }
@@ -506,12 +539,14 @@
       </svg>
       <span>ARA<span class="dot">MEGA</span></span>
     </h1>
+
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
     <button class="role-btn" id="stats-btn" onclick="openStats()">📊 Stats</button>
     <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
     <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
     <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
+    <div id="hello">Hello 👋</div>
     <div id="sync-row"></div>
   </header>
 
@@ -620,10 +655,25 @@
     </div>
 
     <div id="customer-wrap" style="display:none">
-      <label>👤 Agent / Customer name</label>
+      <label>🤝 AGENT — tap one</label>
       <div class="agent-chips" id="agent-chips"></div>
+      <label>👤 OR CUSTOMER — type the name</label>
       <input type="text" id="upload-customer" oninput="renderAgentChips()"
-             placeholder="Not an agent? Type the customer name here">
+             placeholder="Type customer name here…">
+    </div>
+
+    <div id="next-wrap" style="display:none">
+      <label>After check ✅ send to</label>
+      <div class="agent-chips" id="next-chips">
+        <button type="button" class="agent-chip active" data-next="">Nothing</button>
+        <button type="button" class="agent-chip" data-next="delivery">🚚 Delivery</button>
+        <button type="button" class="agent-chip" data-next="postage">📦 Postage</button>
+      </div>
+      <div class="agent-chips" id="next-cats" style="display:none">
+        <button type="button" class="agent-chip" data-ncat="lalamove">🛵 Lalamove</button>
+        <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
+        <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
+      </div>
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -976,7 +1026,7 @@
     var row = document.getElementById('sync-row');
     clearTimeout(syncTimer);
     if (!txt) { row.style.display = 'none'; return; }
-    row.textContent = txt;
+    row.innerHTML = '<span class="sync-chip">' + txt + '</span>';
     row.style.display = 'block';
     if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
   }
@@ -1189,6 +1239,7 @@
   // ------------------------------------------------------------ roles
   function renderRoleBtn() {
     document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
+    document.getElementById('hello').textContent = isAdmin() ? 'Hello, Admin 👋' : 'Hello! 👋';
     document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('cleardone-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('history-btn').style.display = isAdmin() ? 'block' : 'none';
@@ -1345,7 +1396,19 @@
     saveJobsCache('want');
     renderAll(); updateBadgeLocal();
     toast('↩️ Swipe undone — please answer again.');
-    google.script.run.withFailureHandler(bgFail).undoSwipe(ls.id);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        // pipeline pull-back: the wrong ❤️ had already pushed a job — remove it
+        if (res && res.pulledBack) {
+          ['delivery', 'postage'].forEach(function (tb) {
+            state.jobs[tb] = state.jobs[tb].filter(function (x) { return x.id !== res.pulledBack; });
+            saveJobsCache(tb);
+          });
+          renderAll();
+        }
+      })
+      .withFailureHandler(bgFail)
+      .undoSwipe(ls.id);
   }
 
   // ------------------------------------------------------------ TAB 1: checking (swipe)
@@ -1390,6 +1453,7 @@
             '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
             '📄 ' + (esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
+            (j.nextTab ? ' · →' + (j.nextTab === 'delivery' ? '🚚' : '📦') + ' after ✅' : '') +
             ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
             (j.uploading ? '' : toolBtns(j, false)) +
           '</div>' +
@@ -1416,7 +1480,8 @@
       return '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
-        '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) + '</div>' +
+        '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
+        (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         (isAdmin() ? '<button class="ask-btn" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '') +
         '<div class="spacer"></div>' +
@@ -1586,6 +1651,16 @@
     document.getElementById('defect-list').innerHTML = renderJobList(state.jobs.defect);
   }
 
+  /** Small progress ring for the Completed tile. */
+  function ringSvg_(done, pending) {
+    var total = done + pending;
+    var pct = total === 0 ? 0 : Math.round(done * 100 / total);
+    return '<svg class="stat-ring" viewBox="0 0 40 40">' +
+      '<circle cx="20" cy="20" r="16" fill="none" stroke="#eceee3" stroke-width="6"></circle>' +
+      '<circle cx="20" cy="20" r="16" fill="none" stroke="#84cc16" stroke-width="6" stroke-linecap="round" ' +
+      'stroke-dasharray="' + pct + ' 100.5" transform="rotate(-90 20 20)"></circle></svg>';
+  }
+
   function renderJobList(jobs) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
@@ -1605,8 +1680,8 @@
 
     // today at a glance: how many left vs finished
     html += '<div class="stat-row">' +
-      '<div class="stat-box todo"><div class="num">' + pending.length + '</div><div class="lbl">⏳ Balance To Do</div></div>' +
-      '<div class="stat-box done"><div class="num">' + done.length + '</div><div class="lbl">✅ Completed</div></div>' +
+      '<div class="stat-box todo"><div><div class="num">' + pending.length + '</div><div class="lbl">⏳ Balance To Do</div></div></div>' +
+      '<div class="stat-box done"><div><div class="num">' + done.length + '</div><div class="lbl">✅ Completed</div></div>' + ringSvg_(done.length, pending.length) + '</div>' +
       '</div>';
 
     if (pending.length) {
@@ -1672,6 +1747,7 @@
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
     if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
+    if (j.fromCheck) html += '<span class="chip passed">✅ passed check</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     if (!isDone) html += dueChip(j);
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
@@ -1751,7 +1827,24 @@
     if (status === 'got') toast('❤️ Great!');
     if (status === 'notseen') toast('❌ Office will follow up.');
     if (status === 'archived') toast('🗄️ Hidden.');
-    google.script.run.withFailureHandler(bgFail).updateStatus(id, status, null, null, state.pin);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        // pipeline: a passed check auto-pushed a job to the next board
+        if (res && res.pushed) {
+          state.jobs[res.pushed.tab].unshift(res.pushed);
+          saveJobsCache(res.pushed.tab);
+          var cj = null;
+          for (var k = 0; k < state.jobs.want.length; k++) {
+            if (state.jobs.want[k].id === res.id) { cj = state.jobs.want[k]; break; }
+          }
+          if (cj) cj.nextJobId = res.pushed.id;
+          saveJobsCache('want');
+          renderAll(); updateBadgeLocal();
+          toast(res.pushed.tab === 'delivery' ? '➡️ Passed check — sent to Delivery!' : '➡️ Passed check — sent to Postage!');
+        }
+      })
+      .withFailureHandler(bgFail)
+      .updateStatus(id, status, null, null, state.pin);
   }
 
   // generic confirm modal — window.confirm() can be silently blocked
@@ -2091,6 +2184,32 @@
     renderAgentChips();
   }
 
+  // ------------------------------------------------------------ check-first pipeline UI
+  /** Shows/hides the pipeline, customer and deadline blocks for the tab. */
+  function syncPipelineUI() {
+    var isWant = state.tab === 'want';
+    var nt = state.upload.nextTab || '';
+    document.getElementById('next-wrap').style.display = (isWant && !state.editing) ? 'block' : 'none';
+    document.getElementById('next-cats').style.display = (isWant && nt === 'delivery') ? 'flex' : 'none';
+    document.getElementById('customer-wrap').style.display = (state.tab !== 'want' || nt) ? 'block' : 'none';
+    document.getElementById('due-wrap').style.display =
+      (state.tab === 'delivery' || state.tab === 'postage' || (isWant && nt)) ? 'block' : 'none';
+    if (state.tab !== 'want' || nt) renderAgentChips();
+  }
+  document.getElementById('next-chips').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.upload.nextTab = b.getAttribute('data-next');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    syncPipelineUI();
+  });
+  document.getElementById('next-cats').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    state.upload.nextCat = b.getAttribute('data-ncat');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+
   // ------------------------------------------------------------ upload & edit modal
   function openUpload(editId) {
     var job = editId ? findJob(editId) : null;
@@ -2098,7 +2217,14 @@
     if (job && !isAdmin()) { toast('Admin only'); return; }
     if (job && job.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     state.editing = job;
-    state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '' };
+    state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '', nextTab: '', nextCat: '' };
+    // reset the pipeline chips to "Nothing"
+    document.getElementById('next-chips').querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-next') === '');
+    });
+    document.getElementById('next-cats').querySelectorAll('button').forEach(function (b) {
+      b.classList.remove('active');
+    });
     if (job) {
       var split = (state.tab === 'postage' || state.tab === 'defect') ? jsCountOf(job) : -1;
       job.photoIds.forEach(function (id, i) {
@@ -2127,13 +2253,9 @@
     document.getElementById('btn-submit').textContent =
       job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
-    // customer name (all tabs except Checking): files the evidence by customer
-    document.getElementById('customer-wrap').style.display = state.tab !== 'want' ? 'block' : 'none';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
-    if (state.tab !== 'want') renderAgentChips();
-    document.getElementById('due-wrap').style.display =
-      (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
+    syncPipelineUI();
     if (job && job.dueAt) {
       var dd = new Date(Number(job.dueAt));
       document.getElementById('upload-due-day').value = String(dd.getDate());
@@ -2245,11 +2367,14 @@
 
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
-    var hasDue = state.tab === 'delivery' || state.tab === 'postage';
+    var isWant = state.tab === 'want';
+    var nextTab = (isWant && !state.editing) ? (state.upload.nextTab || '') : '';
+    var hasDue = state.tab === 'delivery' || state.tab === 'postage' || (isWant && nextTab);
     var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
                                  document.getElementById('upload-due-month').value,
                                  document.getElementById('upload-due').value) : '';
-    var customer = state.tab !== 'want' ? document.getElementById('upload-customer').value.trim() : '';
+    var needName = state.tab !== 'want' || nextTab;
+    var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
 
     var photos, jsCount = 0;
     if (state.tab === 'postage' || state.tab === 'defect') {
@@ -2265,6 +2390,12 @@
       if (!photos.length) { toast('Please add a photo first 📸'); return; }
     }
     if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
+    if (isWant && nextTab === 'delivery' && !state.upload.nextCat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
+    // NEW posts must say who the job is for — tap an agent or type a customer
+    if (!state.editing && needName && !customer) {
+      toast('👤 Tap an agent or type the customer name first');
+      return;
+    }
 
     if (state.editing) {
       busy(true, 'Saving changes… 💾');
@@ -2318,7 +2449,9 @@
       id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
       photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
       createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-      dueAt: dueMs, jsCount: jsCount, customer: customer || 'Unassigned', uploading: true
+      dueAt: isWant ? '' : dueMs, jsCount: jsCount, customer: customer || 'Unassigned',
+      nextTab: nextTab, nextCategory: nextTab === 'delivery' ? state.upload.nextCat : '',
+      nextDueAt: nextTab ? dueMs : '', nextJobId: '', uploading: true
     };
     state.jobs[postTab].unshift(tempJob);
     inflightJobs.push(tempJob);
@@ -2346,8 +2479,11 @@
         clientId: clientKey,
         photos: [fulls[0]],
         thumbs: [thumbs[0]],
-        dueAt: dueMs,
-        jsCount: jsCount
+        dueAt: isWant ? '' : dueMs,
+        jsCount: jsCount,
+        nextTab: nextTab,
+        nextCategory: nextTab === 'delivery' ? state.upload.nextCat : '',
+        nextDueAt: nextTab ? dueMs : ''
       }],
       function (job) {
         uploadsPending--; updatePill();

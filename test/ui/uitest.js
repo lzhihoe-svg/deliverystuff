@@ -415,11 +415,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#upload-cats button[data-cat="bus"]');
   await page.fill('#upload-note', 'Blank-cust');
   await page.click('#btn-submit');
+  await sleep(400);
+  check((await page.locator('#toast').textContent()).indexOf('customer name') >= 0 &&
+        await page.locator('#upload-overlay').isVisible(),
+    'posting with NO name is blocked — must tap an agent or type a customer');
+  await page.fill('#upload-customer', 'Kak Ros');
+  await page.click('#btn-submit');
   await sleep(800);
-  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Blank-cust' && j.customer === 'Unassigned')),
-    'blank customer saved as Unassigned');
-  check((await page.locator('#delivery-list .card').filter({ hasText: 'Blank-cust' }).locator('.chip.cust').count()) === 0,
-    'no customer chip when Unassigned');
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Blank-cust' && j.customer === 'Kak Ros')),
+    'typed customer name saves the post');
   await clickSafe(custCard.locator('.t-edit').first());
   await sleep(300);
   check((await page.locator('#upload-customer').inputValue()) === 'Nurul Syifa', 'edit window prefills the customer');
@@ -484,6 +488,79 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#upload-overlay .x-close');
   await sleep(200);
 
+  console.log('\n-- 🔗 check-first pipeline: prepare → ❤️ → auto-push --');
+  await page.click('#nav-want');
+  await sleep(400);
+  await page.click('#nav-post');
+  await sleep(250);
+  check(await page.locator('#next-wrap').isVisible(), "Checking post has 'After check ✅ send to'");
+  check(!await page.locator('#customer-wrap').isVisible(), 'plain check: no customer section');
+  await page.click('#next-chips button[data-next="delivery"]');
+  await sleep(200);
+  check(await page.locator('#next-cats').isVisible(), 'choosing Delivery reveals the method choices');
+  check(await page.locator('#customer-wrap').isVisible() && await page.locator('#due-wrap').isVisible(),
+    'customer + Ready-by appear for the pipeline');
+  await page.setInputFiles('#photos-file', [IMG, IMG2]);
+  await sleep(600);
+  await page.fill('#upload-note', 'Pipe-test 30 jersey');
+  await page.click('#btn-submit');
+  await sleep(300);
+  check((await page.locator('#toast').textContent()).indexOf('method') >= 0, 'blocked without a delivery method');
+  await page.click('#next-cats button[data-ncat="bus"]');
+  await page.click('#btn-submit');
+  await sleep(300);
+  check((await page.locator('#toast').textContent()).indexOf('customer name') >= 0, 'blocked without agent/customer');
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await page.click('#btn-submit');
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Pipe-test 30 jersey');
+    return !!(j && j.tab === 'want' && j.nextTab === 'delivery' && j.nextCategory === 'bus' && j.customer === 'SN');
+  }), 'prepared check stored with its next step');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('after ✅') >= 0,
+    'swipe deck shows where the job goes after the check');
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'delivery' && j.note === 'Pipe-test 30 jersey').length === 0),
+    'nothing on Delivery before the check');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(200);
+  let pb = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pb.x + pb.width / 2 + i * 25, pb.y + pb.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(800);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.tab === 'delivery' && x.note === 'Pipe-test 30 jersey');
+    return !!(j && j.status === 'pending' && j.fromCheck && j.customer === 'SN' && j.category === 'bus');
+  }), '❤️ auto-pushed the job to Delivery with the prepared details');
+  await page.click('#nav-delivery');
+  await sleep(500);
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'Pipe-test' }).locator('.chip.passed').count()) === 1,
+    "Delivery card wears '✅ passed check'");
+  await page.click('#nav-want');
+  await sleep(400);
+  check(await page.locator('#undo-bar').isVisible(), 'undo bar available after the swipe');
+  await clickSafe(page.locator('#undo-bar button'));
+  await sleep(700);
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'delivery' && j.note === 'Pipe-test 30 jersey').length === 0),
+    'UNDO pulled the pushed job back off Delivery');
+  check((await page.locator('#topcard').count()) === 1, 'jobsheet back in the deck');
+  pb = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pb.x + pb.width / 2 + i * 25, pb.y + pb.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.tab === 'delivery' && j.note === 'Pipe-test 30 jersey' && j.status === 'pending').length === 1),
+    're-swipe ❤️ pushes a fresh job again');
+  await page.evaluate(() => { // tidy for later sections
+    window.__mockdb.jobs.forEach(j => { if (j.note === 'Pipe-test 30 jersey') j.status = 'archived'; });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(500);
+  await page.click('#nav-delivery');
+  await sleep(300);
+
   console.log('\n-- stat boxes: Balance To Do vs Completed --');
   check((await page.locator('#delivery-list .stat-row').count()) === 1, 'delivery has the two counter boxes');
   check(await page.evaluate(() => document.getElementById('delivery-list').firstElementChild.className.indexOf('stat-row') >= 0),
@@ -524,6 +601,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   await page.click('#upload-cats button[data-cat="bus"]');
   await page.fill('#upload-note', 'Retry-post');
+  await page.fill('#upload-customer', 'RT');
   await page.click('#btn-submit');
   await sleep(3000); // first try fails; the automatic retry fires at 1.5s
   check(await page.evaluate(() => window.__mockdb.jobs.filter(j => j.note === 'Retry-post').length === 1),
@@ -535,6 +613,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(600);
   await page.click('#upload-cats button[data-cat="bus"]');
   await page.fill('#upload-note', 'Retry-photo');
+  await page.fill('#upload-customer', 'RT');
   await page.click('#btn-submit');
   await sleep(3500);
   check(await page.evaluate(() => {
@@ -572,8 +651,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(syncTxt.indexOf('Updated at') >= 0 && /\d{1,2}:\d{2}\s(AM|PM)/.test(syncTxt),
     "shows the actual time: '" + syncTxt.trim() + "'");
   await sleep(2600);
-  check(await page.locator('#sync-row').isVisible() && (await page.locator('#sync-row').textContent()).indexOf('Updated at') >= 0,
-    'updated-at time STAYS visible (does not disappear)');
+  let staysOk = false; // photo-loading status may briefly take the row over — wait it out
+  for (let t = 0; t < 12 && !staysOk; t++) {
+    staysOk = await page.locator('#sync-row').isVisible() &&
+      (await page.locator('#sync-row').textContent()).indexOf('Updated at') >= 0;
+    if (!staysOk) await sleep(500);
+  }
+  check(staysOk, 'updated-at time STAYS visible (does not disappear)');
 
   console.log('\n-- due time: post with Ready by --');
   await page.click('#nav-delivery');
@@ -586,6 +670,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#upload-cats button[data-cat="bus"]');
   await page.fill('#upload-due', '23:58');
   await page.fill('#upload-note', 'Due tonight');
+  await page.fill('#upload-customer', 'DT');
   await page.click('#btn-submit');
   await sleep(700);
   check((await page.locator('#delivery-list .chip.due, #delivery-list .chip.soon, #delivery-list .chip.late').count()) >= 1,
@@ -608,6 +693,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.selectOption('#upload-due-month', tmr.m);
   await page.fill('#upload-due', '16:30');
   await page.fill('#upload-note', 'Tomorrow bus');
+  await page.fill('#upload-customer', 'TB');
   await page.click('#btn-submit');
   await sleep(700);
   check(await page.evaluate(() => {
@@ -638,6 +724,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.selectOption('#upload-due-day', tod.d);
   await page.selectOption('#upload-due-month', tod.m);
   await page.fill('#upload-note', 'Date only job');
+  await page.fill('#upload-customer', 'DO');
   await page.click('#btn-submit');
   await sleep(700);
   const doCard = page.locator('#delivery-list .card').filter({ hasText: 'Date only job' });
@@ -778,6 +865,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(900);
   await page.click('#upload-cats button[data-cat="lalamove"]');
   await page.fill('#upload-note', 'Background upload');
+  await page.fill('#upload-customer', 'BG');
   await page.evaluate(() => { window.__mocklat = { addJob: 400, addPhotoToJob: 400 }; });
   await page.click('#btn-submit');
   await sleep(120); // long before the 400ms server latency
@@ -824,6 +912,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(250);
   check((await page.locator('#js-thumbs .thumb').count()) === 2 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
     'and one tap moves it back to Jobsheet');
+  await page.fill('#upload-customer', 'PG');
   await page.click('#btn-submit');
   await sleep(900);
   check((await page.locator('#postage-list .photo-pair').count()) >= 1, 'card shows Jobsheet | Waybill side by side');
@@ -911,10 +1000,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(400);
   const icoA = await page.locator('#nav-want .ico').boundingBox();
   const lblA = await page.locator('#nav-want .nav-lbl').boundingBox();
-  check(Math.abs(icoB.x - icoA.x) < 0.6 && Math.abs(icoB.y - icoA.y) < 0.6,
-    'icon does NOT move when its tab becomes active');
+  // 2026 design: the active icon deliberately LIFTS 2px on its glowing
+  // squircle — but it must never shift sideways, and labels never move.
+  check(Math.abs(icoB.x - icoA.x) < 0.6, 'icon does not shift sideways when its tab becomes active');
+  check(icoB.y - icoA.y > 1 && icoB.y - icoA.y < 4, 'active icon lifts gently (by design)');
   check(Math.abs(lblB.x - lblA.x) < 0.6 && Math.abs(lblB.y - lblA.y) < 0.6,
-    'label does NOT move either');
+    'label does NOT move at all');
   check(lblA.y >= icoA.y + icoA.height - 3, 'label sits stacked BELOW the icon');
 
   console.log('\n-- fullscreen viewer: swipe through the photos --');

@@ -672,6 +672,57 @@ console.log('\n== undoSwipe (staff fix a wrong swipe, no PIN) ==');
   throws(() => ctx.undoSwipe('ghost'), 'unknown id throws');
 }
 
+console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
+{
+  const { ctx, files } = makeEnv();
+  const c = ctx.addJob({ tab: 'want', category: '', note: 'SN 30 jersey', customer: 'SN',
+    photos: [B64, B64], thumbs: [B64, B64], nextTab: 'delivery', nextCategory: 'bus', nextDueAt: 123456789 });
+  check(c.nextTab === 'delivery' && c.nextCategory === 'bus', 'prepared check stores the next step');
+  check(ctx.getAllData().counts.delivery === 0, 'prepared job does NOT count in Delivery before the check');
+
+  ctx.updateStatus(c.id, 'notseen', null, null, null);
+  check(ctx.getJobs('delivery').length === 0, '❌ Not Seen pushes nothing');
+
+  const r = ctx.updateStatus(c.id, 'got', null, null, null);
+  check(!!(r.pushed && r.pushed.tab === 'delivery' && r.pushed.category === 'bus'), '❤️ auto-creates the Delivery job');
+  const d = ctx.getJobs('delivery')[0];
+  check(!!d && d.id === r.pushed.id && d.status === 'pending', 'pushed job is on the Delivery board as To Do');
+  check(d.note === 'SN 30 jersey' && d.customer === 'SN' && Number(d.dueAt) === 123456789, 'prepared details carried over');
+  check(JSON.stringify(d.photoIds) === JSON.stringify(c.photoIds), 'photos are SHARED with the check (no re-upload)');
+  check(d.fromCheck === true, "pushed job marked 'passed check'");
+  check(ctx.getJobs('want')[0].nextJobId === d.id, 'check remembers its pushed job');
+  check(ctx.getAllData().counts.delivery === 1, 'now it counts in the Delivery balance');
+
+  ctx.updateStatus(c.id, 'got', null, null, null);
+  check(ctx.getJobs('delivery').length === 1, 'second ❤️ does NOT duplicate the push');
+
+  const u = ctx.undoSwipe(c.id);
+  check(u.pulledBack === d.id, 'UNDO reports the pulled-back job');
+  check(ctx.getJobs('delivery').length === 0, 'pushed job removed from Delivery on undo');
+  check(!files[c.photoIds[0]].trashed, 'shared photos untouched by the pull-back');
+
+  const r2 = ctx.updateStatus(c.id, 'got', null, null, null);
+  check(!!r2.pushed && r2.pushed.id !== d.id && ctx.getJobs('delivery').length === 1, 're-❤️ pushes a fresh job');
+
+  const done = ctx.updateStatus(r2.pushed.id, 'done', B64, B64, null);
+  check(files[done.proofPhotoId].folder === files[c.photoIds[0]].folder,
+    'PROOF lands in the same shared pipeline folder');
+
+  ctx.undoSwipe(c.id);
+  check(ctx.getJobs('delivery').length === 1, 'undo does NOT remove a pushed job that is already done');
+
+  ctx.deleteJob(ctx.getJobs('delivery')[0].id, PIN);
+  check(!files[c.photoIds[0]].trashed, 'deleting the pushed job never trashes the shared photos');
+  check(files[done.proofPhotoId].trashed, 'but its own proof is trashed');
+
+  const p = ctx.addJob({ tab: 'want', category: '', note: 'to post', photos: [B64], nextTab: 'postage' });
+  check(ctx.updateStatus(p.id, 'got', null, null, null).pushed.tab === 'postage', 'pipeline to Postage works too');
+  const plain = ctx.addJob({ tab: 'want', category: '', note: 'plain', photos: [B64] });
+  check(ctx.updateStatus(plain.id, 'got', null, null, null).pushed === null, 'a plain check pushes nothing');
+  const dj = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64], nextTab: 'postage' });
+  check(dj.nextTab === '', 'nextTab is Checking-only (ignored on other tabs)');
+}
+
 console.log('\n== jsCount (postage jobsheet/waybill split) ==');
 {
   const { ctx } = makeEnv();

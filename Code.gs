@@ -56,7 +56,8 @@ function ensureSetup_() {
       sh.appendRow(['id', 'tab', 'category', 'note', 'photoIds', 'status',
                     'createdBy', 'createdAt', 'doneBy', 'doneAt', 'proofPhotoId',
                     'thumbIds', 'proofThumbId', 'dueAt', 'pinnedAt', 'jsCount',
-                    'customer', 'folderId']);
+                    'customer', 'folderId',
+                    'nextTab', 'nextCategory', 'nextDueAt', 'nextJobId']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -272,7 +273,11 @@ function rowToJob_(r) {
     dueAt: r[13] || '', pinnedAt: r[14] || '',
     jsCount: Number(r[15]) || 0,  // postage: first N photos are Jobsheet, rest Waybill
     customer: r[16] || '',
-    folderId: r[17] || ''         // the job's own Drive folder (History links to it)
+    folderId: r[17] || '',        // the job's own Drive folder (History links to it)
+    // check-first pipeline: where this checking job goes after ❤️ Got It
+    nextTab: r[18] || '', nextCategory: r[19] || '',
+    nextDueAt: r[20] || '', nextJobId: r[21] || '',
+    fromCheck: r[6] === 'check'   // this job was auto-created by a passed check
   };
 }
 
@@ -314,6 +319,13 @@ function addJob(payload) {
     thumbIds.push(t ? savePhotoTo_(folder, t, fileLabel_(kind + ' (thumb)', customer)) : '');
   }
 
+  // check-first pipeline (Checking tab only): after ❤️ Got It the job is
+  // auto-sent to nextTab with these prepared details
+  var nextTab = (payload.tab === 'want' && (payload.nextTab === 'delivery' || payload.nextTab === 'postage'))
+    ? payload.nextTab : '';
+  var nextCategory = nextTab === 'delivery' ? (payload.nextCategory || '') : '';
+  var nextDueAt = nextTab && payload.nextDueAt ? Number(payload.nextDueAt) : '';
+
   var existing = null;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -321,7 +333,7 @@ function addJob(payload) {
     var sh = getSheet_();
     if (payload.clientId) {
       var row = findRow_(sh, id);
-      if (row > 0) existing = sh.getRange(row, 1, 1, 18).getValues()[0];
+      if (row > 0) existing = sh.getRange(row, 1, 1, 22).getValues()[0];
     }
     if (!existing) {
       sh.appendRow([
@@ -329,7 +341,8 @@ function addJob(payload) {
         JSON.stringify(photoIds), 'pending',
         '', createdAt, '', '', '',
         JSON.stringify(thumbIds), '', dueAt, '', jsCount,
-        customer, folderId
+        customer, folderId,
+        nextTab, nextCategory, nextDueAt, ''
       ]);
     }
   } finally {
@@ -345,7 +358,8 @@ function addJob(payload) {
     note: payload.note || '', photoIds: photoIds, status: 'pending',
     createdAt: createdAt, doneAt: '', proofPhotoId: '',
     thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
-    jsCount: jsCount, customer: customer
+    jsCount: jsCount, customer: customer,
+    nextTab: nextTab, nextCategory: nextCategory, nextDueAt: nextDueAt, nextJobId: ''
   };
 }
 
@@ -390,7 +404,19 @@ function undoSwipe(id) {
     sh.getRange(row, 6).setValue('pending');
     sh.getRange(row, 10).setValue('');
     sh.getRange(row, 15).setValue(ts);
-    return { id: id, status: 'pending', pinnedAt: ts };
+    // pipeline pull-back: a wrong ❤️ already pushed the job to the next
+    // board — take it back (only while it is still untouched/pending)
+    var pulledBack = '';
+    var nextJobId = sh.getRange(row, 22).getValue();
+    if (nextJobId) {
+      var prow = findRow_(sh, nextJobId);
+      if (prow > 0 && sh.getRange(prow, 6).getValue() === 'pending') {
+        sh.deleteRow(prow); // photos are shared with the check — nothing trashed
+        pulledBack = nextJobId;
+      }
+      sh.getRange(row, 22).setValue('');
+    }
+    return { id: id, status: 'pending', pinnedAt: ts, pulledBack: pulledBack };
   } finally {
     lock.releaseLock();
   }
@@ -474,7 +500,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 18).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 22).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -523,8 +549,13 @@ function deleteJob(id, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 13).getValues()[0];
-    toTrash = JSON.parse(vals[4] || '[]').concat(JSON.parse(vals[11] || '[]'));
+    var vals = sh.getRange(row, 1, 1, 22).getValues()[0];
+    // pipeline jobs SHARE photos with their check partner — when either
+    // side is deleted, only its own proof is trashed, never the shared set
+    var sharesPhotos = vals[6] === 'check' || !!vals[21];
+    if (!sharesPhotos) {
+      toTrash = JSON.parse(vals[4] || '[]').concat(JSON.parse(vals[11] || '[]'));
+    }
     if (vals[10]) toTrash.push(vals[10]);
     if (vals[12]) toTrash.push(vals[12]);
     sh.deleteRow(row);
@@ -703,7 +734,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 17).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 22).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -729,7 +760,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [], defect: [] };
   var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
-  var rows = sh.getRange(2, 1, last - 1, 17).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 22).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
@@ -777,10 +808,32 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
       if (proofId) sh.getRange(row, 11).setValue(proofId);
       if (proofThumbId) sh.getRange(row, 13).setValue(proofThumbId);
     }
+    // CHECK-FIRST PIPELINE: ❤️ Got It on a prepared jobsheet auto-creates
+    // the Delivery/Postage job with the prepared details. The photos and
+    // Drive folder are SHARED, so the proof later lands in the same folder.
+    // nextJobId guards against double-push (re-swipes after Push Up).
+    var pushed = null;
+    if (status === 'got') {
+      var vals = sh.getRange(row, 1, 1, 22).getValues()[0];
+      if (vals[18] && !vals[21]) {
+        var pid = Utilities.getUuid();
+        var prow = [
+          pid, vals[18], vals[19] || '', vals[3],
+          vals[4], 'pending',
+          'check', new Date().getTime(), '', '', '',
+          vals[11], '', vals[20] || '', '', 0,
+          vals[16] || 'Unassigned', vals[17] || '',
+          '', '', '', ''
+        ];
+        sh.appendRow(prow);
+        sh.getRange(row, 22).setValue(pid);
+        pushed = rowToJob_(prow);
+      }
+    }
   } finally {
     lock.releaseLock();
   }
-  return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId, proofThumbId: proofThumbId };
+  return { id: id, status: status, doneAt: doneAt, proofPhotoId: proofId, proofThumbId: proofThumbId, pushed: pushed };
 }
 
 /**
@@ -795,7 +848,7 @@ function searchHistory(q, pin, tab, category) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { results: [], total: 0, driveFolderId: masterFolder_().getId() };
-  var rows = sh.getRange(2, 1, last - 1, 18).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 22).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];

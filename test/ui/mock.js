@@ -62,7 +62,9 @@
         proofPhotoId: '', proofThumbId: '',
         dueAt: p.dueAt || '', pinnedAt: '', jsCount: p.jsCount || 0,
         customer: (p.customer || '').trim() || 'Unassigned',
-        folderId: 'fold-' + (uid)
+        folderId: 'fold-' + (uid),
+        nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
+        nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -106,7 +108,13 @@
       if (!j) throw new Error('Job not found');
       if (j.status !== 'got' && j.status !== 'notseen') throw new Error('Nothing to undo');
       j.status = 'pending'; j.doneAt = ''; j.pinnedAt = Date.now();
-      return { id: id, status: 'pending', pinnedAt: j.pinnedAt };
+      var pulledBack = '';
+      if (j.nextJobId) {
+        var idx = db.jobs.findIndex(function (x) { return x.id === j.nextJobId && x.status === 'pending'; });
+        if (idx >= 0) { db.jobs.splice(idx, 1); pulledBack = j.nextJobId; }
+        j.nextJobId = '';
+      }
+      return { id: id, status: 'pending', pinnedAt: j.pinnedAt, pulledBack: pulledBack };
     },
     askAgain: function (id, pin) {
       requireAdmin(pin);
@@ -178,7 +186,22 @@
         if (proof) j.proofPhotoId = 'proof-' + id;
         if (proofThumb) j.proofThumbId = 'proofth-' + id;
       }
-      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '', proofThumbId: j.proofThumbId || '' };
+      var pushed = null;
+      if (status === 'got' && j.nextTab && !j.nextJobId) {
+        uid++;
+        var pj = {
+          id: 'j' + uid, tab: j.nextTab, category: j.nextCategory || '', note: j.note,
+          photoIds: j.photoIds.slice(), thumbIds: j.thumbIds.slice(),
+          status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+          dueAt: j.nextDueAt || '', pinnedAt: '', jsCount: 0,
+          customer: j.customer, folderId: j.folderId, fromCheck: true,
+          nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: ''
+        };
+        db.jobs.push(pj);
+        j.nextJobId = pj.id;
+        pushed = JSON.parse(JSON.stringify(pj));
+      }
+      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '', proofThumbId: j.proofThumbId || '', pushed: pushed };
     }
   };
 
