@@ -799,6 +799,7 @@ function searchHistory(q, pin, tab, category) {
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
+    if (!r[10]) continue;                        // EVIDENCE = has a PROOF photo; no proof, not listed
     if (tab && r[1] !== tab) continue;           // page filter (delivery / postage / …)
     if (category && r[2] !== category) continue; // delivery sub-type (bus / lalamove / pickup)
     if (q) {

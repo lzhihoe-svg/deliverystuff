@@ -319,9 +319,11 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // page + sub-type filters, and Drive folder links
   check(await page.locator('#hist-tabs').isVisible(), 'history has page filter pills');
   await page.evaluate(() => {
-    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'HF-bus', photos: ['hb1'], thumbs: ['hbt1'] });
-    window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'HF-lala', photos: ['hl1'], thumbs: ['hlt1'] });
-    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'HF-post', photos: ['hp1', 'hp2'], thumbs: ['hpt1', 'hpt2'], jsCount: 1 });
+    // evidence = proof photo, so each seeded job gets one
+    const h1 = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'HF-bus', photos: ['hb1'], thumbs: ['hbt1'] });
+    const h2 = window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'HF-lala', photos: ['hl1'], thumbs: ['hlt1'] });
+    const h3 = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'HF-post', photos: ['hp1', 'hp2'], thumbs: ['hpt1', 'hpt2'], jsCount: 1 });
+    [h1, h2, h3].forEach(h => window.__mockapi.updateStatus(h.id, 'done', 'p', 'pt', null));
   });
   await page.fill('#history-q', 'HF-');
   await page.click('#history-overlay .btn.blue');
@@ -437,9 +439,17 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.fill('#history-q', 'nurul syifa');
   await page.click('#history-overlay .btn.blue');
   await sleep(500);
+  check((await page.locator('#history-results .h-card').count()) === 0,
+    'a job WITHOUT a proof photo is NOT evidence (not listed)');
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Cust-test 2 jersey');
+    window.__mockapi.updateStatus(j.id, 'done', 'p', 'pt', null);
+  });
+  await page.click('#history-overlay .btn.blue');
+  await sleep(500);
   check((await page.locator('#history-results .h-card').count()) === 1 &&
         (await page.locator('#history-results .h-card').first().textContent()).indexOf('👤 Nurul Syifa') >= 0,
-    'History finds the job by CUSTOMER name');
+    'once the proof is taken, History finds it by CUSTOMER name');
   await page.click('#history-overlay .x-close');
   await sleep(200);
 
@@ -466,8 +476,11 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'posted with the tapped agent (SN)');
   await page.click('#nav-post');
   await sleep(250);
-  check((await page.locator('#agent-chips .agent-chip.recent').filter({ hasText: 'Nurul Syifa' }).count()) === 1,
-    'recently typed customers appear as quick chips too');
+  check((await page.locator('#agent-chips .agent-chip').count()) === 6,
+    'ONLY the 6 agents are buttons — customers are typed, not picked');
+  await page.fill('#upload-customer', 'Walk-in Customer');
+  check((await page.locator('#agent-chips .agent-chip.active').count()) === 0,
+    'typing a customer name deselects all agent buttons');
   await page.click('#upload-overlay .x-close');
   await sleep(200);
 

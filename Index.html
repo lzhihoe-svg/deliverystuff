@@ -306,7 +306,6 @@
     cursor: pointer; font-family: inherit;
   }
   .agent-chip.active { background: var(--green); border-color: var(--green); color: #fff; }
-  .agent-chip.recent { border-style: dashed; }
 
   .due-inputs { display: flex; gap: 8px; }
   .due-inputs input, .due-inputs select {
@@ -624,7 +623,7 @@
       <label>👤 Agent / Customer name</label>
       <div class="agent-chips" id="agent-chips"></div>
       <input type="text" id="upload-customer" oninput="renderAgentChips()"
-             placeholder="Tap an agent above, or type a customer name">
+             placeholder="Not an agent? Type the customer name here">
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -673,7 +672,7 @@
     <button class="x-close" onclick="closeHistory()">✕</button>
     <h2>🗂️ Evidence History</h2>
     <p style="font-size:13px;color:var(--muted);margin:-6px 0 10px">
-      Searches EVERY job ever posted — even after RESET.
+      Every job <b>with a proof photo</b> — that's the evidence. Survives RESET.
       Try a customer name, or a date like <b>2026-08-05</b>.
     </p>
     <div style="display:flex;gap:8px">
@@ -683,7 +682,6 @@
     </div>
     <div class="hist-pills" id="hist-tabs">
       <button data-t="" class="active">All</button>
-      <button data-t="want">🔍 Checking</button>
       <button data-t="delivery">🚚 Delivery</button>
       <button data-t="postage">📦 Postage</button>
       <button data-t="defect">🚨 Defect</button>
@@ -1970,7 +1968,7 @@
           return;
         }
         var head = '<div style="font-size:12.5px;color:var(--muted);margin-top:10px;font-weight:700">' +
-          (q || histTab ? res.total + ' result' + (res.total === 1 ? '' : 's') : 'Most recent jobs') +
+          (q || histTab ? res.total + ' result' + (res.total === 1 ? '' : 's') : 'Most recent evidence') +
           (res.total > res.results.length ? ' · showing first ' + res.results.length : '') + '</div>';
         box.innerHTML = driveLink + head + res.results.map(historyCard).join('');
         // images inside the modal live outside the scroller: fetch directly
@@ -2078,28 +2076,13 @@
   // buttons in the post window. Anything else is typed as a normal customer.
   var AGENTS = ['SN', 'Lanyard Malaya', 'Affa', 'Second Sons', 'Myopic', 'Creative'];
 
-  /** Agent buttons + recently used customer names, one tap to fill. */
+  /** AGENTS pick from buttons; a normal customer is simply typed below. */
   function renderAgentChips() {
-    var input = document.getElementById('upload-customer');
-    var box = document.getElementById('agent-chips');
-    var seen = {}, recent = [];
-    ['delivery', 'postage', 'defect'].forEach(function (tb) {
-      state.jobs[tb].forEach(function (j) {
-        var c = j.customer;
-        if (!c || c === 'Unassigned' || seen[c] || AGENTS.indexOf(c) >= 0) return;
-        seen[c] = 1; recent.push(c);
-      });
-    });
-    var cur = input.value.trim();
-    var html = AGENTS.map(function (n) {
+    var cur = document.getElementById('upload-customer').value.trim();
+    document.getElementById('agent-chips').innerHTML = AGENTS.map(function (n) {
       return '<button type="button" class="agent-chip' + (n === cur ? ' active' : '') +
         '" onclick="pickAgent(this)">' + esc(n) + '</button>';
     }).join('');
-    html += recent.slice(0, 6).map(function (n) {
-      return '<button type="button" class="agent-chip recent' + (n === cur ? ' active' : '') +
-        '" onclick="pickAgent(this)">' + esc(n) + '</button>';
-    }).join('');
-    box.innerHTML = html;
   }
   function pickAgent(btn) {
     var input = document.getElementById('upload-customer');

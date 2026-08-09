@@ -556,7 +556,7 @@ console.log('\n== evidence filing: month / customer / one folder per job ==');
   check(s.total === 1 && s.results[0].id === d.id, 'history finds the job by CUSTOMER name');
 }
 
-console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
+console.log('\n== searchHistory (evidence = jobs WITH a proof photo) ==');
 {
   const { ctx } = makeEnv();
   const a = ctx.addJob({ tab: 'delivery', category: 'lalamove', note: 'Nurul Syifa 2 jersey', photos: [B64], thumbs: [B64] });
@@ -571,16 +571,19 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   check(r1.total === 1 && r1.results[0].id === a.id, 'finds the job by customer name (case-insensitive)');
   check(r1.results[0].proofPhotoId, 'result includes the proof photo');
 
+  // EVIDENCE RULE: no proof photo = not evidence = not listed
+  check(ctx.searchHistory('humaira', PIN).total === 0, 'a job WITHOUT a proof photo is NOT evidence');
+  ctx.updateStatus(b.id, 'done', B64, B64, null);
   const r2 = ctx.searchHistory('POSTAGE', PIN);
-  check(r2.total === 1 && r2.results[0].id === b.id, 'finds by tab name');
+  check(r2.total === 1 && r2.results[0].id === b.id, 'it becomes evidence once the proof is taken (found by tab)');
 
   const today = new Date();
   const dayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
   const r3 = ctx.searchHistory(dayStr, PIN);
-  check(r3.total === 3, 'finds all of today\'s jobs by date string');
+  check(r3.total === 2, "date search lists today's evidence only (the proofless want job excluded)");
 
   const r4 = ctx.searchHistory('', PIN);
-  check(r4.total === 3 && r4.results[0].id !== a.id, 'empty query lists recent jobs, newest first');
+  check(r4.total === 2 && r4.results[0].id === b.id, 'empty query lists recent evidence, newest first');
 
   // page + sub-type filters, and Drive folder links
   const r7 = ctx.searchHistory('', PIN, 'delivery');
@@ -600,7 +603,10 @@ console.log('\n== searchHistory (evidence lookup, survives RESET) ==');
   check(ctx.searchHistory('no-such-customer', PIN).total === 0, 'no match returns empty');
 
   // cap at 50
-  for (let i = 0; i < 55; i++) ctx.addJob({ tab: 'want', category: '', note: 'bulk' + i, photos: [B64] });
+  for (let i = 0; i < 55; i++) {
+    const x = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'bulk' + i, photos: [B64] });
+    ctx.updateStatus(x.id, 'done', B64, B64, null);
+  }
   const r6 = ctx.searchHistory('bulk', PIN);
   check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
 }
@@ -618,9 +624,10 @@ console.log('\n== defect tab (jobsheet + defect photos + PROOF to finish) ==');
     'filed under Kilang App Photos / Defect / month / customer');
   const all = ctx.getAllData();
   check(all.jobs.defect.length === 1 && all.counts.defect === 1, 'getAllData returns the defect tab (1 pending, badge counts it)');
-  check(ctx.searchHistory('defect', PIN).total === 1, 'history finds defect records by tab name');
+  check(ctx.searchHistory('defect', PIN).total === 0, 'an open defect (no proof yet) is not evidence yet');
   throws(() => ctx.updateStatus(d.id, 'done', null, null, null), 'defect cannot be done WITHOUT a proof photo');
   const r = ctx.updateStatus(d.id, 'done', B64, B64, null);
+  check(ctx.searchHistory('defect', PIN).total === 1, 'fixed defect (with proof) shows in evidence by tab name');
   check(files[r.proofPhotoId].folder === files[d.photoIds[0]].folder, 'PROOF lands in the same defect job folder');
   check(ctx.getJobs('defect')[0].status === 'done' && ctx.getAllData().counts.defect === 0, 'proof photo completes the defect');
   ctx.resetDone(PIN);

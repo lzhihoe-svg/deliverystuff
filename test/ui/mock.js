@@ -93,6 +93,7 @@
       requireAdmin(pin);
       q = String(q || '').toLowerCase().trim();
       var all = db.jobs.slice().reverse().filter(function (j) {
+        if (!j.proofPhotoId) return false; // evidence = has a proof photo
         if (tab && j.tab !== tab) return false;
         if (category && j.category !== category) return false;
         if (!q) return true;
