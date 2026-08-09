@@ -298,6 +298,16 @@
     padding: 12px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
   }
   .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus, .sheet input[type=date]:focus { border-color: var(--lime); }
+  /* quick-pick agent/customer chips in the post window */
+  .agent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+  .agent-chip {
+    border: 1.5px solid #d3dcc3; background: #fff; color: #475569;
+    font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 7px 13px;
+    cursor: pointer; font-family: inherit;
+  }
+  .agent-chip.active { background: var(--green); border-color: var(--green); color: #fff; }
+  .agent-chip.recent { border-style: dashed; }
+
   .due-inputs { display: flex; gap: 8px; }
   .due-inputs input, .due-inputs select {
     flex: 1; min-width: 0; border: 2px solid #d3dcc3; border-radius: 12px;
@@ -611,8 +621,10 @@
     </div>
 
     <div id="customer-wrap" style="display:none">
-      <label>👤 Customer name</label>
-      <input type="text" id="upload-customer" placeholder="Example: Nurul Syifa (blank = Unassigned)">
+      <label>👤 Agent / Customer name</label>
+      <div class="agent-chips" id="agent-chips"></div>
+      <input type="text" id="upload-customer" oninput="renderAgentChips()"
+             placeholder="Tap an agent above, or type a customer name">
     </div>
 
     <div id="due-wrap" style="display:none">
@@ -2061,6 +2073,41 @@
     });
   }
 
+  // ------------------------------------------------------------ agent quick-pick
+  // ⭐ EDIT THIS LIST: your regular monthly agents — they become one-tap
+  // buttons in the post window. Anything else is typed as a normal customer.
+  var AGENTS = ['SN', 'Lanyard Malaya', 'Affa', 'Second Sons', 'Myopic', 'Creative'];
+
+  /** Agent buttons + recently used customer names, one tap to fill. */
+  function renderAgentChips() {
+    var input = document.getElementById('upload-customer');
+    var box = document.getElementById('agent-chips');
+    var seen = {}, recent = [];
+    ['delivery', 'postage', 'defect'].forEach(function (tb) {
+      state.jobs[tb].forEach(function (j) {
+        var c = j.customer;
+        if (!c || c === 'Unassigned' || seen[c] || AGENTS.indexOf(c) >= 0) return;
+        seen[c] = 1; recent.push(c);
+      });
+    });
+    var cur = input.value.trim();
+    var html = AGENTS.map(function (n) {
+      return '<button type="button" class="agent-chip' + (n === cur ? ' active' : '') +
+        '" onclick="pickAgent(this)">' + esc(n) + '</button>';
+    }).join('');
+    html += recent.slice(0, 6).map(function (n) {
+      return '<button type="button" class="agent-chip recent' + (n === cur ? ' active' : '') +
+        '" onclick="pickAgent(this)">' + esc(n) + '</button>';
+    }).join('');
+    box.innerHTML = html;
+  }
+  function pickAgent(btn) {
+    var input = document.getElementById('upload-customer');
+    // tapping the already-selected chip clears it (easy undo)
+    input.value = input.value.trim() === btn.textContent ? '' : btn.textContent;
+    renderAgentChips();
+  }
+
   // ------------------------------------------------------------ upload & edit modal
   function openUpload(editId) {
     var job = editId ? findJob(editId) : null;
@@ -2101,6 +2148,7 @@
     document.getElementById('customer-wrap').style.display = state.tab !== 'want' ? 'block' : 'none';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
+    if (state.tab !== 'want') renderAgentChips();
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage') ? 'block' : 'none';
     if (job && job.dueAt) {

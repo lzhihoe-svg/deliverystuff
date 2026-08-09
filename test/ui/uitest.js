@@ -443,6 +443,34 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#history-overlay .x-close');
   await sleep(200);
 
+  console.log('\n-- ⚡ agent quick-pick chips --');
+  await page.click('#nav-delivery');
+  await sleep(300);
+  await page.click('#nav-post');
+  await sleep(250);
+  check((await page.locator('#agent-chips .agent-chip').count()) >= 6, 'agent buttons show in the post window');
+  check((await page.locator('#agent-chips .agent-chip').first().textContent()) === 'SN', 'first agent is SN');
+  await page.locator('#agent-chips .agent-chip', { hasText: 'Lanyard Malaya' }).click();
+  check((await page.locator('#upload-customer').inputValue()) === 'Lanyard Malaya', 'one tap fills the name');
+  check((await page.locator('#agent-chips .agent-chip.active').textContent()) === 'Lanyard Malaya', 'tapped chip highlights');
+  await page.locator('#agent-chips .agent-chip.active').click();
+  check((await page.locator('#upload-customer').inputValue()) === '', 'tapping the same chip again clears it');
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(500);
+  await page.click('#upload-cats button[data-cat="bus"]');
+  await page.fill('#upload-note', 'Agent-test');
+  await page.click('#btn-submit');
+  await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Agent-test' && j.customer === 'SN')),
+    'posted with the tapped agent (SN)');
+  await page.click('#nav-post');
+  await sleep(250);
+  check((await page.locator('#agent-chips .agent-chip.recent').filter({ hasText: 'Nurul Syifa' }).count()) === 1,
+    'recently typed customers appear as quick chips too');
+  await page.click('#upload-overlay .x-close');
+  await sleep(200);
+
   console.log('\n-- stat boxes: Balance To Do vs Completed --');
   check((await page.locator('#delivery-list .stat-row').count()) === 1, 'delivery has the two counter boxes');
   check(await page.evaluate(() => document.getElementById('delivery-list').firstElementChild.className.indexOf('stat-row') >= 0),
