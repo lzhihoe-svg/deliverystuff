@@ -48,7 +48,7 @@
   }
   header h1 { font-size: 15px; margin-right: auto; display: flex; align-items: center; gap: 8px; letter-spacing: .12em; font-weight: 800; }
   header h1 .dot { color: var(--green); }
-  header h1 .logo { width: 26px; height: 26px; flex: 0 0 auto; }
+  header h1 .logo { width: 30px; height: 30px; flex: 0 0 auto; object-fit: contain; }
   #hello { flex-basis: 100%; font-size: 20px; font-weight: 800; letter-spacing: -.01em; margin-top: 2px; }
   #refresh-btn { border-color: #cfe3ad; color: var(--blue); }
   #sync-row {
@@ -542,11 +542,9 @@
 <div id="scroller">
   <header>
     <h1>
-      <svg class="logo" viewBox="0 0 120 112" xmlns="http://www.w3.org/2000/svg">
-        <path d="M39 7 L12 21 L3 47 L23 55 L27 43 L27 99 Q27 106 34 106 L86 106 Q93 106 93 99 L93 43 L97 55 L117 47 L108 21 L81 7 Q73 17 60 17 Q47 17 39 7 Z"
-              fill="#b7e388" stroke="#161a10" stroke-width="9" stroke-linejoin="round"/>
-        <path d="M93 106 L93 80 L67 106 Z" fill="#f18bb9" stroke="#161a10" stroke-width="7" stroke-linejoin="round"/>
-      </svg>
+      <img class="logo" alt=""
+        src="https://www.aramega.com.my/wp-content/uploads/2022/12/cropped-cropped-cropped-cropped-imageedit_1_9771480102-e1672820391435.png"
+        onerror="this.style.display='none'">
       <span>ARA<span class="dot">MEGA</span></span>
     </h1>
 

@@ -43,6 +43,10 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // ============================================================ MOBILE
   console.log('\n===== MOBILE (390x740, touch) =====');
   const ctx = await browser.newContext({ viewport: { width: 390, height: 740 }, hasTouch: true });
+  // the header logo lives on aramega.com.my — no internet in the test box,
+  // so abort it fast (the app's onerror fallback hides it) instead of
+  // letting a hanging request delay every page load
+  await ctx.route('**aramega.com.my**', r => r.abort());
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
   page.on('pageerror', e => { fail++; failures.push('JS error: ' + e.message); console.log('  ❌ PAGE JS ERROR: ' + e.message); });
@@ -62,7 +66,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(calls.indexOf('getJobs') < 0 && calls.indexOf('getCounts') < 0 && calls.indexOf('getInitData') < 0, 'no separate per-tab calls');
   check((await page.locator('header h1').textContent()).replace(/\s+/g, ' ').indexOf('ARAMEGA') >= 0,
     'ARAMEGA branding in header (one word)');
-  check((await page.locator('header h1 svg.logo').count()) === 1, 't-shirt logo in header');
+  check((await page.locator('header h1 img.logo').count()) === 1 &&
+    (await page.locator('header h1 img.logo').getAttribute('src')).indexOf('aramega.com.my') > 0,
+    'ARAMEGA company logo in header');
   check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "refresh button shows the word 'Refresh'");
 
   console.log('\n-- post multi-photo job --');
@@ -1261,6 +1267,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // ============================================================ DESKTOP
   console.log('\n===== DESKTOP (1280x900, admin) =====');
   const dctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await dctx.route('**aramega.com.my**', r => r.abort());
   const dpage = await dctx.newPage();
   dpage.on('pageerror', e => { fail++; failures.push('JS error: ' + e.message); console.log('  ❌ PAGE JS ERROR: ' + e.message); });
   await dpage.addInitScript(() => {
