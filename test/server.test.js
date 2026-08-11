@@ -761,6 +761,24 @@ console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required)
   check(!files[c.photoIds[0]].trashed, 'shared photos untouched');
 }
 
+console.log('\n== lost photo slot: Save heals the job ==');
+{
+  const { ctx } = makeEnv();
+  const j = ctx.addJob({ tab: 'postage', category: '', note: 'lost slot', customer: 'DO',
+    photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 2 });
+  // an edit whose list still contains a ghost entry (empty id — the photo's
+  // background upload never finished) simply drops it
+  const e = ctx.editJob(j.id, { note: 'lost slot', category: '', jsCount: 1, photos: [
+    { id: j.photoIds[0], thumbId: j.thumbIds[0] },
+    { id: '' },
+    { id: j.photoIds[2], thumbId: j.thumbIds[2] }
+  ] }, PIN);
+  check(e.photoIds.length === 2 && e.photoIds.every(Boolean), 'ghost photo entries dropped on save');
+  check(e.photoIds[0] === j.photoIds[0] && e.photoIds[1] === j.photoIds[2], 'real photos kept in order');
+  throws(() => ctx.editJob(j.id, { note: '', category: '', photos: [{ id: '' }] }, PIN),
+    'an edit with ONLY ghost entries is refused (photo required)');
+}
+
 console.log('\n== jsCount (postage jobsheet/waybill split) ==');
 {
   const { ctx } = makeEnv();

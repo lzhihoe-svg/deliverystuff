@@ -82,7 +82,8 @@
       requireAdmin(pin);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      if (!ch.photos || !ch.photos.length) throw new Error('Photo required');
+      ch.photos = (ch.photos || []).filter(function (p) { return p && (p.b64 || p.id); });
+      if (!ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
       j.dueAt = ch.dueAt || '';
       j.jsCount = ch.jsCount || 0;

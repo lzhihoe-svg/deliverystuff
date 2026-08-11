@@ -165,6 +165,15 @@
     width: 100%; display: block; min-height: 120px; max-height: 340px;
     object-fit: contain; background: #e2e8f0; cursor: pointer;
   }
+  /* a photo slot whose upload never finished — explains itself */
+  .lost-photo {
+    width: 100%; height: 100%; min-height: 150px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; background: var(--soft); color: var(--muted);
+    font-size: 22px; text-align: center; padding: 10px;
+  }
+  .lost-photo span { font-size: 12.5px; font-weight: 700; }
+  .lost-photo b { font-size: 12.5px; color: #b45309; }
   .car-dots {
     position: absolute; bottom: 8px; left: 0; right: 0;
     text-align: center; pointer-events: none;
@@ -893,7 +902,7 @@
     for (var i = 0; i < els.length; i++) {
       if (io && !els[i].getAttribute('data-vis')) continue;  // offscreen: skip
       var id = els[i].getAttribute('data-img');
-      if (String(id).indexOf('local') === 0) continue;       // temp preview, already local
+      if (!id || String(id).indexOf('local') === 0) continue; // empty/temp: nothing to fetch
       if (!cachedImg(id) && !imgFetching[id] && want.indexOf(id) < 0) want.push(id);
     }
     for (var p in prefetchWant) {
@@ -1042,7 +1051,7 @@
     for (var i = 0; i < els.length; i++) {
       if (io && !els[i].getAttribute('data-vis')) continue;
       var id = els[i].getAttribute('data-img');
-      if (String(id).indexOf('local') === 0) continue;
+      if (!id || String(id).indexOf('local') === 0) continue;
       if (!cachedImg(id) && !seen[id]) { seen[id] = 1; n++; }
     }
     return n;
@@ -1066,19 +1075,31 @@
     return s + '</div>';
   }
 
+  /** A photo slot whose background upload never finished (empty id in the
+      job) — shown as a friendly tile instead of an eternal grey spinner. */
+  function lostTile_() {
+    return '<div class="lost-photo">📷<span>Photo didn\'t upload</span><b>✏️ Edit → re-add it</b></div>';
+  }
+
   /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens the
       full-size viewer where you can swipe through the whole set. */
   function carouselHtml(j) {
     var n = j.photoIds.length;
-    var csv = j.photoIds.join(',');
-    var tcsv = j.photoIds.map(function (_, k) { return thumbOf(j, k); }).join(',');
+    var live = [], liveT = [];
+    for (var k = 0; k < n; k++) {
+      if (j.photoIds[k]) { live.push(j.photoIds[k]); liveT.push(thumbOf(j, k)); }
+    }
+    var csv = live.join(','), tcsv = liveT.join(',');
     if (n === 1) {
       return '<div class="carousel">' +
-        imgTag(thumbOf(j, 0), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"') + '</div>';
+        (j.photoIds[0] ? imgTag(thumbOf(j, 0), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"') : lostTile_()) + '</div>';
     }
     var s = '<div class="carousel"><div class="car-track">';
+    var seen = 0;
     for (var i = 0; i < n; i++) {
-      s += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + i + ', \'' + tcsv + '\')"') + '</div>';
+      s += '<div class="car-slide">' + (j.photoIds[i]
+        ? imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (seen++) + ', \'' + tcsv + '\')"')
+        : lostTile_()) + '</div>';
     }
     s += '</div>';
     s += '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>';
@@ -1710,15 +1731,23 @@
       Tapping opens the viewer scoped to THIS group's photos only. */
   function miniCarousel(j, start, end, label) {
     var count = end - start;
-    var csv = j.photoIds.slice(start, end).join(',');
-    var tcsv = j.photoIds.slice(start, end).map(function (_, k) { return thumbOf(j, start + k); }).join(',');
+    var live = [], liveT = [];
+    for (var k = start; k < end; k++) {
+      if (j.photoIds[k]) { live.push(j.photoIds[k]); liveT.push(thumbOf(j, k)); }
+    }
+    var csv = live.join(','), tcsv = liveT.join(',');
     var inner;
     if (count <= 1) {
-      inner = imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"');
+      inner = j.photoIds[start]
+        ? imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"')
+        : lostTile_();
     } else {
       inner = '<div class="car-track">';
+      var seen = 0;
       for (var i = start; i < end; i++) {
-        inner += '<div class="car-slide">' + imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (i - start) + ', \'' + tcsv + '\')"') + '</div>';
+        inner += '<div class="car-slide">' + (j.photoIds[i]
+          ? imgTag(thumbOf(j, i), '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + (seen++) + ', \'' + tcsv + '\')"')
+          : lostTile_()) + '</div>';
       }
       inner += '</div>' +
         '<button class="car-btn prev" onclick="carMove(this,-1)">‹</button>' +
@@ -1741,12 +1770,17 @@
 
   function jobCard(j, isDone) {
     var old = !isDone && (Date.now() - j.createdAt > DAY);
-    var media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2 && j.photoIds[0] && j.photoIds[1])
+    // postage/defect ALWAYS keep the Jobsheet | Waybill split — even when a
+    // photo slot is still empty (its tile explains itself instead of the
+    // whole card quietly falling back to one mixed carousel)
+    var media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2)
       ? pairHtml(j) : carouselHtml(j);
     var html = '<div class="card">' + media;
 
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
+    var lost = j.uploading ? 0 : j.photoIds.filter(function (id) { return !id; }).length;
+    if (lost) html += '<span class="chip old">⚠️ ' + lost + ' photo didn\'t upload — ✏️ Edit to re-add</span> ';
     if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
     if (j.fromCheck) html += '<span class="chip passed">✅ passed check</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
@@ -2257,6 +2291,7 @@
     if (job) {
       var split = (state.tab === 'postage' || state.tab === 'defect') ? jsCountOf(job) : -1;
       job.photoIds.forEach(function (id, i) {
+        if (!id) return; // lost upload slot — dropped here, so 💾 Save heals the job
         var item = { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
         if (split < 0) state.upload.photos.push(item);
         else (i < split ? state.upload.js : state.upload.wb).push(item);
@@ -2539,7 +2574,10 @@
               function (e) {
                 uploadsPending--; updatePill();
                 remaining--;
-                toast('⚠️ One photo failed: ' + errMsg_(e));
+                // NEVER lose a photo to bad Wi-Fi: park it in the retry
+                // queue — it keeps re-uploading itself while the app is open
+                photoRetryQ.push({ job: tempJob, ix: ix, full: fulls[ix], thumb: thumbs[ix] });
+                toast('⚠️ One photo is stuck — I\'ll keep retrying it');
                 if (remaining === 0) finishPost();
               });
           })(idx);
@@ -2553,6 +2591,33 @@
         toast('⚠️ Post failed: ' + errMsg_(e));
       });
   }
+
+  // ------------------------------------------------------------ stuck-photo retry queue
+  // A background photo upload that failed all its quick retries waits here
+  // and tries again every 25s for as long as the app stays open. The photo
+  // bytes are still in memory, so nothing is lost while the page lives.
+  var photoRetryQ = [];
+  function retryStuckPhotos() {
+    if (!photoRetryQ.length) return;
+    var q = photoRetryQ.splice(0, photoRetryQ.length);
+    q.forEach(function (it) {
+      gsCall('addPhotoToJob', [it.job.id, it.ix, it.full, it.thumb],
+        function (res) {
+          seedImage(res.photoId, it.full);
+          seedImage(res.thumbId, it.thumb);
+          it.job.photoIds[it.ix] = res.photoId;
+          it.job.thumbIds[it.ix] = res.thumbId;
+          saveJobsCache(it.job.tab);
+          renderAll();
+          toast('✅ Stuck photo uploaded!');
+        },
+        function (e) {
+          // job deleted meanwhile → give up; anything else → next round
+          if (errMsg_(e).toLowerCase().indexOf('not found') < 0) photoRetryQ.push(it);
+        });
+    });
+  }
+  setInterval(retryStuckPhotos, 25000);
 
   // fill the Ready-by day/month dropdowns (no year — chosen automatically)
   (function () {

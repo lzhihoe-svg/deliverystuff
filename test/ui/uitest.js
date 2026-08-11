@@ -976,6 +976,72 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(300);
 
+  console.log('\n-- 📷 lost photo slot: pair layout survives + Edit heals --');
+  await page.evaluate(() => {
+    const j = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Lost-slot', customer: 'DO',
+      photos: ['q1', 'q2', 'q3'], thumbs: ['q1', 'q2', 'q3'], jsCount: 2 });
+    const dbj = window.__mockdb.jobs.find(x => x.id === j.id);
+    dbj.photoIds[1] = ''; dbj.thumbIds[1] = ''; // a background upload that died mid-way
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const lsCard = page.locator('#postage-list .card').filter({ hasText: 'Lost-slot' });
+  check((await lsCard.locator('.photo-pair').count()) === 1, 'card STILL shows the Jobsheet | Waybill split');
+  check((await lsCard.locator('.lost-photo').count()) === 1, "empty slot shows a 'photo didn't upload' tile");
+  check((await lsCard.locator('.chip.old').count()) === 1, 'warning chip points them to Edit');
+  let noHang = false; // the photo-loading counter must not get stuck on the ghost id
+  for (let t = 0; t < 8 && !noHang; t++) {
+    noHang = (await page.locator('#sync-row').textContent()).indexOf('photos') < 0;
+    if (!noHang) await sleep(500);
+  }
+  check(noHang, "header does NOT hang on 'Loading photos… (1 left)'");
+  await clickSafe(lsCard.locator('.t-edit'));
+  await sleep(300);
+  check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
+    'Edit shows only the REAL photos — no eternal Loading slot');
+  await page.click('#btn-submit');
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Lost-slot');
+    return j.photoIds.length === 2 && j.photoIds.every(Boolean) && j.jsCount === 1;
+  }), '💾 Save heals the job on the server (ghost slot gone)');
+  check((await lsCard.locator('.lost-photo').count()) === 0 && (await lsCard.locator('.photo-pair').count()) === 1,
+    'card back to a clean Jobsheet | Waybill pair');
+  await page.evaluate(() => { window.__mockdb.jobs.find(x => x.note === 'Lost-slot').status = 'archived'; });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+
+  console.log('\n-- 🔁 stuck photo auto-retry (bad Wi-Fi never loses a photo) --');
+  await page.evaluate(() => { window.__mockfail = { addPhotoToJob: 3 }; }); // kill ALL quick retries
+  await page.click('#nav-post');
+  await sleep(150);
+  await page.setInputFiles('#js-file', IMG);
+  await sleep(500);
+  await page.setInputFiles('#wb-file', IMG2);
+  await sleep(500);
+  await page.fill('#upload-customer', 'BG');
+  await page.fill('#upload-note', 'Sticky-photo');
+  await page.click('#btn-submit');
+  await sleep(4500); // initial try + 2 quick retries all fail → parked in the queue
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Sticky-photo');
+    return !!j && !j.photoIds[1];
+  }), 'server really is missing the stuck photo');
+  check((await page.locator('#postage-list .card').filter({ hasText: 'Sticky-photo' }).count()) === 1,
+    'job still on screen with its local preview');
+  await page.evaluate(() => retryStuckPhotos());
+  await sleep(800);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Sticky-photo');
+    return !!j && !!j.photoIds[1];
+  }), 'retry queue re-uploads the stuck photo by itself');
+  await page.evaluate(() => {
+    window.__mockfail = null;
+    window.__mockdb.jobs.find(x => x.note === 'Sticky-photo').status = 'archived';
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+
   console.log('\n-- DEFECT tab: jobsheet + defect photos, DONE button --');
   check((await page.locator('#nav-defect').count()) === 1, 'Defect tab in the bottom nav');
   await page.click('#nav-defect');

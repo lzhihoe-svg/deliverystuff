@@ -473,7 +473,9 @@ function addPhotoToJob(id, index, fullB64, thumbB64) {
  */
 function editJob(id, changes, pin) {
   requireAdmin_(pin);
-  var spec = changes.photos || [];
+  // drop ghost entries (a photo slot whose background upload never
+  // finished has an empty id) — saving an edit HEALS such a job
+  var spec = (changes.photos || []).filter(function (p) { return p && (p.b64 || p.id); });
   if (!spec.length) throw new Error('Photo required');
   if (spec.length > 6) throw new Error('Max 6 photos per job');
 
