@@ -73,7 +73,8 @@ function makeEnv() {
         let left = sub[n] ? 1 : 0;
         return { hasNext: () => left > 0, next: () => { left = 0; return sub[n]; } };
       },
-      createFolder(n) { sub[n] = makeFolder(name + '/' + n); return sub[n]; }
+      createFolder(n) { sub[n] = makeFolder(name + '/' + n); return sub[n]; },
+      moveTo(dest) { f.movedTo = dest.getId(); }
     };
     folderReg[name] = f;
     return f;
@@ -129,7 +130,7 @@ function makeEnv() {
   vm.createContext(ctx);
   const code = fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8');
   vm.runInContext(code, ctx);
-  return { ctx, files, sheetData, locks: () => ({ lockCount, unlockCount }) };
+  return { ctx, files, sheetData, folders: folderReg, locks: () => ({ lockCount, unlockCount }) };
 }
 
 // ---------------------------------------------------------------- tiny test runner
@@ -721,6 +722,43 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
   check(ctx.updateStatus(plain.id, 'got', null, null, null).pushed === null, 'a plain check pushes nothing');
   const dj = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64], nextTab: 'postage' });
   check(dj.nextTab === '', 'nextTab is Checking-only (ignored on other tabs)');
+}
+
+console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');
+{
+  const { ctx, files, folders } = makeEnv();
+  const j = ctx.addJob({ tab: 'postage', category: '', note: 'parcel for CG', customer: 'CG',
+    photos: [B64, B64], thumbs: [B64, B64], jsCount: 1 });
+  throws(() => ctx.sentBus(j.id, null, null), 'no proof photo → refused');
+  check(ctx.getJobs('postage')[0].status === 'pending', 'job untouched after the refusal');
+
+  const r = ctx.sentBus(j.id, B64, B64);
+  check(r.tab === 'delivery' && r.category === 'bus' && r.status === 'done', 'becomes a done Delivery → Bus job');
+  check(ctx.getJobs('postage').length === 0, 'gone from the Postage board');
+  const d = ctx.getJobs('delivery')[0];
+  check(!!d && d.id === j.id && d.status === 'done' && d.category === 'bus', 'same job, now on the Delivery board');
+  check(d.note === 'parcel for CG' && d.customer === 'CG' && d.jsCount === 1, 'note, customer and photo split kept');
+  check(JSON.stringify(d.photoIds) === JSON.stringify(j.photoIds), 'photos kept — no re-upload');
+  check(!!files[r.proofPhotoId] && !files[r.proofPhotoId].trashed, 'proof photo saved');
+  check(files[r.proofPhotoId].folder === files[j.photoIds[0]].folder, "proof lands in the job's own folder");
+  const jf = folders[d.folderId];
+  check(!!jf.movedTo && jf.movedTo.indexOf('/Delivery/') > 0 && /\/CG$/.test(jf.movedTo),
+    'Drive folder re-filed under Delivery/<month>/CG');
+  const ev = ctx.searchHistory('', PIN, 'delivery', 'bus');
+  check(ev.results.some(x => x.id === j.id), 'listed in Evidence under Delivery → Bus');
+  check(ctx.searchHistory('', PIN, 'postage', '').results.length === 0, 'no longer listed under Postage');
+  check(ctx.getAllData().counts.postage === 0, 'postage balance drops');
+
+  const dj = ctx.addJob({ tab: 'delivery', category: 'lalamove', note: 'x', photos: [B64] });
+  throws(() => ctx.sentBus(dj.id, B64, B64), 'only a postage job can be marked Sent bus');
+
+  // a pipeline-pushed postage job shares its folder with the check — folder stays put
+  const c = ctx.addJob({ tab: 'want', category: '', note: 'pp', customer: 'SN', photos: [B64], nextTab: 'postage' });
+  const pushed = ctx.updateStatus(c.id, 'got', null, null, null).pushed;
+  const r2 = ctx.sentBus(pushed.id, B64, B64);
+  check(r2.status === 'done' && r2.category === 'bus', 'a pipeline postage job can be Sent bus too');
+  check(!folders[pushed.folderId].movedTo, 'shared pipeline folder is NOT moved (check evidence stays together)');
+  check(!files[c.photoIds[0]].trashed, 'shared photos untouched');
 }
 
 console.log('\n== jsCount (postage jobsheet/waybill split) ==');

@@ -837,6 +837,66 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
 }
 
 /**
+ * "🚌 SENT BUS" — a postage parcel that went by bus instead. The job moves
+ * to the DELIVERY board as a completed Bus delivery; the proof photo is
+ * still REQUIRED, same rule as any Done. Its Drive folder is re-filed under
+ * Delivery too — unless the folder is shared with a Checking job (pipeline
+ * push), in which case it stays where the check evidence lives.
+ */
+function sentBus(id, proofBase64, proofThumbBase64) {
+  if (!proofBase64) throw new Error('Proof photo required');
+  // Save the proof BEFORE taking the lock (Drive is the slow part); it lands
+  // in the job's own folder, which moves along with it afterwards.
+  var lbl = jobLabel_(id);
+  var pFolder = jobFolderOf_(lbl);
+  var proofId = savePhotoTo_(pFolder, proofBase64, fileLabel_('PROOF', lbl.customer));
+  var proofThumbId = proofThumbBase64 ? savePhotoTo_(pFolder, proofThumbBase64, fileLabel_('PROOF (thumb)', lbl.customer)) : '';
+  var doneAt = new Date().getTime();
+  var toTrash = [], moveInfo = null;
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) {
+      trashFile_(proofId); trashFile_(proofThumbId);
+      throw new Error('Job not found');
+    }
+    var vals = sh.getRange(row, 1, 1, 22).getValues()[0];
+    if (vals[1] !== 'postage') {
+      trashFile_(proofId); trashFile_(proofThumbId);
+      throw new Error('Only a postage job can be marked Sent bus');
+    }
+    if (vals[10]) toTrash.push(vals[10]); // replace an existing proof, if any
+    if (vals[12]) toTrash.push(vals[12]);
+    sh.getRange(row, 2).setValue('delivery');
+    sh.getRange(row, 3).setValue('bus');
+    sh.getRange(row, 6).setValue('done');
+    sh.getRange(row, 10).setValue(doneAt);
+    sh.getRange(row, 11).setValue(proofId);
+    sh.getRange(row, 13).setValue(proofThumbId);
+    if (vals[6] !== 'check' && vals[17]) {
+      moveInfo = { folderId: vals[17], customer: vals[16] || 'Unassigned', createdAt: vals[7] };
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
+  if (moveInfo) {
+    try { // folder filing is best-effort — the record itself is already correct
+      var d = new Date(Number(moveInfo.createdAt));
+      var month = d.getFullYear() + '-' + pad2_(d.getMonth() + 1);
+      var dest = childFolder_(childFolder_(childFolder_(masterFolder_(), 'Delivery'), month),
+        cleanName_(moveInfo.customer) || 'Unassigned');
+      DriveApp.getFolderById(moveInfo.folderId).moveTo(dest);
+    } catch (e) {}
+  }
+  return { id: id, tab: 'delivery', category: 'bus', status: 'done', doneAt: doneAt,
+           proofPhotoId: proofId, proofThumbId: proofThumbId };
+}
+
+/**
  * ADMIN ONLY. Evidence history: search EVERY job ever posted — including
  * archived ones (RESET never deletes records). Matches the query against
  * the note, category, tab and the posted/finished dates ("2026-08-05").

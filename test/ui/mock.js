@@ -175,6 +175,17 @@
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
     },
+    sentBus: function (id, proof, proofThumb) {
+      if (!proof) throw new Error('Proof photo required');
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.tab !== 'postage') throw new Error('Only a postage job can be marked Sent bus');
+      j.tab = 'delivery'; j.category = 'bus'; j.status = 'done'; j.doneAt = Date.now();
+      j.proofPhotoId = 'proof-' + id;
+      j.proofThumbId = proofThumb ? ('proofth-' + id) : '';
+      return { id: id, tab: 'delivery', category: 'bus', status: 'done', doneAt: j.doneAt,
+               proofPhotoId: j.proofPhotoId, proofThumbId: j.proofThumbId };
+    },
     updateStatus: function (id, status, proof, proofThumb, pin) {
       if (status === 'archived') requireAdmin(pin);
       if (status === 'done' && !proof) throw new Error('Proof photo required');

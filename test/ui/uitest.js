@@ -940,6 +940,42 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(800);
   check((await page.locator('#postage-list .proof').count()) === 1, 'postage proof photo works');
 
+  console.log('\n-- 🚌 Sent bus: postage parcel goes by bus → moves to Delivery --');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Bus-instead', customer: 'RT',
+      photos: ['sb1', 'sb2'], thumbs: ['sb1', 'sb2'], jsCount: 1 });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const sbCard = page.locator('#postage-list .card').filter({ hasText: 'Bus-instead' });
+  check((await sbCard.locator('.btn.bus').count()) === 1, "pending postage card shows the '🚌 Sent bus' button");
+  await page.click('#nav-delivery');
+  await sleep(400);
+  check((await page.locator('#delivery-list .btn.bus').count()) === 0, 'Delivery cards do NOT show Sent bus');
+  await page.click('#nav-postage');
+  await sleep(400);
+  await clickSafe(sbCard.locator('.btn.bus'));
+  await page.setInputFiles('#proof-file', IMG);
+  await sleep(300);
+  check((await page.locator('#toast').textContent()).indexOf('bus') >= 0, 'toast says it moved to Delivery');
+  check((await sbCard.count()) === 0, 'job leaves the Postage board instantly');
+  await sleep(700);
+  const sbJob = await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Bus-instead'));
+  check(!!sbJob && sbJob.tab === 'delivery' && sbJob.category === 'bus' && sbJob.status === 'done' && !!sbJob.proofPhotoId,
+    'server: now a DONE Delivery → Bus job WITH its proof photo');
+  await page.click('#nav-delivery');
+  await sleep(500);
+  const sbDone = page.locator('#delivery-list .card').filter({ hasText: 'Bus-instead' });
+  check((await sbDone.count()) === 1, 'job appears on the Delivery board');
+  check((await sbDone.locator('.chip.bus').count()) === 1, 'with the Bus category chip');
+  check((await sbDone.locator('.proof').count()) === 1, 'and its proof photo attached');
+  // archive it so later sections start clean
+  await page.evaluate(() => { window.__mockdb.jobs.find(x => x.note === 'Bus-instead').status = 'archived'; });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+  await page.click('#nav-postage');
+  await sleep(300);
+
   console.log('\n-- DEFECT tab: jobsheet + defect photos, DONE button --');
   check((await page.locator('#nav-defect').count()) === 1, 'Defect tab in the bottom nav');
   await page.click('#nav-defect');

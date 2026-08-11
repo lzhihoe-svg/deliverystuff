@@ -214,6 +214,7 @@
   .btn.red { background: #fff; color: var(--red); border: 1.5px solid #f0c3c3; }
   .btn.blue { background: linear-gradient(135deg, #84cc16, var(--green)); color: #16200a; box-shadow: 0 6px 16px rgba(101,163,13,.3); }
   .btn.gray { background: var(--soft); color: #4b5142; }
+  .btn.bus { background: #fff; color: #0369a1; border: 1.5px solid #7dd3fc; padding: 12px; font-size: 15.5px; }
   .btn.small { padding: 10px; font-size: 15px; border-radius: 999px; }
   .btn:active { transform: scale(.97); }
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
@@ -1769,6 +1770,11 @@
       html += '<div class="spacer"></div>';
       if (!j.uploading) {
         html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>';
+        // sometimes a parcel goes by BUS instead of being posted — one tap
+        // moves it to Delivery as a Bus job (proof photo still required)
+        if (j.tab === 'postage') {
+          html += '<button class="btn bus" style="margin-top:8px" onclick="startSentBus(\'' + j.id + '\')">🚌 Sent bus — take proof</button>';
+        }
         html += toolBtns(j, false);
       }
     }
@@ -2097,6 +2103,7 @@
   function startProof(jobId) {
     state.proofJobId = jobId;
     state.reProof = false;
+    state.sentBus = false;
     document.getElementById('proof-file').click();
   }
   /** Retake the proof photo on a done job — staff AND admin. */
@@ -2105,12 +2112,25 @@
     if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
     state.proofJobId = jobId;
     state.reProof = true;
+    state.sentBus = false;
+    document.getElementById('proof-file').click();
+  }
+  /** "🚌 Sent bus" — this postage parcel went by BUS instead. The proof
+   *  photo is still required; the job moves to Delivery as a done Bus job. */
+  function startSentBus(jobId) {
+    var j = findJob(jobId);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
+    state.proofJobId = jobId;
+    state.reProof = false;
+    state.sentBus = true;
     document.getElementById('proof-file').click();
   }
   function proofPicked(input) {
     if (!input.files || !input.files[0]) return;
     var id = state.proofJobId;
     var redo = state.reProof;
+    var sb = state.sentBus;
+    state.sentBus = false;
     var jobTab = state.tab;
     compressImage(input.files[0], function (img) {
       // NON-BLOCKING: update the screen instantly, upload in the background
@@ -2118,13 +2138,21 @@
       var tempKey = 'localproof-' + (++localSeq);
       imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
       if (j) {
-        if (!redo) { j.status = 'done'; j.doneAt = Date.now(); }
+        if (sb) {
+          // sent by bus: the job leaves Postage and lands on Delivery as done
+          j.status = 'done'; j.doneAt = Date.now();
+          j.tab = 'delivery'; j.category = 'bus';
+          state.jobs.postage = state.jobs.postage.filter(function (x) { return x.id !== id; });
+          state.jobs.delivery.unshift(j);
+          saveJobsCache('postage');
+        } else if (!redo) { j.status = 'done'; j.doneAt = Date.now(); }
         j.proofPhotoId = tempKey; j.proofThumbId = tempKey;
         j.proofUploading = true;
         inflightJobs.push(j);
       }
       renderAll(); updateBadgeLocal();
-      toast(redo ? '📷 New proof photo uploading… 🙏' : '✅ Done! Proof uploading… 🙏');
+      toast(sb ? '🚌 Sent by bus — moved to Delivery! Proof uploading… 🙏'
+        : redo ? '📷 New proof photo uploading… 🙏' : '✅ Done! Proof uploading… 🙏');
       uploadsPending++; updatePill();
       var okH = function (res) {
         uploadsPending--; updatePill();
@@ -2135,7 +2163,7 @@
           if (res.doneAt) j.doneAt = res.doneAt;
           delete j.proofUploading;
           inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
-          saveJobsCache(jobTab); renderAll();
+          saveJobsCache(sb ? 'delivery' : jobTab); renderAll();
         }
       };
       var failH = function (e) {
@@ -2143,7 +2171,8 @@
         if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
         toast('⚠️ ' + errMsg_(e)); refresh();
       };
-      if (redo) gsCall('updateProof', [id, img.full, img.thumb], okH, failH);
+      if (sb) gsCall('sentBus', [id, img.full, img.thumb], okH, failH);
+      else if (redo) gsCall('updateProof', [id, img.full, img.thumb], okH, failH);
       else gsCall('updateStatus', [id, 'done', img.full, img.thumb, null], okH, failH);
     });
     input.value = '';
