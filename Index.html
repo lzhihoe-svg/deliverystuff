@@ -1819,8 +1819,10 @@
     html += '<div class="meta">Posted ' + timeAgo(j.createdAt) + '</div>';
     // "haven't received" problem status — visible to everyone on the card
     if (!isDone && (j.tab === 'delivery' || j.tab === 'postage')) {
-      if (j.problem === 'reported') {
-        html += '<div class="prob-line">🚨 Reported at ' + fmtTime(j.problemAt) + ' — office will print it</div>';
+      if (j.problem === 'reported' || j.problem === 'nosticker') {
+        html += '<div class="prob-line">' +
+          (j.problem === 'nosticker' ? '🏷️ No sticker — reported at ' : '🚨 Reported at ') +
+          fmtTime(j.problemAt) + ' — office will print it</div>';
       } else if (j.printedAt) {
         html += '<div class="prob-line ok"' +
           (j.printPhotoId ? ' onclick="viewPhoto(\'' + j.printPhotoId + '\', \'' + (j.printThumbId || j.printPhotoId) + '\')"' : '') +
@@ -1849,8 +1851,13 @@
           html += '<button class="btn bus" style="margin-top:8px" onclick="startSentBus(\'' + j.id + '\')">🚌 Oops! Sent bus — take proof</button>';
         }
         // the physical job never reached the factory → alert the office
-        if ((j.tab === 'delivery' || j.tab === 'postage') && j.problem !== 'reported') {
+        var hasProb = j.problem === 'reported' || j.problem === 'nosticker';
+        if ((j.tab === 'delivery' || j.tab === 'postage') && !hasProb) {
           html += '<button class="btn warn" style="margin-top:8px" onclick="reportNoReceive(\'' + j.id + '\')">❓ Haven\'t received — tell office 🖨️</button>';
+          // postage: the waybill sticker is missing → office must print it
+          if (j.tab === 'postage') {
+            html += '<button class="btn warn" style="margin-top:8px" onclick="reportNoReceive(\'' + j.id + '\', \'sticker\')">🏷️ No sticker — tell office 🖨️</button>';
+          }
         }
         html += toolBtns(j, false);
       }
@@ -2288,7 +2295,7 @@
     });
     ['delivery', 'postage'].forEach(function (t) {
       state.jobs[t].forEach(function (j) {
-        if (j.status === 'pending' && j.problem === 'reported') out.push(j);
+        if (j.status === 'pending' && (j.problem === 'reported' || j.problem === 'nosticker')) out.push(j);
       });
     });
     out.sort(function (a, b) { return (b.problemAt || b.doneAt || 0) - (a.problemAt || a.doneAt || 0); });
@@ -2323,23 +2330,28 @@
         '<div class="info">' +
         '<div class="t1">' + (PROB_TAB[j.tab] || j.tab) + (j.category ? ' · ' + esc(CAT_LABEL[j.category] || j.category) : '') + '</div>' +
         (who || j.note ? '<div class="t2">' + esc(who) + (who && j.note ? ' — ' : '') + esc(j.note || '') + '</div>' : '') +
-        '<div class="t3">' + (j.tab === 'want' ? '❌ Not seen' : '❓ Haven\'t received') + ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
+        '<div class="t3">' + (j.tab === 'want' ? '❌ Not seen'
+          : j.problem === 'nosticker' ? '🏷️ No sticker' : '❓ Haven\'t received') +
+          ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
         '</div></div>' +
         '<button class="btn green small" onclick="startSolve(\'' + j.id + '\')">✅ Solved — snap printing status 📸</button>' +
         '</div>';
     });
     box.innerHTML = html;
   }
-  /** Staff: "this job never reached the factory" — one tap alerts the office. */
-  function reportNoReceive(id) {
+  /** Staff: "this job never reached the factory" (or its sticker is
+      missing, kind='sticker') — one tap alerts the office. */
+  function reportNoReceive(id, kind) {
     var j = findJob(id);
     if (j && j.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     if (j) {
-      j.problem = 'reported'; j.problemAt = Date.now();
+      j.problem = kind === 'sticker' ? 'nosticker' : 'reported';
+      j.problemAt = Date.now();
       saveJobsCache(state.tab); renderAll();
     }
-    toast('🚨 Office informed — they will print it');
-    gsCall('reportProblem', [id], function (res) {
+    toast(kind === 'sticker' ? '🏷️ Office informed — they will print the sticker'
+      : '🚨 Office informed — they will print it');
+    gsCall('reportProblem', [id, kind || ''], function (res) {
       if (j) { j.problemAt = res.problemAt; saveJobsCache(j.tab); }
     }, bgFail);
   }

@@ -1114,8 +1114,48 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(400);
   check((await page.locator('#want-responded .prob-line.ok').count()) >= 1,
     "solved ❌ Not Seen card shows '🖨️ Printed at' on the Checking page");
+  console.log('\n-- 🏷️ No sticker: the second postage problem type --');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'NoStick-test', customer: 'CG',
+      photos: ['nst1', 'nst2'], thumbs: ['nst1', 'nst2'], jsCount: 1 });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  await page.click('#nav-postage');
+  await sleep(400);
+  const nsCard = page.locator('#postage-list .card').filter({ hasText: 'NoStick-test' });
+  check((await nsCard.locator('.btn.warn').count()) === 2, "postage card has BOTH buttons: Haven't received + No sticker");
+  check((await nsCard.locator('.btn.warn').nth(1).textContent()).indexOf('No sticker') >= 0, "second one reads 'No sticker — tell office'");
+  await page.click('#nav-delivery');
+  await sleep(300);
+  check((await page.locator('#delivery-list .card .btn.warn:has-text(\"No sticker\")').count()) === 0,
+    'delivery cards do NOT get the sticker button');
+  await page.click('#nav-postage');
+  await sleep(300);
+  await clickSafe(nsCard.locator('.btn.warn').nth(1));
+  await sleep(600);
+  check((await nsCard.locator('.prob-line').textContent()).indexOf('No sticker') >= 0,
+    "card shows '🏷️ No sticker — reported at <time>'");
+  check((await nsCard.locator('.btn.warn').count()) === 0, 'both report buttons gone once reported');
+  check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'NoStick-test').problem === 'nosticker'),
+    'server flagged it as no-sticker');
+  await page.click('#problem-btn');
+  await sleep(400);
+  const nsProb = page.locator('#problem-list .prob-card').filter({ hasText: 'NoStick-test' });
+  check((await nsProb.count()) === 1 && (await nsProb.textContent()).indexOf('No sticker') >= 0,
+    "listed on the Problem page as '🏷️ No sticker'");
+  await nsProb.locator('.btn.green').click();
+  await page.setInputFiles('#print-file', IMG3);
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoStick-test');
+    return j.problem === 'printed' && !!j.printedAt;
+  }), 'office solves it with the printing photo, same as always');
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(200);
+
   await page.evaluate(() => { // cleanup
-    ['Prob-deliv', 'Prob-check'].forEach(n => {
+    ['Prob-deliv', 'Prob-check', 'NoStick-test'].forEach(n => {
       const j = window.__mockdb.jobs.find(x => x.note === n);
       if (j) j.status = 'archived';
     });

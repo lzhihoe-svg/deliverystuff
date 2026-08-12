@@ -792,6 +792,15 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
 
   ctx.deleteJob(d.id, PIN);
   check(files[s.printPhotoId].trashed, 'deleting the job trashes its printing photo too');
+
+  // "🏷️ No sticker" — the second postage problem type
+  const ns = ctx.addJob({ tab: 'postage', category: '', note: 'sticker missing', photos: [B64] });
+  const nr = ctx.reportProblem(ns.id, 'sticker');
+  check(nr.problem === 'nosticker' && nr.problemAt > 0, 'no-sticker report flags the job');
+  check(ctx.getJobs('postage')[0].problem === 'nosticker', 'flag persisted');
+  const dd = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64] });
+  throws(() => ctx.reportProblem(dd.id, 'sticker'), 'no-sticker is Postage-only');
+  check(ctx.solveProblem(ns.id, B64, B64).problem === 'printed', 'office solves a no-sticker report the same way');
 }
 
 console.log('\n== lost photo slot: Save heals the job ==');

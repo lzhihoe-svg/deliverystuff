@@ -913,7 +913,9 @@ function sentBus(id, proofBase64, proofThumbBase64) {
  * so the office team knows to print it. No PIN needed — any staff can report.
  * (Checking's ❌ Not Seen jobs join the Problem page automatically.)
  */
-function reportProblem(id) {
+function reportProblem(id, kind) {
+  // kind '' → "haven't received" ('reported'); 'sticker' → "no sticker" ('nosticker')
+  var mark = kind === 'sticker' ? 'nosticker' : 'reported';
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -924,14 +926,17 @@ function reportProblem(id) {
     if (vals[1] !== 'delivery' && vals[1] !== 'postage') {
       throw new Error('Only Delivery/Postage jobs can be reported');
     }
-    if (vals[22] === 'reported') { // already reported — idempotent
-      return { id: id, problem: 'reported', problemAt: vals[23] };
+    if (mark === 'nosticker' && vals[1] !== 'postage') {
+      throw new Error('No-sticker reports are for Postage jobs');
+    }
+    if (vals[22] === mark) { // already reported the same thing — idempotent
+      return { id: id, problem: mark, problemAt: vals[23] };
     }
     var ts = new Date().getTime();
-    sh.getRange(row, 23).setValue('reported');
+    sh.getRange(row, 23).setValue(mark);
     sh.getRange(row, 24).setValue(ts);
     sh.getRange(row, 25).setValue(''); // a fresh report clears an old "printed"
-    return { id: id, problem: 'reported', problemAt: ts };
+    return { id: id, problem: mark, problemAt: ts };
   } finally {
     lock.releaseLock();
   }
@@ -963,7 +968,8 @@ function solveProblem(id, photoB64, thumbB64) {
       throw new Error('Job not found');
     }
     var vals = sh.getRange(row, 1, 1, 27).getValues()[0];
-    var isProblem = vals[22] === 'reported' || (vals[1] === 'want' && vals[5] === 'notseen');
+    var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' ||
+      (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) {
       trashFile_(photoId); trashFile_(thumbId);
       throw new Error('This job is not on the Problem page');

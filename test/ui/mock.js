@@ -176,19 +176,22 @@
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
     },
-    reportProblem: function (id) {
+    reportProblem: function (id, kind) {
+      var mark = kind === 'sticker' ? 'nosticker' : 'reported';
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       if (j.tab !== 'delivery' && j.tab !== 'postage') throw new Error('Only Delivery/Postage jobs can be reported');
-      if (j.problem === 'reported') return { id: id, problem: 'reported', problemAt: j.problemAt };
-      j.problem = 'reported'; j.problemAt = Date.now(); j.printedAt = '';
-      return { id: id, problem: 'reported', problemAt: j.problemAt };
+      if (mark === 'nosticker' && j.tab !== 'postage') throw new Error('No-sticker reports are for Postage jobs');
+      if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt };
+      j.problem = mark; j.problemAt = Date.now(); j.printedAt = '';
+      return { id: id, problem: mark, problemAt: j.problemAt };
     },
     solveProblem: function (id, photo, thumb) {
       if (!photo) throw new Error('Printing photo required');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      var isProblem = j.problem === 'reported' || (j.tab === 'want' && j.status === 'notseen');
+      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' ||
+        (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
       j.problem = 'printed'; j.printedAt = Date.now();
       j.printPhotoId = 'print-' + id;
