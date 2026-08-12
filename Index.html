@@ -224,6 +224,21 @@
   .btn.blue { background: linear-gradient(135deg, #84cc16, var(--green)); color: #16200a; box-shadow: 0 6px 16px rgba(101,163,13,.3); }
   .btn.gray { background: var(--soft); color: #4b5142; }
   .btn.bus { background: #fff; color: #0369a1; border: 1.5px solid #7dd3fc; padding: 12px; font-size: 15.5px; }
+  .btn.warn { background: #fff; color: #b45309; border: 1.5px solid #fcd34d; padding: 12px; font-size: 15.5px; }
+
+  /* 🚨 problem flow — "haven't received / office will print" status lines */
+  .prob-line {
+    margin-top: 8px; background: #fef2f2; color: #b91c1c;
+    border-radius: 10px; padding: 8px 11px; font-size: 13.5px; font-weight: 700;
+  }
+  .prob-line.ok { background: var(--lime-soft); color: var(--blue); cursor: pointer; }
+  #problem-btn { color: #b91c1c; }
+  .prob-card { border: 1.5px solid #fecaca; border-radius: 16px; padding: 10px; margin-top: 12px; background: #fff; }
+  .prob-card .row { display: flex; gap: 10px; margin-bottom: 9px; }
+  .prob-card .pic { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; cursor: pointer; }
+  .prob-card .t1 { font-size: 12px; font-weight: 800; color: var(--muted); }
+  .prob-card .t2 { font-size: 14.5px; font-weight: 700; margin: 2px 0; }
+  .prob-card .t3 { font-size: 12.5px; color: #b91c1c; font-weight: 700; }
   .btn.small { padding: 10px; font-size: 15px; border-radius: 999px; }
   .btn:active { transform: scale(.97); }
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
@@ -549,6 +564,7 @@
     </h1>
 
     <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
+    <button class="role-btn" id="problem-btn" onclick="openProblems()">🚨 Problem</button>
     <button class="role-btn" id="stats-btn" onclick="openStats()">📊 Stats</button>
     <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
     <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
@@ -725,6 +741,19 @@
 </div>
 
 <!-- ================= HISTORY (evidence search — even after RESET) ================= -->
+<div class="overlay" id="problem-overlay">
+  <div class="sheet">
+    <button class="x-close" onclick="closeProblems()">✕</button>
+    <h2>🚨 Problem — not received</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 4px">
+      Jobs the factory <b>hasn't received</b>: ❌ Not Seen checks and
+      "Haven't received" reports. Office team — print the job, then press
+      <b>✅ Solved</b> and snap the printing status.
+    </p>
+    <div id="problem-list"></div>
+  </div>
+</div>
+
 <div class="overlay" id="history-overlay">
   <div class="sheet">
     <button class="x-close" onclick="closeHistory()">✕</button>
@@ -771,6 +800,8 @@
 
 <!-- ================= PROOF PHOTO (staff confirm) ================= -->
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
+<!-- printing-status photo for the Problem page (no capture attr: screenshots come from the gallery) -->
+<input type="file" id="print-file" accept="image/*" onchange="printPicked(this)">
 
 <div class="viewer" id="viewer">
   <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
@@ -1369,6 +1400,7 @@
 
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage(); renderDefect();
+    updateProblemBadge();
     attachCarousels();
     observeImages();
     loadImages();
@@ -1502,6 +1534,9 @@
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
         (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
+        (!isGot ? (j.printedAt
+          ? '<div class="prob-line ok">🖨️ Printed at ' + fmtTime(j.printedAt) + '</div>'
+          : '<div class="prob-line">🚨 On the Problem page — office will print it</div>') : '') +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         (isAdmin() ? '<button class="ask-btn" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '') +
         '<div class="spacer"></div>' +
@@ -1786,6 +1821,16 @@
     if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
     html += '<div class="meta">Posted ' + timeAgo(j.createdAt) + '</div>';
+    // "haven't received" problem status — visible to everyone on the card
+    if (!isDone && (j.tab === 'delivery' || j.tab === 'postage')) {
+      if (j.problem === 'reported') {
+        html += '<div class="prob-line">🚨 Reported at ' + fmtTime(j.problemAt) + ' — office will print it</div>';
+      } else if (j.printedAt) {
+        html += '<div class="prob-line ok"' +
+          (j.printPhotoId ? ' onclick="viewPhoto(\'' + j.printPhotoId + '\', \'' + (j.printThumbId || j.printPhotoId) + '\')"' : '') +
+          '>🖨️ Printed at ' + fmtTime(j.printedAt) + (j.printPhotoId ? ' — tap to see' : '') + '</div>';
+      }
+    }
 
     if (isDone) {
       html += '<div class="proof">' +
@@ -1806,6 +1851,10 @@
         // moves it to Delivery as a Bus job (proof photo still required)
         if (j.tab === 'postage') {
           html += '<button class="btn bus" style="margin-top:8px" onclick="startSentBus(\'' + j.id + '\')">🚌 Oops! Sent bus — take proof</button>';
+        }
+        // the physical job never reached the factory → alert the office
+        if ((j.tab === 'delivery' || j.tab === 'postage') && j.problem !== 'reported') {
+          html += '<button class="btn warn" style="margin-top:8px" onclick="reportNoReceive(\'' + j.id + '\')">❓ Haven\'t received — tell office 🖨️</button>';
         }
         html += toolBtns(j, false);
       }
@@ -2225,6 +2274,118 @@
     });
   }
 
+  // ------------------------------------------------------------ 🚨 problem page
+  // "The factory hasn't received this job" — ❌ Not Seen checks plus
+  // Delivery/Postage "Haven't received" reports wait here for the office.
+  function findJobAll(id) {
+    var tabs = ['want', 'delivery', 'postage', 'defect'];
+    for (var t = 0; t < tabs.length; t++) {
+      var list = state.jobs[tabs[t]];
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    }
+    return null;
+  }
+  function problemJobs() {
+    var out = [];
+    state.jobs.want.forEach(function (j) {
+      if (j.status === 'notseen' && j.problem !== 'printed') out.push(j);
+    });
+    ['delivery', 'postage'].forEach(function (t) {
+      state.jobs[t].forEach(function (j) {
+        if (j.status === 'pending' && j.problem === 'reported') out.push(j);
+      });
+    });
+    out.sort(function (a, b) { return (b.problemAt || b.doneAt || 0) - (a.problemAt || a.doneAt || 0); });
+    return out;
+  }
+  var PROB_TAB = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage' };
+  function updateProblemBadge() {
+    var n = problemJobs().length;
+    document.getElementById('problem-btn').textContent = n ? '🚨 Problem (' + n + ')' : '🚨 Problem';
+  }
+  function openProblems() {
+    renderProblems();
+    document.getElementById('problem-overlay').classList.add('show');
+    loadImages();
+  }
+  function closeProblems() { document.getElementById('problem-overlay').classList.remove('show'); }
+  function renderProblems() {
+    updateProblemBadge();
+    var list = problemJobs();
+    var box = document.getElementById('problem-list');
+    if (!list.length) {
+      box.innerHTML = '<div class="empty"><span class="big">😌</span>No problems!' +
+        '<br><span class="hint">Nothing is waiting for the office.</span></div>';
+      return;
+    }
+    var html = '';
+    list.forEach(function (j) {
+      var who = (j.customer && j.customer !== 'Unassigned') ? j.customer : '';
+      html += '<div class="prob-card">' +
+        '<div class="row">' +
+        imgTag(thumbOf(j, 0), '', 'class="pic" onclick="viewPhoto(\'' + j.photoIds[0] + '\', \'' + thumbOf(j, 0) + '\')"') +
+        '<div class="info">' +
+        '<div class="t1">' + (PROB_TAB[j.tab] || j.tab) + (j.category ? ' · ' + esc(CAT_LABEL[j.category] || j.category) : '') + '</div>' +
+        (who || j.note ? '<div class="t2">' + esc(who) + (who && j.note ? ' — ' : '') + esc(j.note || '') + '</div>' : '') +
+        '<div class="t3">' + (j.tab === 'want' ? '❌ Not seen' : '❓ Haven\'t received') + ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
+        '</div></div>' +
+        '<button class="btn green small" onclick="startSolve(\'' + j.id + '\')">✅ Solved — snap printing status 📸</button>' +
+        '</div>';
+    });
+    box.innerHTML = html;
+  }
+  /** Staff: "this job never reached the factory" — one tap alerts the office. */
+  function reportNoReceive(id) {
+    var j = findJob(id);
+    if (j && j.uploading) { toast('📤 Still uploading — wait a moment'); return; }
+    if (j) {
+      j.problem = 'reported'; j.problemAt = Date.now();
+      saveJobsCache(state.tab); renderAll();
+    }
+    toast('🚨 Office informed — they will print it');
+    gsCall('reportProblem', [id], function (res) {
+      if (j) { j.problemAt = res.problemAt; saveJobsCache(j.tab); }
+    }, bgFail);
+  }
+  /** Office: press ✅ Solved → snap the printing status (photo REQUIRED). */
+  function startSolve(id) {
+    state.printJobId = id;
+    document.getElementById('print-file').click();
+  }
+  function printPicked(input) {
+    if (!input.files || !input.files[0]) return;
+    var id = state.printJobId;
+    compressImage(input.files[0], function (img) {
+      var j = findJobAll(id);
+      var tempKey = 'localprint-' + (++localSeq);
+      imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
+      if (j) {
+        j.problem = 'printed'; j.printedAt = Date.now();
+        j.printPhotoId = tempKey; j.printThumbId = tempKey;
+        saveJobsCache(j.tab);
+      }
+      renderProblems(); renderAll();
+      toast('🖨️ Marked printed — photo uploading… 🙏');
+      uploadsPending++; updatePill();
+      gsCall('solveProblem', [id, img.full, img.thumb],
+        function (res) {
+          uploadsPending--; updatePill();
+          seedImage(res.printPhotoId, img.full);
+          seedImage(res.printThumbId, img.thumb);
+          if (j) {
+            j.printedAt = res.printedAt;
+            j.printPhotoId = res.printPhotoId; j.printThumbId = res.printThumbId;
+            saveJobsCache(j.tab); renderAll();
+          }
+        },
+        function (e) {
+          uploadsPending--; updatePill();
+          toast('⚠️ ' + errMsg_(e)); refresh();
+        });
+    });
+    input.value = '';
+  }
+
   // ------------------------------------------------------------ agent quick-pick
   // ⭐ EDIT THIS LIST: your regular monthly agents — they become one-tap
   // buttons in the post window. Anything else is typed as a normal customer.
@@ -2627,7 +2788,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -2635,6 +2796,7 @@
       else if (id === 'reset-overlay') closeResetMenu();
       else if (id === 'history-overlay') closeHistory();
       else if (id === 'stats-overlay') closeStats();
+      else if (id === 'problem-overlay') closeProblems();
       else closeUpload();
     });
   });

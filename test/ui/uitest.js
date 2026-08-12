@@ -1048,6 +1048,69 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => refresh());
   await sleep(400);
 
+  console.log('\n-- 🚨 Problem page: report → office prints → solved --');
+  await page.evaluate(() => { // start from a clean problem slate
+    window.__mockdb.jobs.forEach(j => { if (j.status === 'notseen') j.status = 'archived'; });
+    window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'Prob-deliv', customer: 'SN', photos: ['pd1'], thumbs: ['pd1'] });
+    const w = window.__mockapi.addJob({ tab: 'want', category: '', note: 'Prob-check', photos: ['pw1'], thumbs: ['pw1'] });
+    window.__mockapi.updateStatus(w.id, 'notseen', null, null, null);
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  await page.click('#nav-delivery');
+  await sleep(400);
+  const pdCard = page.locator('#delivery-list .card').filter({ hasText: 'Prob-deliv' });
+  check((await pdCard.locator('.btn.warn').count()) === 1, "delivery card has the '❓ Haven't received' button");
+  check((await page.locator('#want-list .btn.warn, #defect-list .btn.warn').count()) === 0, 'checking/defect cards do NOT');
+  await clickSafe(pdCard.locator('.btn.warn'));
+  await sleep(600);
+  check((await pdCard.locator('.prob-line').textContent()).indexOf('Reported at') >= 0, "card shows '🚨 Reported at <time>'");
+  check((await pdCard.locator('.btn.warn').count()) === 0, 'report button gone after reporting');
+  check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Prob-deliv').problem === 'reported'),
+    'server flagged the job');
+  check((await page.locator('#problem-btn').textContent()).indexOf('(2)') > 0,
+    'Problem button counts 2 (the report + the ❌ Not Seen check)');
+  await page.click('#problem-btn');
+  await sleep(400);
+  check(await page.locator('#problem-overlay').isVisible(), 'Problem page opens');
+  check((await page.locator('#problem-list .prob-card').count()) === 2, 'both problems listed');
+  const probDeliv = page.locator('#problem-list .prob-card').filter({ hasText: 'Prob-deliv' });
+  await probDeliv.locator('.btn.green').click();
+  await page.setInputFiles('#print-file', IMG);
+  await sleep(900);
+  check((await page.locator('#problem-list .prob-card').count()) === 1, '✅ Solved removes the job from the Problem page');
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Prob-deliv');
+    return j.problem === 'printed' && !!j.printedAt && !!j.printPhotoId;
+  }), 'server: printed stamp + printing photo stored');
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(200);
+  check((await pdCard.locator('.prob-line.ok').textContent()).indexOf('Printed at') >= 0,
+    "delivery card now shows '🖨️ Printed at <time>'");
+  await page.click('#problem-btn');
+  await sleep(300);
+  await page.locator('#problem-list .prob-card .btn.green').first().click();
+  await page.setInputFiles('#print-file', IMG2);
+  await sleep(900);
+  check((await page.locator('#problem-list .empty').count()) === 1, 'Problem page empty — no problems left');
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(200);
+  check((await page.locator('#problem-btn').textContent()).indexOf('(') < 0, 'Problem badge cleared');
+  await page.click('#nav-want');
+  await sleep(400);
+  check((await page.locator('#want-responded .prob-line.ok').count()) >= 1,
+    "solved ❌ Not Seen card shows '🖨️ Printed at' on the Checking page");
+  await page.evaluate(() => { // cleanup
+    ['Prob-deliv', 'Prob-check'].forEach(n => {
+      const j = window.__mockdb.jobs.find(x => x.note === n);
+      if (j) j.status = 'archived';
+    });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+  await page.click('#nav-postage');
+  await sleep(300);
+
   console.log('\n-- DEFECT tab: jobsheet + defect photos, DONE button --');
   check((await page.locator('#nav-defect').count()) === 1, 'Defect tab in the bottom nav');
   await page.click('#nav-defect');

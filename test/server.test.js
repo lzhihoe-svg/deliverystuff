@@ -761,6 +761,39 @@ console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required)
   check(!files[c.photoIds[0]].trashed, 'shared photos untouched');
 }
 
+console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
+{
+  const { ctx, files } = makeEnv();
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'no stock', customer: 'SN', photos: [B64], thumbs: [B64] });
+  const r = ctx.reportProblem(d.id);
+  check(r.problem === 'reported' && r.problemAt > 0, "report flags the job as haven't-received");
+  check(ctx.getJobs('delivery')[0].problem === 'reported', 'flag persisted in the sheet');
+  const r2 = ctx.reportProblem(d.id);
+  check(r2.problemAt === r.problemAt, 'double report is idempotent (same timestamp)');
+  throws(() => ctx.solveProblem(d.id, null, null), 'solve WITHOUT the printing photo → refused');
+  const s = ctx.solveProblem(d.id, B64, B64);
+  check(s.problem === 'printed' && s.printedAt > 0 && !!s.printPhotoId, 'solved: printed stamp + photo stored');
+  const dj = ctx.getJobs('delivery')[0];
+  check(dj.problem === 'printed' && !!dj.printedAt && dj.printPhotoId === s.printPhotoId, "job now shows 'printed at'");
+  check(files[s.printPhotoId].folder === files[dj.photoIds[0]].folder, "printing photo files into the job's own Drive folder");
+
+  const w = ctx.addJob({ tab: 'want', category: '', note: 'ns', photos: [B64] });
+  throws(() => ctx.solveProblem(w.id, B64, B64), 'a normal checking job is NOT on the problem page');
+  throws(() => ctx.reportProblem(w.id), 'checking jobs cannot use the report button (❌ swipe IS the report)');
+  ctx.updateStatus(w.id, 'notseen', null, null, null);
+  check(ctx.solveProblem(w.id, B64, B64).problem === 'printed', '❌ Not Seen checking job can be solved too');
+
+  const p = ctx.addJob({ tab: 'postage', category: '', note: 'pp', photos: [B64] });
+  ctx.reportProblem(p.id);
+  ctx.solveProblem(p.id, B64, B64);
+  ctx.reportProblem(p.id);
+  check(ctx.getJobs('postage')[0].problem === 'reported' && ctx.getJobs('postage')[0].printedAt === '',
+    're-report clears the old printed stamp');
+
+  ctx.deleteJob(d.id, PIN);
+  check(files[s.printPhotoId].trashed, 'deleting the job trashes its printing photo too');
+}
+
 console.log('\n== lost photo slot: Save heals the job ==');
 {
   const { ctx } = makeEnv();

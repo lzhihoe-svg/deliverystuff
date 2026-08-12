@@ -64,7 +64,8 @@
         customer: (p.customer || '').trim() || 'Unassigned',
         folderId: 'fold-' + (uid),
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
-        nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: ''
+        nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
+        problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -175,6 +176,25 @@
       if (i < 0) throw new Error('Job not found');
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
+    },
+    reportProblem: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.tab !== 'delivery' && j.tab !== 'postage') throw new Error('Only Delivery/Postage jobs can be reported');
+      if (j.problem === 'reported') return { id: id, problem: 'reported', problemAt: j.problemAt };
+      j.problem = 'reported'; j.problemAt = Date.now(); j.printedAt = '';
+      return { id: id, problem: 'reported', problemAt: j.problemAt };
+    },
+    solveProblem: function (id, photo, thumb) {
+      if (!photo) throw new Error('Printing photo required');
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      var isProblem = j.problem === 'reported' || (j.tab === 'want' && j.status === 'notseen');
+      if (!isProblem) throw new Error('This job is not on the Problem page');
+      j.problem = 'printed'; j.printedAt = Date.now();
+      j.printPhotoId = 'print-' + id;
+      j.printThumbId = thumb ? ('printth-' + id) : '';
+      return { id: id, problem: 'printed', printedAt: j.printedAt, printPhotoId: j.printPhotoId, printThumbId: j.printThumbId };
     },
     sentBus: function (id, proof, proofThumb) {
       if (!proof) throw new Error('Proof photo required');
