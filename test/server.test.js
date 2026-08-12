@@ -565,8 +565,8 @@ console.log('\n== searchHistory (evidence = jobs WITH a proof photo) ==');
   ctx.addJob({ tab: 'want', category: '', note: 'Baju batik 50pcs', photos: [B64] });
   ctx.updateStatus(a.id, 'done', B64, B64, null);
 
-  throws(() => ctx.searchHistory('nurul', ''), 'staff cannot search history');
-  throws(() => ctx.searchHistory('nurul', '9999'), 'wrong PIN cannot search');
+  const rs = ctx.searchHistory('nurul', '');
+  check(rs.total === 1 && rs.results[0].id === a.id, 'STAFF (no PIN) can view the evidence history too');
 
   const r1 = ctx.searchHistory('nurul', PIN);
   check(r1.total === 1 && r1.results[0].id === a.id, 'finds the job by customer name (case-insensitive)');

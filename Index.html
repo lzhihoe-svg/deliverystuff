@@ -64,7 +64,6 @@
     box-shadow: 0 2px 6px rgba(23,27,16,.05); white-space: nowrap;
   }
   #reset-btn { color: #b45309; display: none; }
-  #cleardone-btn { color: var(--blue); display: none; }
 
   /* ---------- bottom nav ---------- */
   nav {
@@ -400,7 +399,7 @@
     background: var(--green); color: #fff; font-size: 10px; font-weight: 800;
     border-radius: 6px; padding: 1px 0; pointer-events: none;
   }
-  #history-btn { color: #4338ca; display: none; }
+  #history-btn { color: #4338ca; }
   #stats-btn { color: #0369a1; display: none; }
 
   /* admin stats — all 4 pages at a glance */
@@ -567,8 +566,7 @@
     <button class="role-btn" id="problem-btn" onclick="openProblems()">🚨 Problem</button>
     <button class="role-btn" id="stats-btn" onclick="openStats()">📊 Stats</button>
     <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
-    <button class="role-btn" id="cleardone-btn" onclick="askClearDone()">✅ CLEAR DONE</button>
-    <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 RESET</button>
+    <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 Clear / Reset ▾</button>
     <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
     <div id="hello">Hello 👋</div>
     <div id="sync-row"></div>
@@ -787,7 +785,7 @@
 <div class="overlay" id="reset-overlay">
   <div class="sheet" style="max-width:400px;text-align:center">
     <button class="x-close" onclick="closeResetMenu()">✕</button>
-    <h2 style="padding-right:0">🧹 Reset — choose carefully</h2>
+    <h2 style="padding-right:0">🧹 Clear / Reset — choose carefully</h2>
     <p style="font-size:14px;color:var(--muted);margin:10px 0 14px">
       Records are never deleted — everything stays in the Google Sheet.
       Pressed the wrong one? UNDO brings the last reset back.
@@ -1292,8 +1290,6 @@
     document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
     document.getElementById('hello').textContent = isAdmin() ? 'Hello, Admin 👋' : 'Hello! 👋';
     document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
-    document.getElementById('cleardone-btn').style.display = isAdmin() ? 'block' : 'none';
-    document.getElementById('history-btn').style.display = isAdmin() ? 'block' : 'none';
     document.getElementById('stats-btn').style.display = isAdmin() ? 'block' : 'none';
   }
   function openRoleModal() {

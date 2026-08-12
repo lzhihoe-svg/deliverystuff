@@ -982,13 +982,13 @@ function solveProblem(id, photoB64, thumbB64) {
 }
 
 /**
- * ADMIN ONLY. Evidence history: search EVERY job ever posted — including
- * archived ones (RESET never deletes records). Matches the query against
- * the note, category, tab and the posted/finished dates ("2026-08-05").
- * Empty query = the 50 most recent jobs. Newest first, capped at 50.
+ * STAFF AND ADMIN (read-only). Evidence history: search EVERY job ever
+ * posted — including archived ones (RESET never deletes records). Matches
+ * the query against the note, category, tab and the posted/finished dates
+ * ("2026-08-05"). Empty query = the 50 most recent jobs. Newest first,
+ * capped at 50. (The pin argument is kept for compatibility, unused.)
  */
 function searchHistory(q, pin, tab, category) {
-  requireAdmin_(pin);
   q = String(q || '').toLowerCase().trim();
   var sh = getSheet_();
   var last = sh.getLastRow();

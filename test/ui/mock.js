@@ -94,7 +94,6 @@
       return JSON.parse(JSON.stringify(j));
     },
     searchHistory: function (q, pin, tab, category) {
-      requireAdmin(pin);
       q = String(q || '').toLowerCase().trim();
       var all = db.jobs.slice().reverse().filter(function (j) {
         if (!j.proofPhotoId) return false; // evidence = has a proof photo
