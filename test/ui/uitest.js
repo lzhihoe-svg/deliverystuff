@@ -1099,8 +1099,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), 'server: printed stamp + printing photo stored');
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
-  check((await pdCard.locator('.prob-line.ok').textContent()).indexOf('Printed at') >= 0,
+  check((await pdCard.locator('.proof.printed .txt').textContent()).indexOf('Printed at') >= 0,
     "delivery card now shows '🖨️ Printed at <time>'");
+  check((await pdCard.locator('.proof.printed img').count()) === 1,
+    'WITH the printing-status photo (tappable thumbnail)');
+  await clickSafe(pdCard.locator('.proof.printed img'));
+  await sleep(300);
+  check(await page.locator('#viewer').isVisible(), 'tapping the printing photo opens the viewer');
+  await page.evaluate(() => closeViewer());
+  await sleep(200);
   await page.click('#problem-btn');
   await sleep(300);
   await page.locator('#problem-list .prob-card .btn.green').first().click();
@@ -1112,8 +1119,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#problem-btn').textContent()).indexOf('(') < 0, 'Problem badge cleared');
   await page.click('#nav-want');
   await sleep(400);
-  check((await page.locator('#want-responded .prob-line.ok').count()) >= 1,
-    "solved ❌ Not Seen card shows '🖨️ Printed at' on the Checking page");
+  check((await page.locator('#want-responded .proof.printed').count()) >= 1 &&
+    (await page.locator('#want-responded .proof.printed img').count()) >= 1,
+    "solved ❌ Not Seen card shows '🖨️ Printed at' WITH the photo on the Checking page");
   console.log('\n-- 🏷️ No sticker: the second postage problem type --');
   await page.evaluate(() => {
     window.__mockapi.addJob({ tab: 'postage', category: '', note: 'NoStick-test', customer: 'CG',
