@@ -483,15 +483,15 @@
   /* background upload progress pill */
   #upload-pill {
     position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px; z-index: 40;
-    background: var(--header); color: #fff; border: 1px solid var(--lime);
+    background: #1f2a0e; color: #fff; border: 1px solid var(--lime);
     border-radius: 999px; padding: 9px 18px; font-size: 13px; font-weight: 700;
-    display: none; white-space: nowrap;
+    display: none; white-space: nowrap; box-shadow: 0 6px 18px rgba(23,27,16,.25);
   }
 
   /* ---------- toast & spinner ---------- */
   #toast {
     position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
-    background: var(--header); color: #fff; border: 1px solid var(--lime);
+    background: #1f2a0e; color: #fff; border: 1px solid var(--lime);
     padding: 12px 20px; border-radius: 999px;
     font-size: 15px; font-weight: 600; z-index: 90; display: none; max-width: 90%;
   }
@@ -844,7 +844,7 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 5, BATCH = 5;
+  var MAX_PARALLEL = 8, BATCH = 6;
 
   // Interactive work (PIN check, saves) and photo uploads get the network to
   // themselves: background image downloads pause while they run. This is what
@@ -2345,6 +2345,11 @@
         '</div>';
     });
     box.innerHTML = html;
+    // the overlay lives OUTSIDE the scroller, so the lazy-loader's observer
+    // never sees these — mark them visible by hand or they load never
+    var imgs = box.querySelectorAll('img[data-img]');
+    for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');
+    loadImages();
   }
   /** Staff: "this job never reached the factory" (or its sticker is
       missing, kind='sticker') — one tap alerts the office. */

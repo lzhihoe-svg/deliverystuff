@@ -1088,6 +1088,19 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(400);
   check(await page.locator('#problem-overlay').isVisible(), 'Problem page opens');
   check((await page.locator('#problem-list .prob-card').count()) === 2, 'both problems listed');
+  check(await page.evaluate(() => {
+    const im = document.querySelector('#problem-list img[data-img]');
+    return !!im && im.getAttribute('data-vis') === '1';
+  }), 'problem photos are marked visible (overlay sits outside the lazy-load scroller)');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const ims = document.querySelectorAll('#problem-list img[data-img]');
+    return [...ims].every(im => im.src.indexOf('Loading') < 0); // placeholder says "Loading…"
+  }), "problem thumbnails really download — no eternal 'Loading…'");
+  check(await page.evaluate(() => {
+    const bg = el => getComputedStyle(document.getElementById(el)).backgroundColor;
+    return bg('upload-pill') !== 'rgb(255, 255, 255)' && bg('toast') !== 'rgb(255, 255, 255)';
+  }), 'upload pill + toast are dark-on-light — never white text on a white pill');
   const probDeliv = page.locator('#problem-list .prob-card').filter({ hasText: 'Prob-deliv' });
   await probDeliv.locator('.btn.green').click();
   await page.setInputFiles('#print-file', IMG);
