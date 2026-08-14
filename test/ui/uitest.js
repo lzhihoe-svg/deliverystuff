@@ -1041,6 +1041,59 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(300);
 
+  console.log('\n-- 📬 Done Delivered: second-stage proof for deliveries --');
+  await page.evaluate(() => {
+    const d = window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'Deliv-confirm', customer: 'SN', photos: ['dc1'], thumbs: ['dc1'] });
+    window.__mockapi.updateStatus(d.id, 'done', 'p', 'pt', null);
+    setRole('staff', ''); // staff must be able to confirm too
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  await page.click('#nav-delivery');
+  await sleep(400);
+  const dcCard = page.locator('#delivery-list .card').filter({ hasText: 'Deliv-confirm' });
+  check((await dcCard.locator('.btn.green').count()) === 1 &&
+    (await dcCard.locator('.btn.green').textContent()).indexOf('Done Delivered') >= 0,
+    "done delivery card shows '📬 Done Delivered — attach photo' (staff too)");
+  await clickSafe(dcCard.locator('.btn.green'));
+  await page.setInputFiles('#proof-file', IMG);
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm');
+    return !!j.deliveredAt && !!j.deliveredPhotoId;
+  }), 'delivered photo REQUIRED and saved on the server');
+  check((await dcCard.locator('.proof.delivered').count()) === 1 &&
+    (await dcCard.locator('.proof.delivered .txt').textContent()).indexOf('Delivered') >= 0,
+    "card shows the second proof row '📬 Delivered' WITH the photo");
+  check((await dcCard.locator('.btn.green').count()) === 0, 'the Done Delivered button disappears once confirmed');
+  await viaMenu('#history-btn');
+  await sleep(700);
+  await page.fill('#history-q', 'Deliv-confirm');
+  await page.click('#history-overlay .btn.blue');
+  await sleep(500);
+  check((await page.locator('#history-results .deliv-pic').count()) === 1,
+    'Evidence shows the photo marked DELIVERED');
+  await page.evaluate(() => closeHistory());
+  await sleep(200);
+  const dcTools = await moreCount(dcCard, '.jm-redeliv, .jm-deldeliv');
+  check(dcTools.n === 2, '⋯ menu offers Retake + Remove Delivered Photo');
+  await viaMore(dcCard, '.jm-deldeliv');
+  await sleep(200);
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm').deliveredAt === ''),
+    'Remove puts it back to "sent, not yet confirmed"');
+  check((await dcCard.locator('.btn.green').count()) === 1, 'the Done Delivered button returns');
+  check((await page.locator('#postage-list .proof.delivered').count()) === 0, 'postage cards have no delivered stage');
+  await page.evaluate(() => {
+    setRole('admin', '1234');
+    window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm').status = 'archived';
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+  await page.click('#nav-postage');
+  await sleep(300);
+
   console.log('\n-- 📷 lost photo slot: pair layout survives + Edit heals --');
   await page.evaluate(() => {
     const j = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Lost-slot', customer: 'DO',
