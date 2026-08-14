@@ -49,6 +49,31 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await ctx.route('**aramega.com.my**', r => r.abort());
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
+  // ---- simplified-UI helpers: header actions live in ☰, card actions in ⋯ ----
+  async function viaMenu(sel) {
+    await page.click('#menu-btn'); await sleep(250);
+    await page.click(sel); await sleep(250);
+  }
+  async function menuItemVisible(sel) {
+    await page.click('#menu-btn'); await sleep(250);
+    const vis = await page.locator(sel).isVisible();
+    await page.evaluate(() => closeMenu()); await sleep(150);
+    return vis;
+  }
+  async function openOpts() { // Ready by + Instruction fold behind "More"
+    if (!(await page.locator('#opt-wrap').isVisible())) { await page.click('#more-row'); await sleep(200); }
+  }
+  async function viaMore(cardLoc, itemSel) {
+    await clickSafe(cardLoc.locator('.more-btn').first()); await sleep(250);
+    await page.click('#jobmenu-list ' + itemSel); await sleep(250);
+  }
+  async function moreCount(cardLoc, itemSel) {
+    await clickSafe(cardLoc.locator('.more-btn').first()); await sleep(250);
+    const n = await page.locator('#jobmenu-list ' + itemSel).count();
+    const txts = await page.locator('#jobmenu-list ' + itemSel).allTextContents();
+    await page.evaluate(() => closeJobMenu()); await sleep(150);
+    return { n, txts };
+  }
   page.on('pageerror', e => { fail++; failures.push('JS error: ' + e.message); console.log('  ❌ PAGE JS ERROR: ' + e.message); });
   await page.goto(URL);
   await sleep(400);
@@ -69,13 +94,14 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('header h1 img.logo').count()) === 1 &&
     (await page.locator('header h1 img.logo').getAttribute('src')).indexOf('aramega.com.my') > 0,
     'ARAMEGA company logo in header');
-  check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "refresh button shows the word 'Refresh'");
+  check((await page.locator('#refresh-btn').textContent()).indexOf('Refresh') >= 0, "refresh button shows the word 'Refresh'");
 
   console.log('\n-- post multi-photo job --');
   await page.click('#nav-post');
   await sleep(150);
   await page.setInputFiles('#photos-file', [IMG, IMG2]);
   await sleep(700);
+  await openOpts();
   await page.fill('#upload-note', 'Baju batik 50pcs');
   await page.click('#btn-submit');
   await sleep(600);
@@ -147,7 +173,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(thumbCached, 'thumbnails cached in localStorage (no re-download next visit)');
 
   console.log('\n-- vertical touch scroll over a photo carousel (tab 2) --');
-  await page.click('#role-btn');
+  await viaMenu('#role-btn');
   await sleep(150);
   await page.click('#role-admin-btn');
   await page.fill('#pin-input', '1234');
@@ -189,7 +215,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#delivery-list .proof').count()) === 1, 'proof photo flow works');
   check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.proofThumbId)), 'proof thumbnail stored too');
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
-  await page.click('#reset-btn');
+  await viaMenu('#reset-btn');
   await sleep(150);
   check(await page.locator('#reset-overlay').isVisible(), 'RESET opens a SAFETY MENU first — no more one-tap wipe');
   check(await page.locator('#reset-overlay .btn.green').isVisible() &&
@@ -202,7 +228,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'menu CLEAR DONE leads to the clear-done confirm');
   await page.locator('#confirm-overlay .btn.gray').click(); // cancel it
   await sleep(150);
-  await page.click('#reset-btn');
+  await viaMenu('#reset-btn');
   await sleep(150);
   await page.locator('#reset-overlay .btn.red').click(); // RESET ALL
   await sleep(150);
@@ -214,7 +240,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
 
   console.log('\n-- UNDO: the last reset can be taken back --');
   const preUndo = await page.evaluate(() => window.__mockdb.jobs.length);
-  await page.click('#reset-btn');
+  await viaMenu('#reset-btn');
   await sleep(150);
   await page.locator('#reset-overlay .btn.gray').click(); // UNDO
   await sleep(600);
@@ -224,7 +250,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.status === 'done' && j.proofPhotoId)),
     'a done job returned as done WITH its proof photo');
   // put everything back to archived so later sections start clean
-  await page.click('#reset-btn');
+  await viaMenu('#reset-btn');
   await sleep(150);
   await page.locator('#reset-overlay .btn.red').click();
   await sleep(150);
@@ -243,17 +269,16 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await clickSafe(pfCard.locator('.btn.green').first());
   await page.setInputFiles('#proof-file', IMG);
   await sleep(800);
-  check((await pfCard.locator('.proof-tools .t-reproof').count()) === 1 &&
-        (await pfCard.locator('.proof-tools .t-delproof').count()) === 1,
-    'staff sees 📷 Retake Proof + 🗑️ Remove Proof on the done card');
-  await clickSafe(pfCard.locator('.t-reproof'));
+  const pfTools = await moreCount(pfCard, '.jm-reproof, .jm-delproof');
+  check(pfTools.n === 2, "staff sees 📷 Retake Proof + 🗑️ Remove Proof in the card's ⋯ menu");
+  await viaMore(pfCard, '.jm-reproof');
   await page.setInputFiles('#proof-file', IMG2);
   await sleep(800);
   check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Proof fix' && j.proofPhotoId.indexOf('reproof') === 0)),
     'retake stores the NEW proof photo on the server');
   check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Proof fix').status === 'done'),
     'job stays done after a retake');
-  await clickSafe(pfCard.locator('.t-delproof'));
+  await viaMore(pfCard, '.jm-delproof');
   await sleep(150);
   await page.click('#confirm-yes');
   await sleep(600);
@@ -276,11 +301,11 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   await page.evaluate(() => refresh());
   await sleep(600);
-  check(await page.locator('#reset-btn').isVisible() &&
+  check((await menuItemVisible('#reset-btn')) &&
     (await page.locator('#reset-btn').textContent()).indexOf('Clear / Reset') >= 0,
-    "admin sees ONE '🧹 Clear / Reset ▾' dropdown button");
+    "admin sees ONE '🧹 Clear / Reset ▾' item in the ☰ menu");
   check((await page.locator('#cleardone-btn').count()) === 0, 'the separate CLEAR DONE button is gone');
-  await page.click('#reset-btn');
+  await viaMenu('#reset-btn');
   await sleep(150);
   check(await page.locator('#reset-overlay').isVisible(), 'dropdown menu opens with both choices');
   await page.locator('#reset-overlay .btn.green').click(); // CLEAR DONE
@@ -300,9 +325,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await pfCard.count()) === 1, 'carried-forward job still on screen');
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
-  check(!await page.locator('#reset-btn').isVisible(), 'staff does NOT see Clear / Reset');
-  check(await page.locator('#history-btn').isVisible(), 'staff DOES see the History button');
-  await page.click('#history-btn');
+  check(!(await menuItemVisible('#reset-btn')), 'staff does NOT see Clear / Reset');
+  check(await menuItemVisible('#history-btn'), 'staff DOES see the History button');
+  await viaMenu('#history-btn');
   await sleep(600);
   check(await page.locator('#history-overlay').isVisible() &&
     (await page.locator('#history-results .h-card').count()) > 0,
@@ -318,8 +343,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
 
   console.log('\n-- 🗂️ History: find evidence even after CLEAR DONE / RESET --');
-  check(await page.locator('#history-btn').isVisible(), 'admin sees the History button');
-  await page.click('#history-btn');
+  check(await menuItemVisible('#history-btn'), 'admin sees the History button');
+  await viaMenu('#history-btn');
   await sleep(600);
   check(await page.locator('#history-overlay').isVisible(), 'history window opens');
   check((await page.locator('#history-results .h-card').count()) > 0, 'recent jobs listed right away');
@@ -378,13 +403,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(200);
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
-  check(await page.locator('#history-btn').isVisible(), 'staff sees the History button too (read-only evidence)');
+  check(await menuItemVisible('#history-btn'), 'staff sees the History button too (read-only evidence)');
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(200);
 
   console.log('\n-- 📊 admin stats: all 4 pages at a glance --');
-  check(await page.locator('#stats-btn').isVisible(), 'admin sees the Stats button');
-  await page.click('#stats-btn');
+  check(await menuItemVisible('#stats-btn'), 'admin sees the Stats button');
+  await viaMenu('#stats-btn');
   await sleep(300);
   check(await page.locator('#stats-overlay').isVisible(), 'stats window opens');
   check((await page.locator('#stats-body .st-card').count()) === 4, 'one card per page (Checking, Delivery, Postage, Defect)');
@@ -406,7 +431,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(200);
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
-  check(!await page.locator('#stats-btn').isVisible(), 'staff does NOT see the Stats button');
+  check(!(await menuItemVisible('#stats-btn')), 'staff does NOT see the Stats button');
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(200);
 
@@ -420,6 +445,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   await page.click('#upload-cats button[data-cat="pickup"]');
   await page.fill('#upload-customer', 'Nurul Syifa');
+  await openOpts();
   await page.fill('#upload-note', 'Cust-test 2 jersey');
   await page.click('#btn-submit');
   await sleep(800);
@@ -433,6 +459,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#photos-file', IMG2);
   await sleep(500);
   await page.click('#upload-cats button[data-cat="bus"]');
+  await openOpts();
   await page.fill('#upload-note', 'Blank-cust');
   await page.click('#btn-submit');
   await sleep(400);
@@ -444,7 +471,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(800);
   check(await page.evaluate(() => window.__mockdb.jobs.some(j => j.note === 'Blank-cust' && j.customer === 'Kak Ros')),
     'typed customer name saves the post');
-  await clickSafe(custCard.locator('.t-edit').first());
+  await viaMore(custCard, '.jm-edit');
   await sleep(300);
   check((await page.locator('#upload-customer').inputValue()) === 'Nurul Syifa', 'edit window prefills the customer');
   await page.click('#upload-overlay .x-close');
@@ -458,7 +485,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(200);
   await page.click('#nav-delivery');
   await sleep(300);
-  await page.click('#history-btn');
+  await viaMenu('#history-btn');
   await sleep(500);
   await page.fill('#history-q', 'nurul syifa');
   await page.click('#history-overlay .btn.blue');
@@ -493,6 +520,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#photos-file', IMG);
   await sleep(500);
   await page.click('#upload-cats button[data-cat="bus"]');
+  await openOpts();
   await page.fill('#upload-note', 'Agent-test');
   await page.click('#btn-submit');
   await sleep(800);
@@ -518,10 +546,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#next-chips button[data-next="delivery"]');
   await sleep(200);
   check(await page.locator('#next-cats').isVisible(), 'choosing Delivery reveals the method choices');
+  await openOpts();
   check(await page.locator('#customer-wrap').isVisible() && await page.locator('#due-wrap').isVisible(),
     'customer + Ready-by appear for the pipeline');
   await page.setInputFiles('#photos-file', [IMG, IMG2]);
   await sleep(600);
+  await openOpts();
   await page.fill('#upload-note', 'Pipe-test 30 jersey');
   await page.click('#btn-submit');
   await sleep(300);
@@ -555,7 +585,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), '❤️ auto-pushed the job to Delivery with the prepared details');
   await page.click('#nav-delivery');
   await sleep(500);
-  check((await page.locator('#delivery-list .card').filter({ hasText: 'Pipe-test' }).locator('.chip.passed').count()) === 1,
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'Pipe-test' }).locator('.meta').textContent()).indexOf('passed check') >= 0,
     "Delivery card wears '✅ passed check'");
   await page.click('#nav-want');
   await sleep(400);
@@ -582,7 +612,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(300);
 
   console.log('\n-- stat boxes: Balance To Do vs Completed --');
-  check((await page.locator('#delivery-list .stat-row').count()) === 1, 'delivery has the two counter boxes');
+  check((await page.locator('#delivery-list .stat-row').count()) === 1, 'delivery has the slim counter bar');
   check(await page.evaluate(() => document.getElementById('delivery-list').firstElementChild.className.indexOf('stat-row') >= 0),
     'boxes sit at the top, directly below the Lalamove/Bus pills');
   const st = await page.evaluate(() => {
@@ -620,6 +650,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#photos-file', IMG);
   await sleep(500);
   await page.click('#upload-cats button[data-cat="bus"]');
+  await openOpts();
   await page.fill('#upload-note', 'Retry-post');
   await page.fill('#upload-customer', 'RT');
   await page.click('#btn-submit');
@@ -632,6 +663,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#photos-file', [IMG, IMG2]);
   await sleep(600);
   await page.click('#upload-cats button[data-cat="bus"]');
+  await openOpts();
   await page.fill('#upload-note', 'Retry-photo');
   await page.fill('#upload-customer', 'RT');
   await page.click('#btn-submit');
@@ -650,6 +682,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     window.__mockapi.addJob({ tab: 'postage', category: '', note: 'G-seed', photos: ['g1', 'g2'], thumbs: ['gt1', 'gt2'] });
   });
   const allCalls0 = await page.evaluate(() => window.__mockcalls.filter(c => c.name === 'getAllData').length);
+  await page.click('#menu-btn');
+  await sleep(250);
   await page.click('#refresh-btn');
   await sleep(60); // before the mock latency elapses
   check(await page.locator('#sync-row').isVisible(), 'status row appears under the header');
@@ -665,7 +699,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'Checking + Delivery + Postage ALL updated together (' + allTabs.w + '/' + allTabs.d + '/' + allTabs.g + ')');
   check(await page.locator('#badge-delivery').isVisible() && await page.locator('#badge-postage').isVisible(),
     'other tabs\' badges updated without visiting them');
-  check((await page.locator('#refresh-btn').textContent()).trim() === 'Refresh', "button back to 'Refresh'");
+  check((await page.locator('#refresh-btn').textContent()).indexOf('Refresh') >= 0, "button back to 'Refresh'");
   await sleep(1200);
   const syncTxt = await page.locator('#sync-row').textContent();
   check(syncTxt.indexOf('Updated at') >= 0 && /\d{1,2}:\d{2}\s(AM|PM)/.test(syncTxt),
@@ -684,11 +718,14 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   await page.click('#nav-post');
   await sleep(150);
+  await openOpts();
   check(await page.locator('#due-wrap').isVisible(), 'Ready-by time field shows for delivery');
   await page.setInputFiles('#photos-file', IMG);
   await sleep(500);
   await page.click('#upload-cats button[data-cat="bus"]');
+  await openOpts();
   await page.fill('#upload-due', '23:58');
+  await openOpts();
   await page.fill('#upload-note', 'Due tonight');
   await page.fill('#upload-customer', 'DT');
   await page.click('#btn-submit');
@@ -700,6 +737,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // NEW: a deadline on ANOTHER DAY — simple Day + Month pickers, no year
   await page.click('#nav-post');
   await sleep(150);
+  await openOpts();
   check(await page.locator('#upload-due-day').isVisible() && await page.locator('#upload-due-month').isVisible(),
     'Day + Month dropdowns show next to the time (no year)');
   await page.setInputFiles('#photos-file', IMG2);
@@ -709,9 +747,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const d = new Date(Date.now() + 86400000);
     return { d: String(d.getDate()), m: String(d.getMonth()) };
   });
+  await openOpts();
   await page.selectOption('#upload-due-day', tmr.d);
   await page.selectOption('#upload-due-month', tmr.m);
+  await openOpts();
   await page.fill('#upload-due', '16:30');
+  await openOpts();
   await page.fill('#upload-note', 'Tomorrow bus');
   await page.fill('#upload-customer', 'TB');
   await page.click('#btn-submit');
@@ -723,7 +764,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const tCard = page.locator('#delivery-list .card').filter({ hasText: 'Tomorrow bus' });
   check(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d/.test(await tCard.locator('.chip.due').textContent()),
     'chip shows the DAY for deadlines not today');
-  await clickSafe(tCard.locator('.t-edit').first());
+  await viaMore(tCard, '.jm-edit');
   await sleep(300);
   check((await page.locator('#upload-due-day').inputValue()) === tmr.d &&
         (await page.locator('#upload-due-month').inputValue()) === tmr.m, 'edit prefills day + month');
@@ -741,8 +782,10 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const d = new Date();
     return { d: String(d.getDate()), m: String(d.getMonth()) };
   });
+  await openOpts();
   await page.selectOption('#upload-due-day', tod.d);
   await page.selectOption('#upload-due-month', tod.m);
+  await openOpts();
   await page.fill('#upload-note', 'Date only job');
   await page.fill('#upload-customer', 'DO');
   await page.click('#btn-submit');
@@ -752,7 +795,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'date WITHOUT time still saves and shows a Ready-by chip');
   check((await doCard.locator('.chip.due, .chip.soon').first().textContent()).indexOf('today') >= 0,
     "chip reads 'Ready by today'");
-  await clickSafe(doCard.locator('.t-edit').first());
+  await viaMore(doCard, '.jm-edit');
   await sleep(300);
   check((await page.locator('#upload-due-day').inputValue()) === tod.d &&
         (await page.locator('#upload-due-month').inputValue()) === tod.m,
@@ -777,7 +820,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Overdue job', photos: ['x2'], thumbs: ['xt2'], dueAt: Date.now() - 3600000 });
     window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Soon job', photos: ['x3'], thumbs: ['xt3'], dueAt: Date.now() + 1800000 });
   });
-  await page.click('#refresh-btn');
+  await viaMenu('#refresh-btn');
   await sleep(500);
   check((await page.locator('#delivery-list .chip.late').count()) === 1, 'overdue job shows red LATE chip');
   check((await page.locator('#delivery-list .chip.soon').count()) >= 1, 'due-soon job shows countdown chip');
@@ -800,7 +843,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const jj = window.__mockapi.addJob({ tab: 'want', category: '', note: 'NS-seed', photos: ['n1'], thumbs: ['nt1'] });
     window.__mockapi.updateStatus(jj.id, 'notseen', null, null, null);
   });
-  await page.click('#refresh-btn');
+  await viaMenu('#refresh-btn');
   await sleep(600);
   check((await page.locator('#want-stack-area .empty').count()) === 1, 'swipe deck empty (all jobsheets answered)');
   const askBtns = await page.locator('#want-responded .ask-btn').count();
@@ -884,6 +927,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#photos-file', [IMG, IMG2, IMG3]);
   await sleep(900);
   await page.click('#upload-cats button[data-cat="lalamove"]');
+  await openOpts();
   await page.fill('#upload-note', 'Background upload');
   await page.fill('#upload-customer', 'BG');
   await page.evaluate(() => { window.__mocklat = { addJob: 400, addPhotoToJob: 400 }; });
@@ -949,7 +993,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#postage-list .photo-pair .car-dots span').nth(1).getAttribute('class')) === 'on',
     'swiping the jobsheet half flips to its page 2');
   // edit re-opens with the groups split correctly
-  await clickSafe(page.locator('#postage-list .t-edit').first());
+  await viaMore(page.locator('#postage-list .card').first(), '.jm-edit');
   await sleep(300);
   check((await page.locator('#js-thumbs .thumb').count()) === 2 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
     'editing splits photos back into their groups');
@@ -968,13 +1012,14 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => refresh());
   await sleep(600);
   const sbCard = page.locator('#postage-list .card').filter({ hasText: 'Bus-instead' });
-  check((await sbCard.locator('.btn.bus').count()) === 1, "pending postage card shows the '🚌 Sent bus' button");
+  check((await moreCount(sbCard, '.jm-sentbus')).n === 1, "pending postage card offers '🚌 Sent bus' in its ⋯ menu");
   await page.click('#nav-delivery');
   await sleep(400);
-  check((await page.locator('#delivery-list .btn.bus').count()) === 0, 'Delivery cards do NOT show Sent bus');
+  check(await page.evaluate(() => jobMenuHtml_({ id: 'x', tab: 'delivery', status: 'pending', problem: '', photoIds: [] }).indexOf('jm-sentbus') < 0),
+    'Delivery cards do NOT offer Sent bus');
   await page.click('#nav-postage');
   await sleep(400);
-  await clickSafe(sbCard.locator('.btn.bus'));
+  await viaMore(sbCard, '.jm-sentbus');
   await page.setInputFiles('#proof-file', IMG);
   await sleep(300);
   check((await page.locator('#toast').textContent()).indexOf('bus') >= 0, 'toast says it moved to Delivery');
@@ -1015,7 +1060,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     if (!noHang) await sleep(500);
   }
   check(noHang, "header does NOT hang on 'Loading photos… (1 left)'");
-  await clickSafe(lsCard.locator('.t-edit'));
+  await viaMore(lsCard, '.jm-edit');
   await sleep(300);
   check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
     'Edit shows only the REAL photos — no eternal Loading slot');
@@ -1040,6 +1085,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#wb-file', IMG2);
   await sleep(500);
   await page.fill('#upload-customer', 'BG');
+  await openOpts();
   await page.fill('#upload-note', 'Sticky-photo');
   await page.click('#btn-submit');
   await sleep(4500); // initial try + 2 quick retries all fail → parked in the queue
@@ -1074,12 +1120,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-delivery');
   await sleep(400);
   const pdCard = page.locator('#delivery-list .card').filter({ hasText: 'Prob-deliv' });
-  check((await pdCard.locator('.btn.warn').count()) === 1, "delivery card has the '❓ Haven't received' button");
-  check((await page.locator('#want-list .btn.warn, #defect-list .btn.warn').count()) === 0, 'checking/defect cards do NOT');
-  await clickSafe(pdCard.locator('.btn.warn'));
+  check((await moreCount(pdCard, '.jm-warn')).n === 1, "delivery card offers '❓ Haven't received' in its ⋯ menu");
+  check(await page.evaluate(() => {
+    const mk = t => jobMenuHtml_({ id: 'x', tab: t, status: 'pending', problem: '', photoIds: [] });
+    return mk('want').indexOf('jm-warn') < 0 && mk('defect').indexOf('jm-warn') < 0;
+  }), 'checking/defect cards do NOT');
+  await viaMore(pdCard, '.jm-warn');
   await sleep(600);
   check((await pdCard.locator('.prob-line').textContent()).indexOf('Reported at') >= 0, "card shows '🚨 Reported at <time>'");
-  check((await pdCard.locator('.btn.warn').count()) === 0, 'report button gone after reporting');
+  check((await moreCount(pdCard, '.jm-warn, .jm-sticker')).n === 0, 'report actions gone after reporting');
   check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'Prob-deliv').problem === 'reported'),
     'server flagged the job');
   check((await page.locator('#problem-btn').textContent()).indexOf('(2)') > 0,
@@ -1145,19 +1194,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(400);
   const nsCard = page.locator('#postage-list .card').filter({ hasText: 'NoStick-test' });
-  check((await nsCard.locator('.btn.warn').count()) === 2, "postage card has BOTH buttons: Haven't received + No sticker");
-  check((await nsCard.locator('.btn.warn').nth(1).textContent()).indexOf('No sticker') >= 0, "second one reads 'No sticker — tell office'");
+  const nsTools = await moreCount(nsCard, '.jm-warn, .jm-sticker');
+  check(nsTools.n === 2, "postage ⋯ menu has BOTH: Haven't received + No sticker");
+  check(nsTools.txts.some(t => t.indexOf('No sticker') >= 0), "one of them reads 'No sticker'");
   await page.click('#nav-delivery');
   await sleep(300);
-  check((await page.locator('#delivery-list .card .btn.warn:has-text(\"No sticker\")').count()) === 0,
-    'delivery cards do NOT get the sticker button');
+  check(await page.evaluate(() => jobMenuHtml_({ id: 'x', tab: 'delivery', status: 'pending', problem: '', photoIds: [] }).indexOf('jm-sticker') < 0),
+    'delivery cards do NOT get the sticker action');
   await page.click('#nav-postage');
   await sleep(300);
-  await clickSafe(nsCard.locator('.btn.warn').nth(1));
+  await viaMore(nsCard, '.jm-sticker');
   await sleep(600);
   check((await nsCard.locator('.prob-line').textContent()).indexOf('No sticker') >= 0,
     "card shows '🏷️ No sticker — reported at <time>'");
-  check((await nsCard.locator('.btn.warn').count()) === 0, 'both report buttons gone once reported');
+  check((await moreCount(nsCard, '.jm-warn, .jm-sticker')).n === 0, 'both report actions gone once reported');
   check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'NoStick-test').problem === 'nosticker'),
     'server flagged it as no-sticker');
   await page.click('#problem-btn');
@@ -1206,6 +1256,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.setInputFiles('#wb-file', [IMG2, IMG3]);
   await sleep(600);
   await page.fill('#upload-customer', 'Aina');
+  await openOpts();
   await page.fill('#upload-note', 'Torn sleeve x3');
   await page.click('#btn-submit');
   await sleep(900);
@@ -1220,7 +1271,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await defCard.locator('.btn.green').count()) === 1, "defect needs a PROOF: 'Done! Take Proof Photo' button shown");
   check((await page.locator('#badge-defect').textContent()) === '1', 'red badge counts the open defect');
   check((await page.locator('#defect-list .stat-row').count()) === 1, 'Balance/Completed boxes on the Defect page too');
-  await clickSafe(defCard.locator('.t-edit').first());
+  await viaMore(defCard, '.jm-edit');
   await sleep(300);
   check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 2,
     'edit splits jobsheet / defect photos back into their groups');
@@ -1234,7 +1285,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const j = window.__mockdb.jobs.find(x => x.note === 'Torn sleeve x3');
     return j.status === 'done' && !!j.proofPhotoId;
   }), 'proof photo marks the defect DONE on the server');
-  check((await defCard.locator('.proof-tools .t-reproof').count()) === 1, 'Retake/Remove proof tools available on defects too');
+  check((await moreCount(defCard, '.jm-reproof')).n === 1, 'Retake/Remove proof tools available on defects too');
   check(!await page.locator('#badge-defect').isVisible(), 'badge clears when the defect is fixed');
   await page.click('#nav-postage');
   await sleep(300);
@@ -1330,7 +1381,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   await page.click('#nav-postage');
   await sleep(350); // image batches now in flight (900ms each)
-  await page.click('#role-btn');
+  await viaMenu('#role-btn');
   await sleep(150);
   await page.click('#role-admin-btn');
   await page.fill('#pin-input', '1234');
@@ -1370,7 +1421,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
 
   console.log('\n-- PIN watchdog: spinner can never hang forever --');
   await page.evaluate(() => { window.__PIN_TIMEOUT = 700; window.__mocklat = { checkPin: 3000 }; });
-  await page.click('#role-btn');
+  await viaMenu('#role-btn');
   await sleep(150);
   await page.click('#role-admin-btn');
   await page.fill('#pin-input', '1234');
@@ -1446,7 +1497,10 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await dpage.evaluate(() => {
     window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'PC viewer', photos: ['pc1', 'pc2', 'pc3'], thumbs: ['pt1', 'pt2', 'pt3'] });
   });
+  await dpage.click('#menu-btn');
+  await sleep(250);
   await dpage.click('#refresh-btn');
+  await sleep(250);
   await sleep(600);
   const pcCard = dpage.locator('#delivery-list .card').filter({ hasText: 'PC viewer' });
   await pcCard.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));

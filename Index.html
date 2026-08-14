@@ -127,16 +127,17 @@
   .grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 6px; }
 
   /* balance / completed bento tiles (Delivery + Postage + Defect) */
-  .stat-row { display: flex; gap: 10px; margin: 4px 0 8px; }
-  .stat-box {
-    flex: 1; border-radius: 18px; padding: 11px 10px; text-align: center;
-    background: #fff; box-shadow: var(--shadow);
-    display: flex; align-items: center; justify-content: center; gap: 10px;
+  /* one slim counter bar instead of two boxes */
+  .stat-row {
+    display: flex; align-items: center; gap: 8px; margin: 4px 0 10px;
+    background: #fff; border-radius: 999px; padding: 10px 16px;
+    box-shadow: var(--shadow); font-size: 14.5px; font-weight: 800;
   }
-  .stat-box .num { font-size: 26px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
-  .stat-box .lbl { font-size: 10px; font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-  .stat-ring { width: 38px; height: 38px; flex: 0 0 auto; }
-  .stat-box.todo .num { color: #c2410c; }
+  .stat-row .sep { color: var(--muted); font-weight: 600; }
+  .stat-row .stat-ring { margin-left: auto; width: 26px; height: 26px; }
+  .stat-box .num { font-variant-numeric: tabular-nums; }
+  .stat-box.todo { color: #c2410c; }
+  .stat-box.done { color: var(--blue); }
   .stat-box.done .num { color: var(--green); }
 
   .card {
@@ -224,6 +225,38 @@
   .btn.gray { background: var(--soft); color: #4b5142; }
   .btn.bus { background: #fff; color: #0369a1; border: 1.5px solid #7dd3fc; padding: 12px; font-size: 15.5px; }
   .btn.warn { background: #fff; color: #b45309; border: 1.5px solid #fcd34d; padding: 12px; font-size: 15.5px; }
+
+  /* ONE green button per card — everything else behind the ⋯ button */
+  .rowbtn { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .rowbtn .btn { margin-top: 0 !important; flex: 1; }
+  .rowbtn.end { justify-content: flex-end; }
+  .more-btn {
+    flex: 0 0 48px; width: 48px; height: 48px; border: 0; border-radius: 50%;
+    background: var(--soft); font-size: 22px; font-weight: 800; color: #4b5142;
+    cursor: pointer; line-height: 1;
+  }
+  .more-btn:active { transform: scale(.94); }
+
+  /* ☰ menu + per-job ⋯ sheets share one item style */
+  .menu-item, .jm-item {
+    display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+    background: #fff; border: 1px solid #e4e8d8; border-radius: 16px;
+    padding: 13px 14px; font-size: 15px; font-weight: 700; color: var(--ink);
+    margin-top: 9px; cursor: pointer;
+  }
+  .menu-item:active, .jm-item:active { background: var(--soft); }
+  .menu-item.warn, .jm-item.warn { color: #b45309; border-color: #fcd34d; }
+  .jm-item.danger { color: var(--red); border-color: #f0c3c3; }
+  .jm-item .hint { margin-left: auto; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .proof .more-btn { margin-left: auto; flex: 0 0 40px; width: 40px; height: 40px; font-size: 20px; }
+  .foot .more-btn, .card .rowbtn.end .more-btn { width: 40px; height: 40px; flex: 0 0 40px; font-size: 20px; }
+  .rowbtn .ask-btn { flex: 1; width: auto; }
+  .collapse-row {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: var(--soft); border: 0; border-radius: 14px; padding: 12px 14px;
+    font-size: 13.5px; font-weight: 700; color: #4b5142; margin-top: 14px; cursor: pointer;
+  }
+  .collapse-row #more-arrow { color: var(--blue); }
 
   /* 🚨 problem flow — "haven't received / office will print" status lines */
   .prob-line {
@@ -562,12 +595,8 @@
       <span>ARA<span class="dot">MEGA</span></span>
     </h1>
 
-    <button class="role-btn" id="refresh-btn" onclick="manualRefresh()">Refresh</button>
     <button class="role-btn" id="problem-btn" onclick="openProblems()">🚨 Problem</button>
-    <button class="role-btn" id="stats-btn" onclick="openStats()">📊 Stats</button>
-    <button class="role-btn" id="history-btn" onclick="openHistory()">🗂️ History</button>
-    <button class="role-btn" id="reset-btn" onclick="askReset()">🧹 Clear / Reset ▾</button>
-    <button class="role-btn" id="role-btn" onclick="openRoleModal()">👷 Staff</button>
+    <button class="role-btn" id="menu-btn" onclick="openMenu()">☰ Menu</button>
     <div id="hello">Hello 👋</div>
     <div id="sync-row"></div>
   </header>
@@ -698,17 +727,22 @@
       </div>
     </div>
 
-    <div id="due-wrap" style="display:none">
-      <label>Ready by (optional) ⏰ <span style="font-weight:600;color:var(--muted);font-size:12px">— blank = today</span></label>
-      <div class="due-inputs">
-        <select id="upload-due-day"><option value="">Day</option></select>
-        <select id="upload-due-month"><option value="">Month</option></select>
-        <input type="time" id="upload-due">
+    <!-- optional details fold away — the post window shows only what's compulsory -->
+    <button type="button" class="collapse-row" id="more-row" onclick="toggleMoreOpts()">
+      <span>⏰ Ready by · 📢 Instruction</span><span id="more-arrow">More ▾</span>
+    </button>
+    <div id="opt-wrap" style="display:none">
+      <div id="due-wrap" style="display:none">
+        <label>Ready by (optional) ⏰ <span style="font-weight:600;color:var(--muted);font-size:12px">— blank = today</span></label>
+        <div class="due-inputs">
+          <select id="upload-due-day"><option value="">Day</option></select>
+          <select id="upload-due-month"><option value="">Month</option></select>
+          <input type="time" id="upload-due">
+        </div>
       </div>
+      <label>Instruction (optional)</label>
+      <textarea id="upload-note" rows="2" placeholder="Example: Deliver before 5pm"></textarea>
     </div>
-
-    <label>Instruction (optional)</label>
-    <textarea id="upload-note" rows="2" placeholder="Example: Deliver before 5pm"></textarea>
 
     <div class="btn-row">
       <button class="btn gray" onclick="closeUpload()">Cancel</button>
@@ -739,6 +773,29 @@
 </div>
 
 <!-- ================= HISTORY (evidence search — even after RESET) ================= -->
+<!-- ================= ☰ MENU (the office drawer) ================= -->
+<div class="overlay" id="menu-overlay">
+  <div class="sheet" style="max-width:380px">
+    <button class="x-close" onclick="closeMenu()">✕</button>
+    <h2>☰ Menu</h2>
+    <button class="menu-item" id="refresh-btn" onclick="closeMenu();manualRefresh()">🔄 Refresh</button>
+    <button class="menu-item" id="stats-btn" onclick="closeMenu();openStats()">📊 Stats</button>
+    <button class="menu-item" id="history-btn" onclick="closeMenu();openHistory()">🗂️ History &amp; evidence</button>
+    <button class="menu-item warn" id="reset-btn" onclick="closeMenu();askReset()">🧹 Clear / Reset ▾</button>
+    <button class="menu-item" id="role-btn" onclick="closeMenu();openRoleModal()">👷 Staff</button>
+  </div>
+</div>
+
+<!-- ================= ⋯ PER-JOB MENU (everything else, one tap away) ================= -->
+<div class="overlay" id="jobmenu-overlay">
+  <div class="sheet" style="max-width:380px">
+    <button class="x-close" onclick="closeJobMenu()">✕</button>
+    <h2 id="jobmenu-title" style="font-size:17px"></h2>
+    <div id="jobmenu-sub" style="font-size:12.5px;color:var(--muted);font-weight:600;margin:-4px 0 4px"></div>
+    <div id="jobmenu-list"></div>
+  </div>
+</div>
+
 <div class="overlay" id="problem-overlay">
   <div class="sheet">
     <button class="x-close" onclick="closeProblems()">✕</button>
@@ -1068,7 +1125,7 @@
     if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
   }
   function refreshSpin(on) {
-    document.getElementById('refresh-btn').textContent = on ? '⏳ Refreshing…' : 'Refresh';
+    document.getElementById('refresh-btn').textContent = on ? '⏳ Refreshing…' : '🔄 Refresh';
   }
   var lastSyncAt = 0;
   function pendingImgCount() {
@@ -1296,10 +1353,10 @@
 
   // ------------------------------------------------------------ roles
   function renderRoleBtn() {
-    document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin' : '👷 Staff';
+    document.getElementById('role-btn').textContent = isAdmin() ? '👔 Admin — switch role' : '👷 Staff — switch role';
     document.getElementById('hello').textContent = isAdmin() ? 'Hello, Admin 👋' : 'Hello! 👋';
-    document.getElementById('reset-btn').style.display = isAdmin() ? 'block' : 'none';
-    document.getElementById('stats-btn').style.display = isAdmin() ? 'block' : 'none';
+    document.getElementById('reset-btn').style.display = isAdmin() ? 'flex' : 'none';
+    document.getElementById('stats-btn').style.display = isAdmin() ? 'flex' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -1412,16 +1469,67 @@
   }
 
   // admin-only tools row (withArchive: finished cards get 🗄️ Hide)
-  function toolBtns(j, withArchive) {
-    if (!isAdmin()) return '';
-    var html = '<div class="tools">' +
-      '<button class="t-edit" onclick="openUpload(\'' + j.id + '\')">✏️ Edit</button>' +
-      '<button class="t-del" onclick="removeJob(\'' + j.id + '\')">🗑️ Delete</button>';
-    if (withArchive) {
-      html += '<button class="t-arch" onclick="markJob(\'' + j.id + '\',\'archived\')">🗄️ Hide</button>';
-    }
-    return html + '</div>';
+  // ------------------------------------------------------------ ⋯ per-job menu
+  // ONE green button on the card face; every occasional action lives here.
+  function jmItem_(cls, act, label, hint) {
+    return '<button class="jm-item ' + cls + '" onclick="jmAct(\'' + act + '\')">' + label +
+      (hint ? '<span class="hint">' + hint + '</span>' : '') + '</button>';
   }
+  /** Which actions this job offers — '' means no ⋯ button at all. */
+  function jobMenuHtml_(j) {
+    var busy = j.uploading || j.proofUploading;
+    if (busy) return '';
+    var hasProb = j.problem === 'reported' || j.problem === 'nosticker';
+    var out = '';
+    if (j.status === 'pending') {
+      if (j.tab === 'postage') out += jmItem_('jm-sentbus', 'sentbus', '🚌 Oops! Sent bus', 'take proof');
+      if ((j.tab === 'delivery' || j.tab === 'postage') && !hasProb) {
+        out += jmItem_('jm-warn warn', 'noreceive', '❓ Haven\'t received', 'tell office');
+        if (j.tab === 'postage') out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
+      }
+    }
+    if (j.status === 'done') {
+      // proof tools are for EVERYONE — staff can fix a wrong proof photo
+      out += jmItem_('jm-reproof', 'reproof', '📷 Retake Proof', '');
+      out += jmItem_('jm-delproof warn', 'delproof', '🗑️ Remove Proof', 'back to To Do');
+    }
+    if (isAdmin()) {
+      out += jmItem_('jm-edit', 'edit', '✏️ Edit job', 'admin');
+      out += jmItem_('jm-del danger', 'del', '🗑️ Delete', 'admin');
+      if (j.status !== 'pending') out += jmItem_('jm-hide', 'hide', '🗄️ Hide from the board', 'admin');
+    }
+    return out;
+  }
+  function moreBtn_(j) {
+    return '<button class="more-btn" onclick="openJobMenu(\'' + j.id + '\')">⋯</button>';
+  }
+  function openJobMenu(id) {
+    var j = findJobAll(id);
+    if (!j) return;
+    state.jobMenuId = id;
+    document.getElementById('jobmenu-title').textContent = j.note || (PROB_TAB[j.tab] || 'Job');
+    document.getElementById('jobmenu-sub').textContent =
+      ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + j.customer + ' · ' : '') + (PROB_TAB[j.tab] || j.tab);
+    document.getElementById('jobmenu-list').innerHTML = jobMenuHtml_(j);
+    document.getElementById('jobmenu-overlay').classList.add('show');
+  }
+  function closeJobMenu() { document.getElementById('jobmenu-overlay').classList.remove('show'); }
+  function jmAct(what) {
+    var id = state.jobMenuId;
+    closeJobMenu();
+    if (what === 'sentbus') startSentBus(id);
+    else if (what === 'noreceive') reportNoReceive(id);
+    else if (what === 'nosticker') reportNoReceive(id, 'sticker');
+    else if (what === 'reproof') startReProof(id);
+    else if (what === 'delproof') removeProof(id);
+    else if (what === 'edit') openUpload(id);
+    else if (what === 'del') removeJob(id);
+    else if (what === 'hide') markJob(id, 'archived');
+  }
+
+  // ☰ menu — the office drawer (Refresh / Stats / History / Clear-Reset / role)
+  function openMenu() { document.getElementById('menu-overlay').classList.add('show'); }
+  function closeMenu() { document.getElementById('menu-overlay').classList.remove('show'); }
 
   /** PUSH UP (Checking page): send a swiped jobsheet BACK to the front of
       the swipe deck so staff must answer seen / not seen again. */
@@ -1512,7 +1620,7 @@
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             (j.nextTab ? ' · →' + (j.nextTab === 'delivery' ? '🚚' : '📦') + ' after ✅' : '') +
             ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
-            (j.uploading ? '' : toolBtns(j, false)) +
+            (j.uploading || !jobMenuHtml_(j) ? '' : '<div class="rowbtn end">' + moreBtn_(j) + '</div>') +
           '</div>' +
           '<div class="stamp yes">❤️</div><div class="stamp no">❌</div>' +
           '</div>';
@@ -1543,9 +1651,10 @@
           ? printedHtml_(j)
           : '<div class="prob-line">🚨 On the Problem page — office will print it</div>') : '') +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
-        (isAdmin() ? '<button class="ask-btn" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '') +
-        '<div class="spacer"></div>' +
-        toolBtns(j, true) +
+        '<div class="rowbtn">' +
+        (isAdmin() ? '<button class="ask-btn" style="margin-top:0" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '<div style="flex:1"></div>') +
+        (jobMenuHtml_(j) ? moreBtn_(j) : '') +
+        '</div>' +
         '</div></div>';
     }
 
@@ -1740,9 +1849,10 @@
 
     // today at a glance: how many left vs finished
     html += '<div class="stat-row">' +
-      '<div class="stat-box todo"><div><div class="num">' + pending.length + '</div><div class="lbl">⏳ Balance To Do</div></div></div>' +
-      '<div class="stat-box done"><div><div class="num">' + done.length + '</div><div class="lbl">✅ Completed</div></div>' + ringSvg_(done.length, pending.length) + '</div>' +
-      '</div>';
+      '<span class="stat-box todo">⏳ <span class="num">' + pending.length + '</span> to do</span>' +
+      '<span class="sep">·</span>' +
+      '<span class="stat-box done">✅ <span class="num">' + done.length + '</span> done</span>' +
+      ringSvg_(done.length, pending.length) + '</div>';
 
     if (pending.length) {
       html += '<div class="section-title">⏳ To Do (' + pending.length + ')</div><div class="grid">';
@@ -1818,14 +1928,19 @@
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
     var lost = j.uploading ? 0 : j.photoIds.filter(function (id) { return !id; }).length;
-    if (lost) html += '<span class="chip old">⚠️ ' + lost + ' photo didn\'t upload — ✏️ Edit to re-add</span> ';
     if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
-    if (j.fromCheck) html += '<span class="chip passed">✅ passed check</span> ';
-    if (j.category) html += '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
-    if (!isDone) html += dueChip(j);
-    if (old) html += '<span class="chip old">⚠️ Over 1 day!</span>';
+    // MAX 2 CHIPS: customer + the single most important status — the rest
+    // of the story moves into the meta line below the note
+    var statusChip = '';
+    if (lost) statusChip = '<span class="chip old">⚠️ ' + lost + ' photo didn\'t upload — ✏️ Edit to re-add</span> ';
+    else if (old) statusChip = '<span class="chip old">⚠️ Over 1 day!</span> ';
+    else if (!isDone) statusChip = dueChip(j);
+    if (!statusChip && j.category) statusChip = '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
+    html += statusChip;
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
-    html += '<div class="meta">Posted ' + timeAgo(j.createdAt) + '</div>';
+    html += '<div class="meta">Posted ' + timeAgo(j.createdAt) +
+      (j.category && statusChip.indexOf('chip ' + j.category) < 0 ? ' · ' + CAT_LABEL[j.category] : '') +
+      (j.fromCheck ? ' · ✅ passed check' : '') + '</div>';
     // "haven't received" problem status — visible to everyone on the card
     if (!isDone && (j.tab === 'delivery' || j.tab === 'postage')) {
       if (j.problem === 'reported' || j.problem === 'nosticker') {
@@ -1840,33 +1955,15 @@
     if (isDone) {
       html += '<div class="proof">' +
         (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') : '') +
-        '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div></div>';
-      // proof tools are for EVERYONE — staff can fix a wrong proof photo
-      if (!j.proofUploading && !j.uploading) {
-        html += '<div class="tools proof-tools">' +
-          '<button class="t-reproof" onclick="startReProof(\'' + j.id + '\')">📷 Retake Proof</button>' +
-          '<button class="t-delproof" onclick="removeProof(\'' + j.id + '\')">🗑️ Remove Proof</button></div>';
-      }
-      html += '<div class="spacer"></div>' + (j.proofUploading ? '' : toolBtns(j, true));
+        '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div>' +
+        (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
+      html += '<div class="spacer"></div>';
     } else {
       html += '<div class="spacer"></div>';
       if (!j.uploading) {
-        html += '<button class="btn green" style="margin-top:10px" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>';
-        // sometimes a parcel goes by BUS instead of being posted — one tap
-        // moves it to Delivery as a Bus job (proof photo still required)
-        if (j.tab === 'postage') {
-          html += '<button class="btn bus" style="margin-top:8px" onclick="startSentBus(\'' + j.id + '\')">🚌 Oops! Sent bus — take proof</button>';
-        }
-        // the physical job never reached the factory → alert the office
-        var hasProb = j.problem === 'reported' || j.problem === 'nosticker';
-        if ((j.tab === 'delivery' || j.tab === 'postage') && !hasProb) {
-          html += '<button class="btn warn" style="margin-top:8px" onclick="reportNoReceive(\'' + j.id + '\')">❓ Haven\'t received — tell office 🖨️</button>';
-          // postage: the waybill sticker is missing → office must print it
-          if (j.tab === 'postage') {
-            html += '<button class="btn warn" style="margin-top:8px" onclick="reportNoReceive(\'' + j.id + '\', \'sticker\')">🏷️ No sticker — tell office 🖨️</button>';
-          }
-        }
-        html += toolBtns(j, false);
+        html += '<div class="rowbtn">' +
+          '<button class="btn green" onclick="startProof(\'' + j.id + '\')">📸 Done! Take Proof Photo</button>' +
+          (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
       }
     }
     html += '</div></div>';
@@ -2308,7 +2405,7 @@
     out.sort(function (a, b) { return (b.problemAt || b.doneAt || 0) - (a.problemAt || a.doneAt || 0); });
     return out;
   }
-  var PROB_TAB = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage' };
+  var PROB_TAB = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage', defect: '🚨 Defect' };
   function updateProblemBadge() {
     var n = problemJobs().length;
     document.getElementById('problem-btn').textContent = n ? '🚨 Problem (' + n + ')' : '🚨 Problem';
@@ -2515,10 +2612,21 @@
     });
 
     renderAllThumbs();
+    // optional fields start folded on a fresh post; editing opens them
+    setMoreOpts(!!job);
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
   function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
+
+  /** Optional details (Ready by + Instruction) fold behind one "More ▾" row. */
+  function setMoreOpts(open) {
+    document.getElementById('opt-wrap').style.display = open ? 'block' : 'none';
+    document.getElementById('more-arrow').textContent = open ? 'Less ▴' : 'More ▾';
+  }
+  function toggleMoreOpts() {
+    setMoreOpts(document.getElementById('opt-wrap').style.display === 'none');
+  }
 
   function pickCat(btn) {
     state.upload.cat = btn.getAttribute('data-cat');
@@ -2808,7 +2916,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -2817,6 +2925,8 @@
       else if (id === 'history-overlay') closeHistory();
       else if (id === 'stats-overlay') closeStats();
       else if (id === 'problem-overlay') closeProblems();
+      else if (id === 'menu-overlay') closeMenu();
+      else if (id === 'jobmenu-overlay') closeJobMenu();
       else closeUpload();
     });
   });
