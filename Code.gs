@@ -295,7 +295,7 @@ function rowToJob_(r) {
 /**
  * Add a job. Returns the created job object.
  * payload = { tab: 'want'|'delivery'|'postage',
- *             category: ''|'lalamove'|'bus'|'pickup',
+ *             category: ''|'lalamove'|'bus'|'snbus'|'pickup',
  *             note: string,
  *             photos: [base64jpeg, ...],      // full size, for zoom
  *             thumbs: [base64jpeg, ...],      // small, for cards (same order)

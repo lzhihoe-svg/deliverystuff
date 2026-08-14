@@ -1056,12 +1056,17 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     (await dcCard.locator('.btn.green').textContent()).indexOf('Done Delivered') >= 0,
     "done delivery card shows '📬 Done Delivered — attach photo' (staff too)");
   await clickSafe(dcCard.locator('.btn.green'));
-  await page.setInputFiles('#proof-file', IMG);
+  await page.setInputFiles('#deliv-file', IMG);
   await sleep(900);
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm');
     return !!j.deliveredAt && !!j.deliveredPhotoId;
   }), 'delivered photo REQUIRED and saved on the server');
+  check(await page.evaluate(() => {
+    const pf = document.getElementById('proof-file');
+    const df = document.getElementById('deliv-file');
+    return pf.hasAttribute('capture') && !!df && !df.hasAttribute('capture');
+  }), 'delivered photo can come from the GALLERY (no forced camera)');
   check((await dcCard.locator('.proof.delivered').count()) === 1 &&
     (await dcCard.locator('.proof.delivered .txt').textContent()).indexOf('Delivered') >= 0,
     "card shows the second proof row '📬 Delivered' WITH the photo");
@@ -1089,6 +1094,39 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     setRole('admin', '1234');
     window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm').status = 'archived';
   });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+  await page.click('#nav-postage');
+  await sleep(300);
+
+  console.log('\n-- 🚌 SN BUS: the fortnightly route gets its own button --');
+  await page.click('#nav-delivery');
+  await sleep(300);
+  check((await page.locator('#delivery-pills button[data-cat="snbus"]').count()) === 1, 'SN BUS filter pill on the Delivery page');
+  await page.click('#nav-post');
+  await sleep(200);
+  await page.setInputFiles('#photos-file', IMG);
+  await sleep(600);
+  await page.click('#upload-cats button[data-cat="snbus"]');
+  await sleep(100);
+  await page.fill('#upload-customer', 'SN');
+  await openOpts();
+  await page.fill('#upload-note', 'SNBus-test');
+  await page.click('#btn-submit');
+  await sleep(900);
+  const snCard = page.locator('#delivery-list .card').filter({ hasText: 'SNBus-test' });
+  check((await snCard.count()) === 1 && (await snCard.locator('.chip.snbus').count()) === 1,
+    "posted with the '🚌 SN BUS' method — card shows its chip");
+  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'SNBus-test').category === 'snbus'),
+    'server stored the SN BUS category');
+  await page.click('#delivery-pills button[data-cat="snbus"]');
+  await sleep(400);
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'SNBus-test' }).count()) === 1,
+    'the SN BUS pill filters to it');
+  await page.click('#delivery-pills button[data-cat=""]');
+  await sleep(300);
+  check((await page.locator('#hist-cats button[data-c="snbus"]').count()) === 1, 'Evidence sub-filter has SN BUS too');
+  await page.evaluate(() => { window.__mockdb.jobs.find(x => x.note === 'SNBus-test').status = 'archived'; });
   await page.evaluate(() => refresh());
   await sleep(400);
   await page.click('#nav-postage');

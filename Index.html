@@ -204,6 +204,7 @@
     border-radius: 999px; padding: 4px 12px; margin-bottom: 8px;
   }
   .chip.lalamove { background: #ffedd5; color: #9a3412; }
+  .chip.snbus { background: #ede9fe; color: #5b21b6; }
   .chip.bus      { background: #dbeafe; color: #1e40af; }
   .chip.pickup   { background: #dcfce7; color: #166534; }
   .chip.old      { background: #fee2e2; color: #991b1b; }
@@ -552,7 +553,7 @@
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
     flex: 1; border: 2px solid #d3dcc3; background: #fff; border-radius: 14px;
-    padding: 16px 8px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all .15s;
+    padding: 13px 4px; font-size: 13.5px; font-weight: 700; cursor: pointer; transition: all .15s;
   }
   .choice-row button.active { border-color: var(--green); background: var(--lime-soft); color: var(--blue); }
   .choice-row .big { display: block; font-size: 34px; margin-bottom: 4px; }
@@ -657,6 +658,7 @@
       <button data-cat="" class="active">All</button>
       <button data-cat="lalamove">🛵 Lalamove</button>
       <button data-cat="bus">🚌 Bus</button>
+      <button data-cat="snbus">🚌 SN BUS</button>
       <button data-cat="pickup">🤝 Pickup</button>
     </div>
     <div id="delivery-list"></div>
@@ -726,6 +728,7 @@
       <div class="choice-row" id="upload-cats">
         <button data-cat="lalamove" onclick="pickCat(this)"><span class="big">🛵</span>Lalamove</button>
         <button data-cat="bus" onclick="pickCat(this)"><span class="big">🚌</span>Bus</button>
+        <button data-cat="snbus" onclick="pickCat(this)"><span class="big">🚌</span>SN BUS</button>
         <button data-cat="pickup" onclick="pickCat(this)"><span class="big">🤝</span>Pickup</button>
       </div>
     </div>
@@ -767,6 +770,7 @@
       <div class="agent-chips" id="next-cats" style="display:none">
         <button type="button" class="agent-chip" data-ncat="lalamove">🛵 Lalamove</button>
         <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
+        <button type="button" class="agent-chip" data-ncat="snbus">🚌 SN BUS</button>
         <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
       </div>
     </div>
@@ -888,6 +892,7 @@
       <button data-c="" class="active">All types</button>
       <button data-c="lalamove">🛵 Lalamove</button>
       <button data-c="bus">🚌 Bus</button>
+      <button data-c="snbus">🚌 SN BUS</button>
       <button data-c="pickup">🤝 Pickup</button>
     </div>
     <div id="history-results"></div>
@@ -913,6 +918,8 @@
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 <!-- printing-status photo for the Problem page (no capture attr: screenshots come from the gallery) -->
 <input type="file" id="print-file" accept="image/*" onchange="printPicked(this)">
+<!-- delivered-proof photo: Lalamove/Bolt screenshots live in the GALLERY, so no forced camera -->
+<input type="file" id="deliv-file" accept="image/*" onchange="proofPicked(this)">
 
 <div class="viewer" id="viewer">
   <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
@@ -939,7 +946,7 @@
     reProof: false,
     lastSwipe: null
   };
-  var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
+  var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', snbus: '🚌 SN BUS', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
   var MAX_PHOTOS = 6;
 
@@ -2462,7 +2469,7 @@
     state.reProof = false;
     state.sentBus = false;
     state.delivered = true;
-    document.getElementById('proof-file').click();
+    document.getElementById('deliv-file').click(); // camera OR gallery
   }
   /** Remove a wrong delivered photo — back to "sent, not yet confirmed". */
   function removeDeliveredNow(id) {
