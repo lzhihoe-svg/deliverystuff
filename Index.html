@@ -269,17 +269,12 @@
   .inv-table.stock { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
   .inv-table.stock td { border-bottom: 1px solid var(--soft); padding: 8px 8px; font-size: 13.5px; font-weight: 700; }
   .inv-table.stock tr.hd td { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 7px 8px; }
-  .inv-table.stock td.nm { width: 34%; }
-  .inv-table.stock td.tgt { color: var(--muted); font-style: italic; text-align: center; font-variant-numeric: tabular-nums; }
+  .inv-table.stock td.stk { text-align: right; width: 110px; }
   .inv-table.stock .inv-in {
-    width: 70px; text-align: center; font-size: 15px; font-weight: 800;
+    width: 90px; text-align: center; font-size: 15px; font-weight: 800;
     border: 1.5px solid #cfe3ad; border-radius: 10px; padding: 7px 4px; background: #fff;
   }
   .inv-table.stock .inv-in:focus { border-color: var(--lime); outline: none; }
-  .inv-table.stock td.act { font-size: 12.5px; }
-  .inv-muted { color: #b9c0aa; font-style: italic; font-weight: 600; }
-  .inv-order { color: #b45309; }
-  .inv-ok { color: var(--green); }
 
   /* 🚨 problem flow — "haven't received / office will print" status lines */
   .prob-line {
@@ -1581,24 +1576,16 @@
   }
   function closeInventory() { document.getElementById('inventory-overlay').classList.remove('show'); }
   var ROMAN = ['I', 'II', 'III', 'IV', 'V'];
-  function invActionHtml_(val, target, orderIf) {
-    if (val === '' || val === null || isNaN(Number(val))) return '<span class="inv-muted">Enter stock…</span>';
-    var q = Number(val);
-    if (q < orderIf) return '<b class="inv-order">🛒 Order ' + Math.max(1, target - q) + '</b>';
-    return '<span class="inv-ok">✅ Enough</span>';
-  }
   function renderInventory() {
     var h = '';
     invData.sections.forEach(function (sec, si) {
       h += '<div class="inv-sec-head"><span>' + ROMAN[si] + '. ' + esc(sec.name).toUpperCase() + '</span>' +
         (sec.hint ? '<span class="inv-hint">' + esc(sec.hint) + '</span>' : '') + '</div>';
-      h += '<table class="inv-table stock"><tr class="hd"><td>Type</td><td>Target</td><td>Stock</td><td>Action</td></tr>';
+      h += '<table class="inv-table stock"><tr class="hd"><td>Type</td><td class="stk">Stock</td></tr>';
       sec.items.forEach(function (it) {
         h += '<tr><td class="nm">' + esc(it.name) + '</td>' +
-          '<td class="tgt">' + it.target + '</td>' +
-          '<td><input type="number" min="0" inputmode="numeric" class="inv-in" data-item="' + esc(it.name) +
-            '" data-target="' + it.target + '" data-orderif="' + it.orderIf + '" value="' + (it.qty === '' ? '' : it.qty) + '"></td>' +
-          '<td class="act">' + invActionHtml_(it.qty, it.target, it.orderIf) + '</td></tr>';
+          '<td class="stk"><input type="number" min="0" inputmode="numeric" class="inv-in" data-item="' + esc(it.name) +
+            '" value="' + (it.qty === '' ? '' : it.qty) + '"></td></tr>';
       });
       h += '</table>';
     });
@@ -1607,12 +1594,6 @@
       ? '🕒 Last count ' + timeAgo(invData.lastAt) + ' — saved in the Inventory tab of the Google Sheet'
       : 'First count! Values save into the Inventory tab of the Google Sheet.';
   }
-  // Action column updates LIVE while they type
-  document.getElementById('inv-body').addEventListener('input', function (e) {
-    var inp = e.target.closest('.inv-in'); if (!inp) return;
-    inp.closest('tr').querySelector('.act').innerHTML =
-      invActionHtml_(inp.value, Number(inp.getAttribute('data-target')), Number(inp.getAttribute('data-orderif')));
-  });
   function submitStockTake() {
     var values = [];
     document.querySelectorAll('#inv-body .inv-in').forEach(function (inp) {

@@ -1332,19 +1332,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     (await page.locator('#inv-body').textContent()).indexOf('PAPER') >= 0,
     'three sections render: Fabric, Ink AND Paper');
   check((await page.locator('#inv-body .inv-in').count()) === 15, 'all 15 catalog items have a stock input');
-  const eyelet = page.locator('#inv-body .inv-in[data-item="Eyelet"]');
-  await eyelet.fill('4');
-  await sleep(150);
-  check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Order 6') >= 0,
-    'Eyelet at 4 of target 10 → Action says Order 6 (live)');
+  check((await page.locator('#inv-body .inv-table tr.hd').first().textContent()).indexOf('Target') < 0 &&
+    (await page.locator('#inv-body').textContent()).indexOf('Action') < 0,
+    'clean table: just Type + Stock (no Target / Action columns)');
+  await page.locator('#inv-body .inv-in[data-item="Eyelet"]').fill('4');
   await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('3');
-  await sleep(150);
-  check((await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Enough') >= 0,
-    'Ink - Red at 3 → ✅ Enough');
   await page.locator('#inv-body .inv-in[data-item="Ink - Blue"]').fill('2');
-  await sleep(150);
-  check((await page.locator('#inv-body .inv-in[data-item="Ink - Blue"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Enough') >= 0,
-    'Ink at 2 is still Enough (only orders below 2)');
   await page.locator('#inv-body .inv-in[data-item="Paper - Sublimation"]').fill('0');
   await sleep(150);
   await page.click('#inv-submit');
