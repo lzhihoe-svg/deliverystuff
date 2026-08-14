@@ -289,6 +289,20 @@
   .prob-card .t1 { font-size: 12px; font-weight: 800; color: var(--muted); }
   .prob-card .t2 { font-size: 14.5px; font-weight: 700; margin: 2px 0; }
   .prob-card .t3 { font-size: 12.5px; color: #b91c1c; font-weight: 700; }
+  .prob-note {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 8px 11px; margin: 8px 0 2px; font-size: 13px; font-weight: 600; color: #713f12;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .prob-edit {
+    display: block; border: 0; background: none; cursor: pointer;
+    color: var(--blue); font-size: 12.5px; font-weight: 700; padding: 6px 0 8px;
+  }
+  .prob-note-edit {
+    width: 100%; border: 1.5px solid #fde68a; border-radius: 10px; background: #fffbeb;
+    padding: 8px 11px; font-size: 13.5px; margin-top: 8px; font-family: inherit;
+  }
+  .prob-note-edit:focus { border-color: var(--lime); outline: none; }
   .btn.small { padding: 10px; font-size: 15px; border-radius: 999px; }
   .btn:active { transform: scale(.97); }
   .btn-row { display: flex; gap: 10px; margin-top: 10px; }
@@ -1751,7 +1765,8 @@
         (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
         (!isGot ? (j.printedAt
           ? printedHtml_(j)
-          : '<div class="prob-line">🚨 On the Problem page — office will print it</div>') : '') +
+          : '<div class="prob-line">🚨 On the Problem page — office will print it</div>') +
+          (j.problemNote ? '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>' : '') : '') +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         '<div class="rowbtn">' +
         (isAdmin() ? '<button class="ask-btn" style="margin-top:0" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '<div style="flex:1"></div>') +
@@ -2049,8 +2064,10 @@
         html += '<div class="prob-line">' +
           (j.problem === 'nosticker' ? '🏷️ No sticker — reported at ' : '🚨 Reported at ') +
           fmtTime(j.problemAt) + ' — office will print it</div>';
+        if (j.problemNote) html += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
       } else if (j.printedAt) {
         html += printedHtml_(j);
+        if (j.problemNote) html += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
       }
     }
 
@@ -2596,6 +2613,19 @@
     var html = '';
     list.forEach(function (j) {
       var who = (j.customer && j.customer !== 'Unassigned') ? j.customer : '';
+      // shared info block — staff write it, BOTH sides read it
+      var noteHtml;
+      if (state.probEditId === j.id) {
+        noteHtml = '<textarea class="prob-note-edit" id="pn-' + j.id + '" rows="2" maxlength="300" ' +
+          'placeholder="Write info for the office / staff…">' + esc(j.problemNote || '') + '</textarea>' +
+          '<div class="rowbtn" style="margin-top:6px">' +
+          '<button class="btn gray small" onclick="cancelProbNote()">Cancel</button>' +
+          '<button class="btn green small" onclick="saveProbNote(\'' + j.id + '\')">💾 Save info</button></div>';
+      } else {
+        noteHtml = (j.problemNote ? '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>' : '') +
+          '<button class="prob-edit" onclick="editProbNote(\'' + j.id + '\')">✏️ ' +
+          (j.problemNote ? 'Edit info' : 'Write info for both sides') + '</button>';
+      }
       html += '<div class="prob-card">' +
         '<div class="row">' +
         imgTag(thumbOf(j, 0), '', 'class="pic" onclick="viewPhoto(\'' + j.photoIds[0] + '\', \'' + thumbOf(j, 0) + '\')"') +
@@ -2606,6 +2636,7 @@
           : j.problem === 'nosticker' ? '🏷️ No sticker' : '❓ Haven\'t received') +
           ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
         '</div></div>' +
+        noteHtml +
         '<button class="btn green small" onclick="startSolve(\'' + j.id + '\')">✅ Solved — snap printing status 📸</button>' +
         '</div>';
     });
@@ -2632,6 +2663,25 @@
       if (j) { j.problemAt = res.problemAt; saveJobsCache(j.tab); }
     }, bgFail);
   }
+  /** Shared info on a problem — staff write, both sides read. */
+  function editProbNote(id) {
+    state.probEditId = id;
+    renderProblems();
+    var ta = document.getElementById('pn-' + id);
+    if (ta) ta.focus();
+  }
+  function cancelProbNote() { state.probEditId = ''; renderProblems(); }
+  function saveProbNote(id) {
+    var ta = document.getElementById('pn-' + id);
+    var text = ta ? ta.value.trim().slice(0, 300) : '';
+    var j = findJobAll(id);
+    if (j) { j.problemNote = text; saveJobsCache(j.tab); }
+    state.probEditId = '';
+    renderProblems(); renderAll();
+    toast('📝 Info saved — both sides can see it');
+    gsCall('setProblemNote', [id, text], function () {}, bgFail);
+  }
+
   /** Office: press ✅ Solved → snap the printing status (photo REQUIRED). */
   function startSolve(id) {
     state.printJobId = id;

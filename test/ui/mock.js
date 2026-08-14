@@ -111,7 +111,7 @@
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
         nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
         problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
-        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: ''
+        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -244,6 +244,16 @@
       j.printPhotoId = 'print-' + id;
       j.printThumbId = thumb ? ('printth-' + id) : '';
       return { id: id, problem: 'printed', printedAt: j.printedAt, printPhotoId: j.printPhotoId, printThumbId: j.printThumbId };
+    },
+    setProblemNote: function (id, text) {
+      text = String(text || '').slice(0, 300);
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' ||
+        (j.tab === 'want' && j.status === 'notseen');
+      if (!isProblem) throw new Error('This job is not on the Problem page');
+      j.problemNote = text;
+      return { id: id, problemNote: text };
     },
     markDelivered: function (id, photo, thumb) {
       if (!photo) throw new Error('Delivered-proof photo required');

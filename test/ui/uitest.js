@@ -1232,6 +1232,48 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
   check((await page.locator('#problem-btn').textContent()).indexOf('(') < 0, 'Problem badge cleared');
+
+  console.log('\n-- 📝 problem info: staff write, both sides read --');
+  await page.evaluate(() => {
+    setRole('staff', ''); // writing info must NOT need the PIN
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Note-prob', customer: 'CG', photos: ['np1'], thumbs: ['np1'] });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(500);
+  await page.click('#nav-delivery');
+  await sleep(400);
+  const npCard = page.locator('#delivery-list .card').filter({ hasText: 'Note-prob' });
+  await viaMore(npCard, '.jm-warn'); // report it
+  await sleep(500);
+  await page.click('#problem-btn');
+  await sleep(400);
+  const npProb = page.locator('#problem-list .prob-card').filter({ hasText: 'Note-prob' });
+  check((await npProb.locator('.prob-edit').count()) === 1 &&
+    (await npProb.locator('.prob-edit').textContent()).indexOf('Write info') >= 0,
+    "problem card has '✏️ Write info for both sides'");
+  await npProb.locator('.prob-edit').click();
+  await sleep(300);
+  await npProb.locator('.prob-note-edit').fill('Jobsheet with Kak Ros — reprint page 2 only');
+  await npProb.locator('.btn.green.small').first().click();
+  await sleep(600);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Note-prob');
+    return j.problemNote.indexOf('Kak Ros') >= 0;
+  }), 'staff saved the info on the server (no PIN)');
+  check((await npProb.locator('.prob-note').textContent()).indexOf('Kak Ros') >= 0,
+    'info shows on the Problem page');
+  check((await npProb.locator('.prob-edit').textContent()).indexOf('Edit info') >= 0,
+    "button now reads 'Edit info'");
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(300);
+  check((await npCard.locator('.prob-note').textContent()).indexOf('Kak Ros') >= 0,
+    'the SAME info shows on the job card — both sides read it');
+  await page.evaluate(() => { // cleanup
+    setRole('admin', '1234');
+    window.__mockdb.jobs.find(x => x.note === 'Note-prob').status = 'archived';
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
   await page.click('#nav-want');
   await sleep(400);
   check((await page.locator('#want-responded .proof.printed').count()) >= 1 &&

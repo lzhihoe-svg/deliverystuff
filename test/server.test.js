@@ -804,6 +804,22 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
   ctx.deleteJob(d.id, PIN);
   check(files[s.printPhotoId].trashed, 'deleting the job trashes its printing photo too');
 
+  // 📝 shared problem info — staff write, both sides read
+  const ni = ctx.addJob({ tab: 'postage', category: '', note: 'note test', customer: 'SN', photos: [B64] });
+  throws(() => ctx.setProblemNote(ni.id, 'hello'), 'cannot write info on a job that has no problem');
+  ctx.reportProblem(ni.id);
+  const nr2 = ctx.setProblemNote(ni.id, 'Jobsheet is with Kak Ros, please reprint page 2');
+  check(nr2.problemNote.indexOf('Kak Ros') >= 0, 'staff write info without a PIN');
+  check(ctx.getJobs('postage').filter(j => j.id === ni.id)[0].problemNote === nr2.problemNote,
+    'info persisted — both sides see it on the job');
+  ctx.setProblemNote(ni.id, '');
+  check(ctx.getJobs('postage').filter(j => j.id === ni.id)[0].problemNote === '', 'info can be cleared');
+  const nw = ctx.addJob({ tab: 'want', category: '', note: 'ns note', photos: [B64] });
+  ctx.updateStatus(nw.id, 'notseen', null, null, null);
+  check(ctx.setProblemNote(nw.id, 'reprint A4').problemNote === 'reprint A4',
+    '❌ Not Seen checking jobs accept info too');
+  check(ctx.setProblemNote(ni.id, 'x'.repeat(500)).problemNote.length === 300, 'info capped at 300 chars');
+
   // "🏷️ No sticker" — the second postage problem type
   const ns = ctx.addJob({ tab: 'postage', category: '', note: 'sticker missing', photos: [B64] });
   const nr = ctx.reportProblem(ns.id, 'sticker');
