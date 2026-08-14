@@ -1322,45 +1322,57 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => refresh());
   await sleep(400);
 
-  console.log('\n-- 📦 Inventory: staff key in, admin views --');
+  console.log('\n-- 📦 Stock Count: fixed list, targets, action column --');
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
   await viaMenu('#inventory-btn');
-  check(await page.locator('#inventory-overlay').isVisible(), 'Inventory opens from the ☰ menu (staff too)');
-  await page.fill('#inv-item', 'Roundneck black XL');
-  await page.fill('#inv-qty', '25');
-  await page.fill('#inv-note', 'from supplier');
-  await page.click('#inventory-overlay .btn.green');
-  await sleep(600);
-  check(await page.evaluate(() => window.__mockdb.inv.length === 1 && window.__mockdb.inv[0].qty === 25),
-    'stock IN saved on the server (staff, no PIN)');
-  await page.click('#inv-dir button[data-dir="out"]');
-  await page.fill('#inv-item', 'Roundneck black XL');
-  await page.fill('#inv-qty', '5');
-  await page.click('#inventory-overlay .btn.green');
-  await sleep(600);
-  check(await page.evaluate(() => window.__mockdb.inv[1] && window.__mockdb.inv[1].qty === -5),
-    'stock OUT saved as a negative movement');
-  check((await page.locator('#inv-totals .inv-table td').nth(1).textContent()) === '20', 'totals show 25 − 5 = 20');
-  check((await page.locator('#inv-log .inv-row').count()) === 2, 'both entries in the log with time');
-  check((await page.locator('#inv-log .inv-del').count()) === 0, 'staff cannot delete entries');
-  await page.fill('#inv-item', '');
-  await page.click('#inventory-overlay .btn.green');
-  await sleep(200);
-  check((await page.locator('#toast').textContent()).indexOf('item name') >= 0, 'blocked without an item name');
+  await sleep(500);
+  check(await page.locator('#inventory-overlay').isVisible(), 'Stock Count opens from the ☰ menu (staff too)');
+  check((await page.locator('#inv-body .inv-sec-head').count()) === 3 &&
+    (await page.locator('#inv-body').textContent()).indexOf('PAPER') >= 0,
+    'three sections render: Fabric, Ink AND Paper');
+  check((await page.locator('#inv-body .inv-in').count()) === 15, 'all 15 catalog items have a stock input');
+  const eyelet = page.locator('#inv-body .inv-in[data-item="Eyelet"]');
+  await eyelet.fill('4');
+  await sleep(150);
+  check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Order 6') >= 0,
+    'Eyelet at 4 of target 10 → Action says Order 6 (live)');
+  await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('3');
+  await sleep(150);
+  check((await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Enough') >= 0,
+    'Ink - Red at 3 → ✅ Enough');
+  await page.locator('#inv-body .inv-in[data-item="Ink - Blue"]').fill('2');
+  await sleep(150);
+  check((await page.locator('#inv-body .inv-in[data-item="Ink - Blue"]').locator('xpath=ancestor::tr').locator('.act').textContent()).indexOf('Enough') >= 0,
+    'Ink at 2 is still Enough (only orders below 2)');
+  await page.locator('#inv-body .inv-in[data-item="Paper - Sublimation"]').fill('0');
+  await sleep(150);
+  await page.click('#inv-submit');
+  await sleep(700);
+  check(await page.evaluate(() => window.__mockdb.inv.length === 4 &&
+    window.__mockdb.inv.every(r => r.by === 'staff')), '4 filled values saved on the server (staff, no PIN)');
+  check(await page.evaluate(() => window.__mockdb.inv.some(r => r.item === 'Paper - Sublimation' && r.qty === 0)),
+    'ZERO stock saves correctly');
+  check((await page.locator('#inv-last').textContent()).indexOf('Last count') >= 0, 'last-count time shows after submit');
   await page.evaluate(() => closeInventory());
+  await sleep(200);
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(300);
   await viaMenu('#inventory-btn');
   await sleep(500);
-  check((await page.locator('#inv-log .inv-del').count()) === 2, 'admin sees 🗑️ on every entry');
-  await page.locator('#inv-log .inv-del').first().click();
+  check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').inputValue()) === '4',
+    'admin opens the page and SEES the staff counts prefilled');
+  await page.evaluate(() => closeInventory());
   await sleep(200);
-  await page.click('#confirm-yes');
-  await sleep(600);
-  check(await page.evaluate(() => window.__mockdb.inv.length === 1), 'admin delete removes the entry on the server');
-  check((await page.locator('#inv-totals .inv-table td').nth(1).textContent()) === '25',
-    'totals recalculate (only the stock-in remains)');
+  // empty submission blocked
+  await viaMenu('#inventory-btn');
+  await sleep(500);
+  await page.evaluate(() => {
+    document.querySelectorAll('#inv-body .inv-in').forEach(i => { i.value = ''; });
+  });
+  await page.click('#inv-submit');
+  await sleep(200);
+  check((await page.locator('#toast').textContent()).indexOf('at least one') >= 0, 'empty submission blocked with a clear message');
   await page.evaluate(() => closeInventory());
   await sleep(200);
 

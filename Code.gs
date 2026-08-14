@@ -1002,63 +1002,82 @@ function invSheet_() {
   return sh;
 }
 
-/** Staff OR admin: record stock movement. qty > 0 = stock in, < 0 = stock out. */
-function addStock(item, qty, note, by) {
-  item = cleanName_(item);
-  if (!item) throw new Error('Item name required');
-  qty = Number(qty);
-  if (!qty || isNaN(qty)) throw new Error('Quantity required');
-  var id = Utilities.getUuid();
-  var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
-    invSheet_().appendRow([id, new Date().getTime(), item, qty,
-      String(note || '').slice(0, 200), by === 'admin' ? 'admin' : 'staff']);
-  } finally {
-    lock.releaseLock();
-  }
-  return { id: id, item: item, qty: qty };
-}
+/**
+ * ⭐ EDIT THIS LIST: the stock items your staff count, with the TARGET each
+ * one should be kept at. `orderIf` on a section = order when stock falls
+ * BELOW that number (defaults to the item's target).
+ */
+var STOCK_SECTIONS = [
+  { name: 'Fabric', hint: '10 combined rolls = FREE SHIPPING', items: [
+    { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
+    { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
+    { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
+    { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 }, { name: 'Cotton', target: 3 }
+  ] },
+  { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
+    { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
+    { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
+  ] },
+  { name: 'Paper', hint: '', items: [
+    { name: 'Paper - Sublimation', target: 5 }, { name: 'Paper - Protection', target: 3 }
+  ] }
+];
 
-/** Totals per item + the 60 most recent entries (newest first). */
-function getInventory() {
-  var sh = invSheet_();
-  var last = sh.getLastRow();
-  var totals = {}, entries = [];
-  if (last >= 2) {
-    var rows = sh.getRange(2, 1, last - 1, 6).getValues();
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      var key = String(r[2]);
-      totals[key] = (totals[key] || 0) + (Number(r[3]) || 0);
-      entries.push({ id: r[0], at: r[1], item: key, qty: Number(r[3]) || 0, note: r[4] || '', by: r[5] || '' });
-    }
-  }
-  entries.reverse();
-  var items = [];
-  for (var k in totals) items.push({ item: k, total: totals[k] });
-  items.sort(function (a, b) { return a.item.toLowerCase() < b.item.toLowerCase() ? -1 : 1; });
-  return { items: items, entries: entries.slice(0, 60) };
-}
-
-/** ADMIN ONLY: remove a wrong entry (the record disappears from totals too). */
-function deleteStock(id, pin) {
-  requireAdmin_(pin);
+/**
+ * Staff OR admin submit a stock count: values = [{item, qty}] for the rows
+ * they filled. Every count is appended to the "Inventory" sheet tab with
+ * time + who, so the full counting history stays auditable.
+ */
+function submitStockTake(values, by) {
+  if (!values || !values.length) throw new Error('Key in at least one stock value');
+  var ts = new Date().getTime();
+  by = by === 'admin' ? 'admin' : 'staff';
+  var saved = 0;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = invSheet_();
-    var last = sh.getLastRow();
-    if (last >= 2) {
-      var ids = sh.getRange(2, 1, last - 1, 1).getValues();
-      for (var i = 0; i < ids.length; i++) {
-        if (String(ids[i][0]) === String(id)) { sh.deleteRow(i + 2); return { ok: true, id: id }; }
-      }
+    for (var i = 0; i < values.length; i++) {
+      var v = values[i];
+      var q = v ? Number(v.qty) : NaN;
+      if (!v || !v.item || isNaN(q) || q < 0) continue; // 0 is a VALID count
+      sh.appendRow([Utilities.getUuid(), ts, cleanName_(v.item), q, 'stock count', by]);
+      saved++;
     }
-    throw new Error('Entry not found');
   } finally {
     lock.releaseLock();
   }
+  if (!saved) throw new Error('Key in at least one stock value');
+  return { ok: true, at: ts, saved: saved };
+}
+
+/** The catalog with each item's LATEST counted value (+ when and by whom). */
+function getStockTake() {
+  var latest = {}, lastAt = 0;
+  var sh = invSheet_();
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var rows = sh.getRange(2, 1, last - 1, 6).getValues();
+    for (var i = 0; i < rows.length; i++) { // chronological — later rows win
+      var r = rows[i];
+      latest[String(r[2])] = { qty: Number(r[3]) || 0, at: r[1], by: r[5] || '' };
+      if (Number(r[1]) > lastAt) lastAt = Number(r[1]);
+    }
+  }
+  var sections = [];
+  for (var s = 0; s < STOCK_SECTIONS.length; s++) {
+    var sec = STOCK_SECTIONS[s];
+    var items = [];
+    for (var k = 0; k < sec.items.length; k++) {
+      var it = sec.items[k];
+      var l = latest[it.name];
+      items.push({ name: it.name, target: it.target,
+        orderIf: sec.orderIf || it.target,
+        qty: l ? l.qty : '', at: l ? l.at : '', by: l ? l.by : '' });
+    }
+    sections.push({ name: sec.name, hint: sec.hint || '', items: items });
+  }
+  return { sections: sections, lastAt: lastAt };
 }
 
 /**

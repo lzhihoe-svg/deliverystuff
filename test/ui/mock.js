@@ -17,31 +17,50 @@
 
   window.__imgRequests = [];
   db.inv = [];
-  var invSeq = 0;
+  var STOCK_SECTIONS = [
+    { name: 'Fabric', hint: '10 combined rolls = FREE SHIPPING', items: [
+      { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
+      { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
+      { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
+      { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 }, { name: 'Cotton', target: 3 }
+    ] },
+    { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
+      { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
+      { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
+    ] },
+    { name: 'Paper', hint: '', items: [
+      { name: 'Paper - Sublimation', target: 5 }, { name: 'Paper - Protection', target: 3 }
+    ] }
+  ];
   var api = {
-    addStock: function (item, qty, note, by) {
-      item = String(item || '').trim();
-      if (!item) throw new Error('Item name required');
-      qty = Number(qty);
-      if (!qty || isNaN(qty)) throw new Error('Quantity required');
-      var en = { id: 'inv' + (++invSeq), at: Date.now(), item: item, qty: qty,
-                 note: String(note || ''), by: by === 'admin' ? 'admin' : 'staff' };
-      db.inv.push(en);
-      return { id: en.id, item: item, qty: qty };
+    submitStockTake: function (values, by) {
+      if (!values || !values.length) throw new Error('Key in at least one stock value');
+      var ts = Date.now(), saved = 0;
+      values.forEach(function (v) {
+        var q = v ? Number(v.qty) : NaN;
+        if (!v || !v.item || isNaN(q) || q < 0) return;
+        db.inv.push({ at: ts, item: v.item, qty: q, by: by === 'admin' ? 'admin' : 'staff' });
+        saved++;
+      });
+      if (!saved) throw new Error('Key in at least one stock value');
+      return { ok: true, at: ts, saved: saved };
     },
-    getInventory: function () {
-      var totals = {};
-      db.inv.forEach(function (en) { totals[en.item] = (totals[en.item] || 0) + en.qty; });
-      var items = Object.keys(totals).map(function (k) { return { item: k, total: totals[k] }; })
-        .sort(function (a, b) { return a.item.toLowerCase() < b.item.toLowerCase() ? -1 : 1; });
-      return { items: items, entries: db.inv.slice().reverse().slice(0, 60) };
-    },
-    deleteStock: function (id, pin) {
-      requireAdmin(pin);
-      var i = db.inv.findIndex(function (x) { return x.id === id; });
-      if (i < 0) throw new Error('Entry not found');
-      db.inv.splice(i, 1);
-      return { ok: true, id: id };
+    getStockTake: function () {
+      var latest = {}, lastAt = 0;
+      db.inv.forEach(function (r) {
+        latest[r.item] = { qty: r.qty, at: r.at, by: r.by };
+        if (r.at > lastAt) lastAt = r.at;
+      });
+      return {
+        sections: STOCK_SECTIONS.map(function (sec) {
+          return { name: sec.name, hint: sec.hint || '', items: sec.items.map(function (it) {
+            var l = latest[it.name];
+            return { name: it.name, target: it.target, orderIf: sec.orderIf || it.target,
+                     qty: l ? l.qty : '', at: l ? l.at : '', by: l ? l.by : '' };
+          }) };
+        }),
+        lastAt: lastAt
+      };
     },
     checkPin: function (pin) { return String(pin) === PIN; },
     getImagesData: function (ids) {

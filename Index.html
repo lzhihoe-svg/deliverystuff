@@ -258,17 +258,28 @@
   }
   .collapse-row #more-arrow { color: var(--blue); }
 
-  /* 📦 inventory */
-  .inv-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
-  .inv-table td { border-bottom: 1px solid var(--soft); padding: 9px 12px; font-size: 14px; font-weight: 700; }
-  .inv-table td + td { text-align: right; color: var(--green); font-variant-numeric: tabular-nums; }
-  .inv-table td.neg { color: var(--red); }
-  .inv-row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--soft); border-radius: 13px; padding: 9px 12px; margin-top: 7px; }
-  .inv-row .txt { font-size: 13.5px; }
-  .inv-row .nt { color: var(--muted); font-weight: 600; }
-  .inv-row .sub { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-top: 2px; }
-  .inv-row .inv-del { margin-left: auto; border: 0; background: none; font-size: 17px; cursor: pointer; }
-  #inv-item, #inv-qty, #inv-note { width: 100%; }
+  /* 📦 stock count */
+  .inv-sec-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    background: linear-gradient(135deg, #3f6212, #65a30d); color: #fff;
+    border-radius: 13px; padding: 9px 13px; margin: 16px 0 8px;
+    font-size: 13px; font-weight: 800; letter-spacing: .06em;
+  }
+  .inv-hint { background: rgba(255,255,255,.9); color: var(--blue); border-radius: 999px; padding: 2px 10px; font-size: 10.5px; letter-spacing: .02em; }
+  .inv-table.stock { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
+  .inv-table.stock td { border-bottom: 1px solid var(--soft); padding: 8px 8px; font-size: 13.5px; font-weight: 700; }
+  .inv-table.stock tr.hd td { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 7px 8px; }
+  .inv-table.stock td.nm { width: 34%; }
+  .inv-table.stock td.tgt { color: var(--muted); font-style: italic; text-align: center; font-variant-numeric: tabular-nums; }
+  .inv-table.stock .inv-in {
+    width: 70px; text-align: center; font-size: 15px; font-weight: 800;
+    border: 1.5px solid #cfe3ad; border-radius: 10px; padding: 7px 4px; background: #fff;
+  }
+  .inv-table.stock .inv-in:focus { border-color: var(--lime); outline: none; }
+  .inv-table.stock td.act { font-size: 12.5px; }
+  .inv-muted { color: #b9c0aa; font-style: italic; font-weight: 600; }
+  .inv-order { color: #b45309; }
+  .inv-ok { color: var(--green); }
 
   /* 🚨 problem flow — "haven't received / office will print" status lines */
   .prob-line {
@@ -802,29 +813,14 @@
   </div>
 </div>
 
-<!-- ================= 📦 INVENTORY (replaces the stock Google Form) ================= -->
+<!-- ================= 📦 INVENTORY / STOCK COUNT (replaces the Google Form) ================= -->
 <div class="overlay" id="inventory-overlay">
-  <div class="sheet">
+  <div class="sheet" style="max-width:520px">
     <button class="x-close" onclick="closeInventory()">✕</button>
-    <h2>📦 Inventory</h2>
-    <p style="font-size:13px;color:var(--muted);margin:-6px 0 4px">
-      Key in stock here instead of the Google Form. Every entry is saved
-      with the time in the <b>Inventory</b> tab of the Google Sheet.
-    </p>
-    <label>Item</label>
-    <input type="text" id="inv-item" list="inv-items" placeholder="e.g. Roundneck black XL">
-    <datalist id="inv-items"></datalist>
-    <label>Stock movement</label>
-    <div class="agent-chips" id="inv-dir">
-      <button type="button" class="agent-chip active" data-dir="in">➕ Stock IN</button>
-      <button type="button" class="agent-chip" data-dir="out">➖ Stock OUT</button>
-    </div>
-    <input type="number" id="inv-qty" min="1" inputmode="numeric" placeholder="How many?">
-    <label>Note (optional)</label>
-    <input type="text" id="inv-note" placeholder="e.g. from supplier / used for SN order">
-    <button class="btn green" style="margin-top:14px" onclick="submitStock()">📥 Add entry</button>
-    <div id="inv-totals"></div>
-    <div id="inv-log"></div>
+    <h2>📦 Stock Count</h2>
+    <div id="inv-last" style="font-size:12.5px;color:var(--muted);font-weight:600;margin:-6px 0 6px"></div>
+    <div id="inv-body"><div class="empty"><span class="big">⏳</span>Loading stock list…</div></div>
+    <button class="btn green" id="inv-submit" style="margin-top:14px" onclick="submitStockTake()">📤 Submit stock count</button>
   </div>
 </div>
 
@@ -1573,81 +1569,72 @@
   function openMenu() { document.getElementById('menu-overlay').classList.add('show'); }
   function closeMenu() { document.getElementById('menu-overlay').classList.remove('show'); }
 
-  // ------------------------------------------------------------ 📦 inventory
-  // Staff key in stock movements; the admin views totals and can remove a
-  // wrong entry. Data lives in the "Inventory" tab of the Google Sheet.
-  var invData = { items: [], entries: [] };
-  var invDir = 'in';
+  // ------------------------------------------------------------ 📦 stock count
+  // Fixed item list (from the server) with a TARGET per item — staff key in
+  // the current stock, the Action column says what to order, one Submit
+  // saves everything to the "Inventory" tab of the Google Sheet.
+  var invData = { sections: [], lastAt: 0 };
   function openInventory() {
     document.getElementById('inventory-overlay').classList.add('show');
-    renderInventory();
-    gsCall('getInventory', [], function (res) { invData = res; renderInventory(); },
+    gsCall('getStockTake', [], function (res) { invData = res; renderInventory(); },
       function (e) { toast('⚠️ ' + errMsg_(e)); });
   }
   function closeInventory() { document.getElementById('inventory-overlay').classList.remove('show'); }
-  document.getElementById('inv-dir').addEventListener('click', function (e) {
-    var b = e.target.closest('button'); if (!b) return;
-    invDir = b.getAttribute('data-dir');
-    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
-    b.classList.add('active');
-  });
+  var ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+  function invActionHtml_(val, target, orderIf) {
+    if (val === '' || val === null || isNaN(Number(val))) return '<span class="inv-muted">Enter stock…</span>';
+    var q = Number(val);
+    if (q < orderIf) return '<b class="inv-order">🛒 Order ' + Math.max(1, target - q) + '</b>';
+    return '<span class="inv-ok">✅ Enough</span>';
+  }
   function renderInventory() {
-    document.getElementById('inv-items').innerHTML = invData.items.map(function (it) {
-      return '<option value="' + esc(it.item) + '">';
-    }).join('');
-    var t = '';
-    if (invData.items.length) {
-      t = '<label style="margin-top:18px">📊 Current stock</label><table class="inv-table">';
-      invData.items.forEach(function (it) {
-        t += '<tr><td>' + esc(it.item) + '</td><td class="' + (it.total <= 0 ? 'neg' : '') + '">' + it.total + '</td></tr>';
+    var h = '';
+    invData.sections.forEach(function (sec, si) {
+      h += '<div class="inv-sec-head"><span>' + ROMAN[si] + '. ' + esc(sec.name).toUpperCase() + '</span>' +
+        (sec.hint ? '<span class="inv-hint">' + esc(sec.hint) + '</span>' : '') + '</div>';
+      h += '<table class="inv-table stock"><tr class="hd"><td>Type</td><td>Target</td><td>Stock</td><td>Action</td></tr>';
+      sec.items.forEach(function (it) {
+        h += '<tr><td class="nm">' + esc(it.name) + '</td>' +
+          '<td class="tgt">' + it.target + '</td>' +
+          '<td><input type="number" min="0" inputmode="numeric" class="inv-in" data-item="' + esc(it.name) +
+            '" data-target="' + it.target + '" data-orderif="' + it.orderIf + '" value="' + (it.qty === '' ? '' : it.qty) + '"></td>' +
+          '<td class="act">' + invActionHtml_(it.qty, it.target, it.orderIf) + '</td></tr>';
       });
-      t += '</table>';
-    }
-    document.getElementById('inv-totals').innerHTML = t;
-    var lg = '';
-    if (invData.entries.length) {
-      lg = '<label style="margin-top:16px">🕒 Recent entries</label>';
-      invData.entries.forEach(function (en) {
-        lg += '<div class="inv-row"><div class="txt"><b>' + (en.qty > 0 ? '+' : '') + en.qty + '</b> ' + esc(en.item) +
-          (en.note ? ' <span class="nt">— ' + esc(en.note) + '</span>' : '') +
-          '<div class="sub">' + timeAgo(en.at) + ' · ' + esc(en.by || 'staff') + '</div></div>' +
-          (isAdmin() ? '<button class="inv-del" onclick="delStock(\'' + en.id + '\')">🗑️</button>' : '') +
-          '</div>';
-      });
-    }
-    document.getElementById('inv-log').innerHTML = lg;
-  }
-  function submitStock() {
-    var item = document.getElementById('inv-item').value.trim();
-    var qty = Number(document.getElementById('inv-qty').value);
-    var note = document.getElementById('inv-note').value.trim();
-    if (!item) { toast('📦 Type the item name first'); return; }
-    if (!(qty > 0)) { toast('🔢 How many? Put the quantity'); return; }
-    var q = invDir === 'out' ? -qty : qty;
-    var temp = { id: 'local-inv-' + (++localSeq), at: Date.now(), item: item, qty: q, note: note, by: state.role };
-    invData.entries.unshift(temp);
-    var hit = invData.items.filter(function (it) { return it.item.toLowerCase() === item.toLowerCase(); })[0];
-    if (hit) hit.total += q; else invData.items.push({ item: item, total: q });
-    document.getElementById('inv-qty').value = '';
-    document.getElementById('inv-note').value = '';
-    renderInventory();
-    toast(q > 0 ? '✅ Stock in recorded!' : '✅ Stock out recorded!');
-    gsCall('addStock', [item, q, note, state.role],
-      function (res) { temp.id = res.id; },
-      function (e) { toast('⚠️ ' + errMsg_(e)); openInventory(); });
-  }
-  function delStock(id) {
-    askConfirm('Remove this stock entry? Totals update too.', '🗑️ Yes, Remove', function () {
-      var gone = invData.entries.filter(function (en) { return en.id === id; })[0];
-      invData.entries = invData.entries.filter(function (en) { return en.id !== id; });
-      if (gone) {
-        var hit = invData.items.filter(function (it) { return it.item.toLowerCase() === String(gone.item).toLowerCase(); })[0];
-        if (hit) hit.total -= gone.qty;
-      }
-      renderInventory();
-      toast('🗑️ Entry removed.');
-      gsCall('deleteStock', [id, state.pin], function () {}, function (e) { toast('⚠️ ' + errMsg_(e)); openInventory(); });
+      h += '</table>';
     });
+    document.getElementById('inv-body').innerHTML = h;
+    document.getElementById('inv-last').textContent = invData.lastAt
+      ? '🕒 Last count ' + timeAgo(invData.lastAt) + ' — saved in the Inventory tab of the Google Sheet'
+      : 'First count! Values save into the Inventory tab of the Google Sheet.';
+  }
+  // Action column updates LIVE while they type
+  document.getElementById('inv-body').addEventListener('input', function (e) {
+    var inp = e.target.closest('.inv-in'); if (!inp) return;
+    inp.closest('tr').querySelector('.act').innerHTML =
+      invActionHtml_(inp.value, Number(inp.getAttribute('data-target')), Number(inp.getAttribute('data-orderif')));
+  });
+  function submitStockTake() {
+    var values = [];
+    document.querySelectorAll('#inv-body .inv-in').forEach(function (inp) {
+      if (inp.value !== '' && Number(inp.value) >= 0) {
+        values.push({ item: inp.getAttribute('data-item'), qty: Number(inp.value) });
+      }
+    });
+    if (!values.length) { toast('🔢 Key in at least one stock value first'); return; }
+    toast('📤 Submitting stock count…');
+    gsCall('submitStockTake', [values, state.role],
+      function (res) {
+        invData.lastAt = res.at;
+        invData.sections.forEach(function (sec) {
+          sec.items.forEach(function (it) {
+            var hit = values.filter(function (v) { return v.item === it.name; })[0];
+            if (hit) { it.qty = hit.qty; it.at = res.at; }
+          });
+        });
+        renderInventory();
+        toast('✅ Stock count submitted — ' + res.saved + ' item' + (res.saved > 1 ? 's' : '') + ' saved!');
+      },
+      function (e) { toast('⚠️ ' + errMsg_(e)); });
   }
 
   /** PUSH UP (Checking page): send a swiped jobsheet BACK to the front of

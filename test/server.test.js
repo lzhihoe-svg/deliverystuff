@@ -821,30 +821,38 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
   check(ctx.solveProblem(df.id, B64, B64).problem === 'printed', 'office solves a defect report the same way');
 }
 
-console.log('\n== 📦 inventory (staff key in, admin views) ==');
+console.log('\n== 📦 stock count (staff key in, admin views) ==');
 {
   const { ctx } = makeEnv();
-  throws(() => ctx.addStock('', 5, '', 'staff'), 'item name required');
-  throws(() => ctx.addStock('Roundneck black', 0, '', 'staff'), 'quantity required');
-  const a = ctx.addStock('Roundneck black XL', 25, 'from supplier', 'staff');
-  check(!!a.id && a.qty === 25, 'staff records stock IN (no PIN needed)');
-  ctx.addStock('Roundneck black XL', -5, 'used for SN order', 'staff');
-  ctx.addStock('Polo green M', 10, '', 'admin');
-  const inv = ctx.getInventory();
-  const rn = inv.items.filter(i => i.item === 'Roundneck black XL')[0];
-  check(!!rn && rn.total === 20, 'totals add up per item (25 in − 5 out = 20)');
-  check(inv.items.length === 2, 'each item gets ONE totals row');
-  check(inv.entries.length === 3 && inv.entries[0].qty === 10, 'entries listed newest first');
-  check(inv.entries.every(e => e.at > 0 && (e.by === 'staff' || e.by === 'admin')), 'every entry keeps time + who');
-  throws(() => ctx.deleteStock(a.id, ''), 'staff cannot delete entries');
-  throws(() => ctx.deleteStock(a.id, '9999'), 'wrong PIN cannot delete');
-  check(ctx.deleteStock(a.id, PIN).ok === true, 'admin removes a wrong entry');
-  check(ctx.getInventory().items.filter(i => i.item === 'Roundneck black XL')[0].total === -5,
-    'totals recalculate after the delete');
-  throws(() => ctx.deleteStock('ghost', PIN), 'deleting a missing entry fails loudly');
-  // inventory lives in its OWN sheet — the jobs board is untouched
+  const cat = ctx.getStockTake();
+  check(cat.sections.length === 3 &&
+    cat.sections[0].name === 'Fabric' && cat.sections[1].name === 'Ink' && cat.sections[2].name === 'Paper',
+    'catalog has Fabric + Ink + Paper sections');
+  check(cat.sections[0].items.length === 9 && cat.sections[0].items[0].target === 10,
+    'fabric items carry their targets (Eyelet = 10)');
+  check(cat.sections[1].items.every(i => i.orderIf === 2), 'ink orders when below 2');
+  check(cat.sections[0].items.every(i => i.qty === ''), 'no counts yet — empty values');
+
+  throws(() => ctx.submitStockTake([], 'staff'), 'empty submission refused');
+  throws(() => ctx.submitStockTake([{ item: 'Eyelet', qty: 'abc' }], 'staff'), 'garbage-only submission refused');
+  const r = ctx.submitStockTake([
+    { item: 'Eyelet', qty: 4 }, { item: 'Ink - Red', qty: 0 }, { item: 'Paper - Sublimation', qty: 7 }
+  ], 'staff');
+  check(r.ok === true && r.saved === 3, 'staff submits a count — 3 items saved, no PIN needed');
+
+  const t1 = ctx.getStockTake();
+  check(t1.sections[0].items[0].qty === 4, 'Eyelet latest count = 4');
+  check(t1.sections[1].items[0].qty === 0, 'ZERO is a valid count (Ink - Red = 0)');
+  check(t1.sections[2].items[0].qty === 7 && t1.lastAt === r.at, 'paper counted + lastAt stamped');
+
+  const r2 = ctx.submitStockTake([{ item: 'Eyelet', qty: 12 }], 'admin');
+  check(ctx.getStockTake().sections[0].items[0].qty === 12, 'a NEW count replaces the old value');
+  check(ctx.getStockTake().sections[0].items[0].by === 'admin', 'and remembers who counted');
+  check(r2.at >= r.at, 'counting history stays in the sheet (auditable)');
+
+  // stock lives in its OWN sheet — the job boards are untouched
   check(ctx.getAllData().counts.want === 0 && ctx.getJobs('postage').length === 0,
-    'inventory entries never leak into the job boards');
+    'stock counts never leak into the job boards');
 }
 
 console.log('\n== lost photo slot: Save heals the job ==');
