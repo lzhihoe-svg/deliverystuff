@@ -204,7 +204,6 @@
     border-radius: 999px; padding: 4px 12px; margin-bottom: 8px;
   }
   .chip.lalamove { background: #ffedd5; color: #9a3412; }
-  .chip.snbus { background: #ede9fe; color: #5b21b6; }
   .chip.bus      { background: #dbeafe; color: #1e40af; }
   .chip.pickup   { background: #dcfce7; color: #166534; }
   .chip.old      { background: #fee2e2; color: #991b1b; }
@@ -553,7 +552,7 @@
   .choice-row { display: flex; gap: 10px; }
   .choice-row button {
     flex: 1; border: 2px solid #d3dcc3; background: #fff; border-radius: 14px;
-    padding: 13px 4px; font-size: 13.5px; font-weight: 700; cursor: pointer; transition: all .15s;
+    padding: 16px 8px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all .15s;
   }
   .choice-row button.active { border-color: var(--green); background: var(--lime-soft); color: var(--blue); }
   .choice-row .big { display: block; font-size: 34px; margin-bottom: 4px; }
@@ -658,7 +657,6 @@
       <button data-cat="" class="active">All</button>
       <button data-cat="lalamove">🛵 Lalamove</button>
       <button data-cat="bus">🚌 Bus</button>
-      <button data-cat="snbus">🚌 SN BUS</button>
       <button data-cat="pickup">🤝 Pickup</button>
     </div>
     <div id="delivery-list"></div>
@@ -728,7 +726,6 @@
       <div class="choice-row" id="upload-cats">
         <button data-cat="lalamove" onclick="pickCat(this)"><span class="big">🛵</span>Lalamove</button>
         <button data-cat="bus" onclick="pickCat(this)"><span class="big">🚌</span>Bus</button>
-        <button data-cat="snbus" onclick="pickCat(this)"><span class="big">🚌</span>SN BUS</button>
         <button data-cat="pickup" onclick="pickCat(this)"><span class="big">🤝</span>Pickup</button>
       </div>
     </div>
@@ -770,7 +767,6 @@
       <div class="agent-chips" id="next-cats" style="display:none">
         <button type="button" class="agent-chip" data-ncat="lalamove">🛵 Lalamove</button>
         <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
-        <button type="button" class="agent-chip" data-ncat="snbus">🚌 SN BUS</button>
         <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
       </div>
     </div>
@@ -892,7 +888,6 @@
       <button data-c="" class="active">All types</button>
       <button data-c="lalamove">🛵 Lalamove</button>
       <button data-c="bus">🚌 Bus</button>
-      <button data-c="snbus">🚌 SN BUS</button>
       <button data-c="pickup">🤝 Pickup</button>
     </div>
     <div id="history-results"></div>
@@ -946,7 +941,7 @@
     reProof: false,
     lastSwipe: null
   };
-  var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', snbus: '🚌 SN BUS', pickup: '🤝 Pickup' };
+  var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
   var MAX_PHOTOS = 6;
 
@@ -1556,8 +1551,9 @@
       out += jmItem_('jm-reproof', 'reproof', '📷 Retake Proof', '');
       out += jmItem_('jm-delproof warn', 'delproof', '🗑️ Remove Proof', 'back to To Do');
       if (j.tab === 'delivery' && j.deliveredAt) {
-        out += jmItem_('jm-redeliv', 'redeliv', '📬 Retake Delivered Photo', '');
-        out += jmItem_('jm-deldeliv warn', 'deldeliv', '🗑️ Remove Delivered Photo', '');
+        out += jmItem_('jm-redeliv', 'redeliv',
+          j.deliveredVia === 'snbus' ? '📬 Attach Delivered Photo' : '📬 Retake Delivered Photo', '');
+        out += jmItem_('jm-deldeliv warn', 'deldeliv', '🗑️ Undo Delivered', '');
       }
     }
     if (isAdmin()) {
@@ -2089,9 +2085,13 @@
           var dt = j.deliveredThumbId || j.deliveredPhotoId;
           html += '<div class="proof delivered">' +
             (j.deliveredPhotoId ? imgTag(dt, '', 'onclick="viewPhoto(\'' + j.deliveredPhotoId + '\', \'' + dt + '\')"') : '') +
-            '<div class="txt">📬 Delivered · ' + timeAgo(j.deliveredAt) + '</div></div>';
+            '<div class="txt">' + (j.deliveredVia === 'snbus' ? '🚌 Delivered by SN BUS · ' : '📬 Delivered · ') +
+            timeAgo(j.deliveredAt) + '</div></div>';
         } else {
           html += '<button class="btn green small" style="margin-top:8px" onclick="startDelivered(\'' + j.id + '\')">📬 Done Delivered — attach photo</button>';
+          // fortnightly SN BUS run: no delivery photo exists — one tap marks
+          // it delivered WITHOUT the picture requirement
+          html += '<button class="btn bus small" style="margin-top:8px;padding:10px" onclick="snBusDelivered(\'' + j.id + '\')">🚌 Delivered by SN BUS — no photo</button>';
         }
       }
       html += '<div class="spacer"></div>';
@@ -2349,6 +2349,7 @@
         : (j.doneAt ? ' · answered ' + fmtDT(j.doneAt) : ''));
     } else status = '🕐 Still waiting';
 
+    if (j.deliveredAt) status += ' · 📬 Delivered' + (j.deliveredVia === 'snbus' ? ' by SN BUS' : '');
     var csv = j.photoIds.join(',');
     var tcsv = j.photoIds.map(function (_, k) { return thumbOf(j, k); }).join(',');
     var pics = '';
@@ -2471,12 +2472,30 @@
     state.delivered = true;
     document.getElementById('deliv-file').click(); // camera OR gallery
   }
+  /** "🚌 Delivered by SN BUS" — the fortnightly bus has no delivery photo,
+   *  so this marks Delivered WITHOUT the picture requirement (confirmed first). */
+  function snBusDelivered(id) {
+    var j = findJob(id);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
+    askConfirm('Delivered by SN BUS? The fortnightly bus needs no photo.', '🚌 Yes, SN BUS', function () {
+      if (j) {
+        j.deliveredAt = Date.now();
+        j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = 'snbus';
+        saveJobsCache(state.tab); renderAll();
+      }
+      toast('🚌 Delivered by SN BUS!');
+      gsCall('markDelivered', [id, null, null, 'snbus'], function (res) {
+        if (j) { j.deliveredAt = res.deliveredAt; saveJobsCache(j.tab); }
+      }, bgFail);
+    });
+  }
+
   /** Remove a wrong delivered photo — back to "sent, not yet confirmed". */
   function removeDeliveredNow(id) {
     askConfirm('Remove the delivered photo? The job goes back to "sent, not confirmed".', '🗑️ Yes, Remove', function () {
       var j = findJob(id);
       if (j) {
-        j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = '';
+        j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = '';
         saveJobsCache(state.tab); renderAll();
       }
       toast('🗑️ Delivered photo removed.');
@@ -2502,6 +2521,7 @@
           // second-stage delivery confirmation — it ARRIVED
           j.deliveredAt = Date.now();
           j.deliveredPhotoId = tempKey; j.deliveredThumbId = tempKey;
+          j.deliveredVia = 'photo';
         } else if (sb) {
           // sent by bus: the job leaves Postage and lands on Delivery as done
           j.status = 'done'; j.doneAt = Date.now();
@@ -2532,6 +2552,7 @@
           if (dl) {
             j.deliveredAt = res.deliveredAt;
             j.deliveredPhotoId = res.deliveredPhotoId; j.deliveredThumbId = res.deliveredThumbId;
+            j.deliveredVia = res.deliveredVia || 'photo';
           } else {
             j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
             if (res.doneAt) j.doneAt = res.doneAt;

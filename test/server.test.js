@@ -873,6 +873,23 @@ console.log('\n== 📬 Done Delivered (second-stage delivery confirmation) ==');
   ctx.sentBus(sb.id, B64, B64);
   check(ctx.markDelivered(sb.id, B64, B64).deliveredAt > 0, 'a Sent-bus job can be confirmed delivered too');
 
+  // 🚌 SN BUS shortcut: fortnightly bus needs NO photo
+  const sn = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'SN fortnight', customer: 'SN', photos: [B64] });
+  throws(() => ctx.markDelivered(sn.id, null, null, 'snbus'), 'even SN BUS needs the job Done first');
+  ctx.updateStatus(sn.id, 'done', B64, B64, null);
+  const snr = ctx.markDelivered(sn.id, null, null, 'snbus');
+  check(snr.deliveredAt > 0 && snr.deliveredVia === 'snbus' && snr.deliveredPhotoId === '',
+    'SN BUS marks delivered WITHOUT a photo');
+  check(ctx.getJobs('delivery').filter(j => j.id === sn.id)[0].deliveredVia === 'snbus',
+    "job remembers it was 'delivered by SN BUS'");
+  const snr2 = ctx.markDelivered(sn.id, B64, B64);
+  check(snr2.deliveredVia === 'photo' && !!snr2.deliveredPhotoId,
+    'attaching a photo later upgrades SN BUS → photo proof');
+  ctx.removeDelivered(sn.id);
+  check(ctx.getJobs('delivery').filter(j => j.id === sn.id)[0].deliveredVia === '',
+    'undo clears the SN BUS stamp too');
+  throws(() => ctx.markDelivered(sn.id, null, null), 'normal delivered still REQUIRES the photo');
+
   // un-doing the job clears the delivered confirmation with it
   const d2 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64] });
   ctx.updateStatus(d2.id, 'done', B64, B64, null);

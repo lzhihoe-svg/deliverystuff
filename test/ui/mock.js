@@ -111,7 +111,7 @@
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
         nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
         problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
-        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: ''
+        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -204,7 +204,7 @@
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       j.status = 'pending'; j.doneAt = ''; j.proofPhotoId = ''; j.proofThumbId = '';
-      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = '';
+      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = '';
       return { id: id, status: 'pending' };
     },
     resetAll: function (pin) {
@@ -255,21 +255,24 @@
       j.problemNote = text;
       return { id: id, problemNote: text };
     },
-    markDelivered: function (id, photo, thumb) {
-      if (!photo) throw new Error('Delivered-proof photo required');
+    markDelivered: function (id, photo, thumb, via) {
+      var snbus = via === 'snbus';
+      if (!snbus && !photo) throw new Error('Delivered-proof photo required');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       if (j.tab !== 'delivery') throw new Error('Done Delivered is for Delivery jobs');
       if (j.status !== 'done') throw new Error('Finish the job first (Done + proof), then confirm delivered');
       j.deliveredAt = Date.now();
-      j.deliveredPhotoId = 'deliv-' + id;
-      j.deliveredThumbId = thumb ? ('delivth-' + id) : '';
-      return { id: id, deliveredAt: j.deliveredAt, deliveredPhotoId: j.deliveredPhotoId, deliveredThumbId: j.deliveredThumbId };
+      j.deliveredPhotoId = photo ? ('deliv-' + id) : '';
+      j.deliveredThumbId = (photo && thumb) ? ('delivth-' + id) : '';
+      j.deliveredVia = snbus ? 'snbus' : 'photo';
+      return { id: id, deliveredAt: j.deliveredAt, deliveredPhotoId: j.deliveredPhotoId,
+               deliveredThumbId: j.deliveredThumbId, deliveredVia: j.deliveredVia };
     },
     removeDelivered: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = '';
+      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = '';
       return { id: id, deliveredAt: '' };
     },
     sentBus: function (id, proof, proofThumb) {

@@ -1099,34 +1099,47 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(300);
 
-  console.log('\n-- 🚌 SN BUS: the fortnightly route gets its own button --');
-  await page.click('#nav-delivery');
-  await sleep(300);
-  check((await page.locator('#delivery-pills button[data-cat="snbus"]').count()) === 1, 'SN BUS filter pill on the Delivery page');
-  await page.click('#nav-post');
-  await sleep(200);
-  await page.setInputFiles('#photos-file', IMG);
+  console.log('\n-- 🚌 SN BUS: delivered WITHOUT a photo (fortnightly bus) --');
+  await page.evaluate(() => {
+    setRole('staff', '');
+    const d = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'SNBus-deliv', customer: 'SN', photos: ['sn1'], thumbs: ['sn1'] });
+    window.__mockapi.updateStatus(d.id, 'done', 'p', 'pt', null);
+  });
+  await page.evaluate(() => refresh());
   await sleep(600);
-  await page.click('#upload-cats button[data-cat="snbus"]');
-  await sleep(100);
-  await page.fill('#upload-customer', 'SN');
-  await openOpts();
-  await page.fill('#upload-note', 'SNBus-test');
-  await page.click('#btn-submit');
-  await sleep(900);
-  const snCard = page.locator('#delivery-list .card').filter({ hasText: 'SNBus-test' });
-  check((await snCard.count()) === 1 && (await snCard.locator('.chip.snbus').count()) === 1,
-    "posted with the '🚌 SN BUS' method — card shows its chip");
-  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'SNBus-test').category === 'snbus'),
-    'server stored the SN BUS category');
-  await page.click('#delivery-pills button[data-cat="snbus"]');
+  await page.click('#nav-delivery');
   await sleep(400);
-  check((await page.locator('#delivery-list .card').filter({ hasText: 'SNBus-test' }).count()) === 1,
-    'the SN BUS pill filters to it');
-  await page.click('#delivery-pills button[data-cat=""]');
-  await sleep(300);
-  check((await page.locator('#hist-cats button[data-c="snbus"]').count()) === 1, 'Evidence sub-filter has SN BUS too');
-  await page.evaluate(() => { window.__mockdb.jobs.find(x => x.note === 'SNBus-test').status = 'archived'; });
+  const snCard = page.locator('#delivery-list .card').filter({ hasText: 'SNBus-deliv' });
+  check((await snCard.locator('.btn.green').count()) === 1 && (await snCard.locator('.btn.bus').count()) === 1,
+    'done card shows BOTH: attach-photo button + SN BUS button');
+  await clickSafe(snCard.locator('.btn.bus'));
+  await sleep(200);
+  check(await page.locator('#confirm-overlay').isVisible() &&
+    (await page.locator('#confirm-msg').textContent()).indexOf('SN BUS') >= 0,
+    'SN BUS asks are-you-sure first (no photo = easy to fat-finger)');
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv');
+    return !!j.deliveredAt && j.deliveredVia === 'snbus' && !j.deliveredPhotoId;
+  }), 'server: delivered by SN BUS, no photo required');
+  check((await snCard.locator('.proof.delivered .txt').textContent()).indexOf('SN BUS') >= 0,
+    "card shows '🚌 Delivered by SN BUS'");
+  check((await snCard.locator('.btn.green, .btn.bus').count()) === 0, 'both delivered buttons gone once confirmed');
+  const snTools = await moreCount(snCard, '.jm-redeliv, .jm-deldeliv');
+  check(snTools.n === 2 && snTools.txts.some(t => t.indexOf('Attach Delivered Photo') >= 0),
+    '⋯ offers Attach Delivered Photo (upgrade) + Undo Delivered');
+  await viaMore(snCard, '.jm-deldeliv');
+  await sleep(200);
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv').deliveredVia === ''),
+    'Undo Delivered clears the SN BUS stamp');
+  check((await snCard.locator('.btn.bus').count()) === 1, 'the SN BUS button returns');
+  await page.evaluate(() => {
+    setRole('admin', '1234');
+    window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv').status = 'archived';
+  });
   await page.evaluate(() => refresh());
   await sleep(400);
   await page.click('#nav-postage');
