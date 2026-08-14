@@ -16,11 +16,37 @@
   }
 
   window.__imgRequests = [];
+  db.inv = [];
+  var invSeq = 0;
   var api = {
+    addStock: function (item, qty, note, by) {
+      item = String(item || '').trim();
+      if (!item) throw new Error('Item name required');
+      qty = Number(qty);
+      if (!qty || isNaN(qty)) throw new Error('Quantity required');
+      var en = { id: 'inv' + (++invSeq), at: Date.now(), item: item, qty: qty,
+                 note: String(note || ''), by: by === 'admin' ? 'admin' : 'staff' };
+      db.inv.push(en);
+      return { id: en.id, item: item, qty: qty };
+    },
+    getInventory: function () {
+      var totals = {};
+      db.inv.forEach(function (en) { totals[en.item] = (totals[en.item] || 0) + en.qty; });
+      var items = Object.keys(totals).map(function (k) { return { item: k, total: totals[k] }; })
+        .sort(function (a, b) { return a.item.toLowerCase() < b.item.toLowerCase() ? -1 : 1; });
+      return { items: items, entries: db.inv.slice().reverse().slice(0, 60) };
+    },
+    deleteStock: function (id, pin) {
+      requireAdmin(pin);
+      var i = db.inv.findIndex(function (x) { return x.id === id; });
+      if (i < 0) throw new Error('Entry not found');
+      db.inv.splice(i, 1);
+      return { ok: true, id: id };
+    },
     checkPin: function (pin) { return String(pin) === PIN; },
     getImagesData: function (ids) {
       var out = {};
-      ids.slice(0, 6).forEach(function (id) {
+      ids.slice(0, 8).forEach(function (id) {
         window.__imgRequests.push(id);
         out[id] = id.indexOf('missing') >= 0 ? null : svg(id);
       });
@@ -180,7 +206,7 @@
       var mark = kind === 'sticker' ? 'nosticker' : 'reported';
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      if (j.tab !== 'delivery' && j.tab !== 'postage') throw new Error('Only Delivery/Postage jobs can be reported');
+      if (j.tab !== 'delivery' && j.tab !== 'postage' && j.tab !== 'defect') throw new Error('Only Delivery/Postage/Defect jobs can be reported');
       if (mark === 'nosticker' && j.tab !== 'postage') throw new Error('No-sticker reports are for Postage jobs');
       if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt };
       j.problem = mark; j.problemAt = Date.now(); j.printedAt = '';

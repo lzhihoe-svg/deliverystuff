@@ -258,6 +258,18 @@
   }
   .collapse-row #more-arrow { color: var(--blue); }
 
+  /* 📦 inventory */
+  .inv-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
+  .inv-table td { border-bottom: 1px solid var(--soft); padding: 9px 12px; font-size: 14px; font-weight: 700; }
+  .inv-table td + td { text-align: right; color: var(--green); font-variant-numeric: tabular-nums; }
+  .inv-table td.neg { color: var(--red); }
+  .inv-row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--soft); border-radius: 13px; padding: 9px 12px; margin-top: 7px; }
+  .inv-row .txt { font-size: 13.5px; }
+  .inv-row .nt { color: var(--muted); font-weight: 600; }
+  .inv-row .sub { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+  .inv-row .inv-del { margin-left: auto; border: 0; background: none; font-size: 17px; cursor: pointer; }
+  #inv-item, #inv-qty, #inv-note { width: 100%; }
+
   /* 🚨 problem flow — "haven't received / office will print" status lines */
   .prob-line {
     margin-top: 8px; background: #fef2f2; color: #b91c1c;
@@ -367,6 +379,9 @@
     display: none; align-items: center; justify-content: center; padding: 16px;
   }
   .overlay.show { display: flex; }
+  /* the confirm dialog can open ON TOP of another overlay (e.g. deleting an
+     inventory entry) — it must always stack above them */
+  #confirm-overlay { z-index: 70; }
   .sheet {
     position: relative; background: #fdfdfb; width: 100%; max-width: 480px;
     border-radius: 26px; padding: 22px 18px; max-height: 92vh;
@@ -374,11 +389,11 @@
   }
   .sheet h2 { font-size: 19px; margin-bottom: 14px; padding-right: 40px; }
   .sheet label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
-  .sheet textarea, .sheet input[type=password], .sheet input[type=time], .sheet input[type=text], .sheet input[type=date] {
+  .sheet textarea, .sheet input[type=password], .sheet input[type=time], .sheet input[type=text], .sheet input[type=number], .sheet input[type=date] {
     width: 100%; border: 2px solid #d3dcc3; border-radius: 12px;
     padding: 12px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
   }
-  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus, .sheet input[type=date]:focus { border-color: var(--lime); }
+  .sheet textarea:focus, .sheet input[type=password]:focus, .sheet input[type=time]:focus, .sheet input[type=text]:focus, .sheet input[type=number]:focus, .sheet input[type=date]:focus { border-color: var(--lime); }
   /* quick-pick agent/customer chips in the post window */
   .agent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
   .agent-chip {
@@ -781,8 +796,35 @@
     <button class="menu-item" id="refresh-btn" onclick="closeMenu();manualRefresh()">🔄 Refresh</button>
     <button class="menu-item" id="stats-btn" onclick="closeMenu();openStats()">📊 Stats</button>
     <button class="menu-item" id="history-btn" onclick="closeMenu();openHistory()">🗂️ History &amp; evidence</button>
+    <button class="menu-item" id="inventory-btn" onclick="closeMenu();openInventory()">📦 Inventory</button>
     <button class="menu-item warn" id="reset-btn" onclick="closeMenu();askReset()">🧹 Clear / Reset ▾</button>
     <button class="menu-item" id="role-btn" onclick="closeMenu();openRoleModal()">👷 Staff</button>
+  </div>
+</div>
+
+<!-- ================= 📦 INVENTORY (replaces the stock Google Form) ================= -->
+<div class="overlay" id="inventory-overlay">
+  <div class="sheet">
+    <button class="x-close" onclick="closeInventory()">✕</button>
+    <h2>📦 Inventory</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 4px">
+      Key in stock here instead of the Google Form. Every entry is saved
+      with the time in the <b>Inventory</b> tab of the Google Sheet.
+    </p>
+    <label>Item</label>
+    <input type="text" id="inv-item" list="inv-items" placeholder="e.g. Roundneck black XL">
+    <datalist id="inv-items"></datalist>
+    <label>Stock movement</label>
+    <div class="agent-chips" id="inv-dir">
+      <button type="button" class="agent-chip active" data-dir="in">➕ Stock IN</button>
+      <button type="button" class="agent-chip" data-dir="out">➖ Stock OUT</button>
+    </div>
+    <input type="number" id="inv-qty" min="1" inputmode="numeric" placeholder="How many?">
+    <label>Note (optional)</label>
+    <input type="text" id="inv-note" placeholder="e.g. from supplier / used for SN order">
+    <button class="btn green" style="margin-top:14px" onclick="submitStock()">📥 Add entry</button>
+    <div id="inv-totals"></div>
+    <div id="inv-log"></div>
   </div>
 </div>
 
@@ -901,7 +943,7 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 8, BATCH = 6;
+  var MAX_PARALLEL = 8, BATCH = 8;
 
   // Interactive work (PIN check, saves) and photo uploads get the network to
   // themselves: background image downloads pause while they run. This is what
@@ -941,7 +983,7 @@
     return v;
   }
   function persistImg(id, data) {
-    if (!data || data.length > 160000) return; // persist thumbs (bigger ones were silently re-downloading every visit)
+    if (!data || data.length > 300000) return; // thumbs + most full photos survive restarts (half-eviction guards quota)
     if (String(id).indexOf('local') === 0) return; // temp upload previews stay in memory
     try { localStorage.setItem('ki_' + id, data); }
     catch (e) {
@@ -1483,7 +1525,7 @@
     var out = '';
     if (j.status === 'pending') {
       if (j.tab === 'postage') out += jmItem_('jm-sentbus', 'sentbus', '🚌 Oops! Sent bus', 'take proof');
-      if ((j.tab === 'delivery' || j.tab === 'postage') && !hasProb) {
+      if ((j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') && !hasProb) {
         out += jmItem_('jm-warn warn', 'noreceive', '❓ Haven\'t received', 'tell office');
         if (j.tab === 'postage') out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
       }
@@ -1530,6 +1572,83 @@
   // ☰ menu — the office drawer (Refresh / Stats / History / Clear-Reset / role)
   function openMenu() { document.getElementById('menu-overlay').classList.add('show'); }
   function closeMenu() { document.getElementById('menu-overlay').classList.remove('show'); }
+
+  // ------------------------------------------------------------ 📦 inventory
+  // Staff key in stock movements; the admin views totals and can remove a
+  // wrong entry. Data lives in the "Inventory" tab of the Google Sheet.
+  var invData = { items: [], entries: [] };
+  var invDir = 'in';
+  function openInventory() {
+    document.getElementById('inventory-overlay').classList.add('show');
+    renderInventory();
+    gsCall('getInventory', [], function (res) { invData = res; renderInventory(); },
+      function (e) { toast('⚠️ ' + errMsg_(e)); });
+  }
+  function closeInventory() { document.getElementById('inventory-overlay').classList.remove('show'); }
+  document.getElementById('inv-dir').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    invDir = b.getAttribute('data-dir');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+  function renderInventory() {
+    document.getElementById('inv-items').innerHTML = invData.items.map(function (it) {
+      return '<option value="' + esc(it.item) + '">';
+    }).join('');
+    var t = '';
+    if (invData.items.length) {
+      t = '<label style="margin-top:18px">📊 Current stock</label><table class="inv-table">';
+      invData.items.forEach(function (it) {
+        t += '<tr><td>' + esc(it.item) + '</td><td class="' + (it.total <= 0 ? 'neg' : '') + '">' + it.total + '</td></tr>';
+      });
+      t += '</table>';
+    }
+    document.getElementById('inv-totals').innerHTML = t;
+    var lg = '';
+    if (invData.entries.length) {
+      lg = '<label style="margin-top:16px">🕒 Recent entries</label>';
+      invData.entries.forEach(function (en) {
+        lg += '<div class="inv-row"><div class="txt"><b>' + (en.qty > 0 ? '+' : '') + en.qty + '</b> ' + esc(en.item) +
+          (en.note ? ' <span class="nt">— ' + esc(en.note) + '</span>' : '') +
+          '<div class="sub">' + timeAgo(en.at) + ' · ' + esc(en.by || 'staff') + '</div></div>' +
+          (isAdmin() ? '<button class="inv-del" onclick="delStock(\'' + en.id + '\')">🗑️</button>' : '') +
+          '</div>';
+      });
+    }
+    document.getElementById('inv-log').innerHTML = lg;
+  }
+  function submitStock() {
+    var item = document.getElementById('inv-item').value.trim();
+    var qty = Number(document.getElementById('inv-qty').value);
+    var note = document.getElementById('inv-note').value.trim();
+    if (!item) { toast('📦 Type the item name first'); return; }
+    if (!(qty > 0)) { toast('🔢 How many? Put the quantity'); return; }
+    var q = invDir === 'out' ? -qty : qty;
+    var temp = { id: 'local-inv-' + (++localSeq), at: Date.now(), item: item, qty: q, note: note, by: state.role };
+    invData.entries.unshift(temp);
+    var hit = invData.items.filter(function (it) { return it.item.toLowerCase() === item.toLowerCase(); })[0];
+    if (hit) hit.total += q; else invData.items.push({ item: item, total: q });
+    document.getElementById('inv-qty').value = '';
+    document.getElementById('inv-note').value = '';
+    renderInventory();
+    toast(q > 0 ? '✅ Stock in recorded!' : '✅ Stock out recorded!');
+    gsCall('addStock', [item, q, note, state.role],
+      function (res) { temp.id = res.id; },
+      function (e) { toast('⚠️ ' + errMsg_(e)); openInventory(); });
+  }
+  function delStock(id) {
+    askConfirm('Remove this stock entry? Totals update too.', '🗑️ Yes, Remove', function () {
+      var gone = invData.entries.filter(function (en) { return en.id === id; })[0];
+      invData.entries = invData.entries.filter(function (en) { return en.id !== id; });
+      if (gone) {
+        var hit = invData.items.filter(function (it) { return it.item.toLowerCase() === String(gone.item).toLowerCase(); })[0];
+        if (hit) hit.total -= gone.qty;
+      }
+      renderInventory();
+      toast('🗑️ Entry removed.');
+      gsCall('deleteStock', [id, state.pin], function () {}, function (e) { toast('⚠️ ' + errMsg_(e)); openInventory(); });
+    });
+  }
 
   /** PUSH UP (Checking page): send a swiped jobsheet BACK to the front of
       the swipe deck so staff must answer seen / not seen again. */
@@ -1942,7 +2061,7 @@
       (j.category && statusChip.indexOf('chip ' + j.category) < 0 ? ' · ' + CAT_LABEL[j.category] : '') +
       (j.fromCheck ? ' · ✅ passed check' : '') + '</div>';
     // "haven't received" problem status — visible to everyone on the card
-    if (!isDone && (j.tab === 'delivery' || j.tab === 'postage')) {
+    if (!isDone && (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect')) {
       if (j.problem === 'reported' || j.problem === 'nosticker') {
         html += '<div class="prob-line">' +
           (j.problem === 'nosticker' ? '🏷️ No sticker — reported at ' : '🚨 Reported at ') +
@@ -2397,7 +2516,7 @@
     state.jobs.want.forEach(function (j) {
       if (j.status === 'notseen' && j.problem !== 'printed') out.push(j);
     });
-    ['delivery', 'postage'].forEach(function (t) {
+    ['delivery', 'postage', 'defect'].forEach(function (t) {
       state.jobs[t].forEach(function (j) {
         if (j.status === 'pending' && (j.problem === 'reported' || j.problem === 'nosticker')) out.push(j);
       });
@@ -2916,7 +3035,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -2927,6 +3046,7 @@
       else if (id === 'problem-overlay') closeProblems();
       else if (id === 'menu-overlay') closeMenu();
       else if (id === 'jobmenu-overlay') closeJobMenu();
+      else if (id === 'inventory-overlay') closeInventory();
       else closeUpload();
     });
   });

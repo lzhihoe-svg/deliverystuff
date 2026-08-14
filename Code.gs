@@ -237,11 +237,11 @@ function trashFile_(fileId) {
 /**
  * Serves image bytes through the app as data URIs — photos show on every
  * device with no dependency on Drive link-sharing (often blocked on
- * Google Workspace domains). Max 6 images per call; the page batches.
+ * Google Workspace domains). Max 8 images per call; the page batches.
  */
 function getImagesData(ids) {
   var out = {};
-  var n = Math.min(ids.length, 6);
+  var n = Math.min(ids.length, 8);
   for (var i = 0; i < n; i++) {
     var id = ids[i];
     try {
@@ -923,8 +923,8 @@ function reportProblem(id, kind) {
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
     var vals = sh.getRange(row, 1, 1, 27).getValues()[0];
-    if (vals[1] !== 'delivery' && vals[1] !== 'postage') {
-      throw new Error('Only Delivery/Postage jobs can be reported');
+    if (vals[1] !== 'delivery' && vals[1] !== 'postage' && vals[1] !== 'defect') {
+      throw new Error('Only Delivery/Postage/Defect jobs can be reported');
     }
     if (mark === 'nosticker' && vals[1] !== 'postage') {
       throw new Error('No-sticker reports are for Postage jobs');
@@ -985,6 +985,80 @@ function solveProblem(id, photoB64, thumbB64) {
   }
   for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
   return { id: id, problem: 'printed', printedAt: ts, printPhotoId: photoId, printThumbId: thumbId };
+}
+
+// ---------------------------------------------------------------- 📦 inventory
+// Replaces the old Google Form: staff key stock in/out here, the admin
+// views totals. Lives in its own "Inventory" tab of the same spreadsheet.
+function invSheet_() {
+  ensureSetup_();
+  var ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID'));
+  var sh = ss.getSheetByName('Inventory');
+  if (!sh) {
+    sh = ss.insertSheet('Inventory');
+    sh.appendRow(['id', 'at', 'item', 'qty', 'note', 'by']);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** Staff OR admin: record stock movement. qty > 0 = stock in, < 0 = stock out. */
+function addStock(item, qty, note, by) {
+  item = cleanName_(item);
+  if (!item) throw new Error('Item name required');
+  qty = Number(qty);
+  if (!qty || isNaN(qty)) throw new Error('Quantity required');
+  var id = Utilities.getUuid();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    invSheet_().appendRow([id, new Date().getTime(), item, qty,
+      String(note || '').slice(0, 200), by === 'admin' ? 'admin' : 'staff']);
+  } finally {
+    lock.releaseLock();
+  }
+  return { id: id, item: item, qty: qty };
+}
+
+/** Totals per item + the 60 most recent entries (newest first). */
+function getInventory() {
+  var sh = invSheet_();
+  var last = sh.getLastRow();
+  var totals = {}, entries = [];
+  if (last >= 2) {
+    var rows = sh.getRange(2, 1, last - 1, 6).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var key = String(r[2]);
+      totals[key] = (totals[key] || 0) + (Number(r[3]) || 0);
+      entries.push({ id: r[0], at: r[1], item: key, qty: Number(r[3]) || 0, note: r[4] || '', by: r[5] || '' });
+    }
+  }
+  entries.reverse();
+  var items = [];
+  for (var k in totals) items.push({ item: k, total: totals[k] });
+  items.sort(function (a, b) { return a.item.toLowerCase() < b.item.toLowerCase() ? -1 : 1; });
+  return { items: items, entries: entries.slice(0, 60) };
+}
+
+/** ADMIN ONLY: remove a wrong entry (the record disappears from totals too). */
+function deleteStock(id, pin) {
+  requireAdmin_(pin);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = invSheet_();
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var ids = sh.getRange(2, 1, last - 1, 1).getValues();
+      for (var i = 0; i < ids.length; i++) {
+        if (String(ids[i][0]) === String(id)) { sh.deleteRow(i + 2); return { ok: true, id: id }; }
+      }
+    }
+    throw new Error('Entry not found');
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**

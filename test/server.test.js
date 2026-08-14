@@ -15,47 +15,58 @@ function makeEnv() {
   const files = {};              // id -> { trashed }
   let fileCounter = 0;
   let uuidCounter = 0;
-  const sheetData = [];          // array of row arrays; index 0 = sheet row 1
   let lockCount = 0, unlockCount = 0;
 
-  function ensureCell(r, c) {
-    while (sheetData.length < r) sheetData.push([]);
-    const row = sheetData[r - 1];
-    while (row.length < c) row.push('');
+  // sheet factory — the spreadsheet holds NAMED sheets (Jobs + Inventory)
+  function makeSheet() {
+    const data = []; // array of row arrays; index 0 = sheet row 1
+    function ensureCell(r, c) {
+      while (data.length < r) data.push([]);
+      const row = data[r - 1];
+      while (row.length < c) row.push('');
+    }
+    return {
+      _data: data,
+      setName() {}, setFrozenRows() {},
+      appendRow(row) { data.push(row.slice()); },
+      getLastRow() { return data.length; },
+      deleteRow(r) { data.splice(r - 1, 1); },
+      getRange(r, c, nr, nc) {
+        if (nr === undefined) { nr = 1; nc = 1; }
+        return {
+          getValues() {
+            const out = [];
+            for (let i = 0; i < nr; i++) {
+              const row = data[r - 1 + i] || [];
+              const line = [];
+              for (let j = 0; j < nc; j++) line.push(row[c - 1 + j] !== undefined ? row[c - 1 + j] : '');
+              out.push(line);
+            }
+            return out;
+          },
+          getValue() { return this.getValues()[0][0]; },
+          setValue(v) { ensureCell(r, c); data[r - 1][c - 1] = v; },
+          setValues(vals) {
+            for (let i = 0; i < vals.length; i++)
+              for (let j = 0; j < vals[i].length; j++) {
+                ensureCell(r + i, c + j);
+                data[r - 1 + i][c - 1 + j] = vals[i][j];
+              }
+          }
+        };
+      }
+    };
   }
 
-  const sheet = {
-    setName() {}, setFrozenRows() {},
-    appendRow(row) { sheetData.push(row.slice()); },
-    getLastRow() { return sheetData.length; },
-    deleteRow(r) { sheetData.splice(r - 1, 1); },
-    getRange(r, c, nr, nc) {
-      if (nr === undefined) { nr = 1; nc = 1; }
-      return {
-        getValues() {
-          const out = [];
-          for (let i = 0; i < nr; i++) {
-            const row = sheetData[r - 1 + i] || [];
-            const line = [];
-            for (let j = 0; j < nc; j++) line.push(row[c - 1 + j] !== undefined ? row[c - 1 + j] : '');
-            out.push(line);
-          }
-          return out;
-        },
-        getValue() { return this.getValues()[0][0]; },
-        setValue(v) { ensureCell(r, c); sheetData[r - 1][c - 1] = v; },
-        setValues(vals) {
-          for (let i = 0; i < vals.length; i++)
-            for (let j = 0; j < vals[i].length; j++) {
-              ensureCell(r + i, c + j);
-              sheetData[r - 1 + i][c - 1 + j] = vals[i][j];
-            }
-        }
-      };
-    }
+  const sheet = makeSheet();
+  const sheetData = sheet._data;
+  const namedSheets = { Jobs: sheet };
+  const ss = {
+    getSheets: () => [sheet],
+    getSheetByName: n => namedSheets[n] || null,
+    insertSheet: n => { namedSheets[n] = makeSheet(); return namedSheets[n]; },
+    getId: () => 'ss1'
   };
-
-  const ss = { getSheets: () => [sheet], getSheetByName: () => sheet, getId: () => 'ss1' };
 
   // Drive folders: root + month subfolders (savePhoto_ files by month)
   const folderReg = {};
@@ -801,6 +812,39 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
   const dd = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64] });
   throws(() => ctx.reportProblem(dd.id, 'sticker'), 'no-sticker is Postage-only');
   check(ctx.solveProblem(ns.id, B64, B64).problem === 'printed', 'office solves a no-sticker report the same way');
+
+  // DEFECT jobs can be reported as haven't-received too
+  const df = ctx.addJob({ tab: 'defect', category: '', note: 'torn collar', customer: 'CG', photos: [B64], jsCount: 1 });
+  const dr = ctx.reportProblem(df.id);
+  check(dr.problem === 'reported' && dr.problemAt > 0, "defect job can be reported as haven't-received");
+  throws(() => ctx.reportProblem(df.id, 'sticker'), 'but no-sticker stays Postage-only for defects too');
+  check(ctx.solveProblem(df.id, B64, B64).problem === 'printed', 'office solves a defect report the same way');
+}
+
+console.log('\n== 📦 inventory (staff key in, admin views) ==');
+{
+  const { ctx } = makeEnv();
+  throws(() => ctx.addStock('', 5, '', 'staff'), 'item name required');
+  throws(() => ctx.addStock('Roundneck black', 0, '', 'staff'), 'quantity required');
+  const a = ctx.addStock('Roundneck black XL', 25, 'from supplier', 'staff');
+  check(!!a.id && a.qty === 25, 'staff records stock IN (no PIN needed)');
+  ctx.addStock('Roundneck black XL', -5, 'used for SN order', 'staff');
+  ctx.addStock('Polo green M', 10, '', 'admin');
+  const inv = ctx.getInventory();
+  const rn = inv.items.filter(i => i.item === 'Roundneck black XL')[0];
+  check(!!rn && rn.total === 20, 'totals add up per item (25 in − 5 out = 20)');
+  check(inv.items.length === 2, 'each item gets ONE totals row');
+  check(inv.entries.length === 3 && inv.entries[0].qty === 10, 'entries listed newest first');
+  check(inv.entries.every(e => e.at > 0 && (e.by === 'staff' || e.by === 'admin')), 'every entry keeps time + who');
+  throws(() => ctx.deleteStock(a.id, ''), 'staff cannot delete entries');
+  throws(() => ctx.deleteStock(a.id, '9999'), 'wrong PIN cannot delete');
+  check(ctx.deleteStock(a.id, PIN).ok === true, 'admin removes a wrong entry');
+  check(ctx.getInventory().items.filter(i => i.item === 'Roundneck black XL')[0].total === -5,
+    'totals recalculate after the delete');
+  throws(() => ctx.deleteStock('ghost', PIN), 'deleting a missing entry fails loudly');
+  // inventory lives in its OWN sheet — the jobs board is untouched
+  check(ctx.getAllData().counts.want === 0 && ctx.getJobs('postage').length === 0,
+    'inventory entries never leak into the job boards');
 }
 
 console.log('\n== lost photo slot: Save heals the job ==');
@@ -871,8 +915,8 @@ console.log('\n== getImagesData (photos on every device) ==');
   const decoded = Buffer.from(map[j.photoIds[0]].split(',')[1], 'base64').toString();
   check(decoded === 'fake-jpeg-bytes', 'image bytes round-trip correctly');
   check(map['bogus-id'] === null, 'missing file returns null instead of crashing');
-  const many = ctx.getImagesData(['a','b','c','d','e','f','g','h']);
-  check(Object.keys(many).length === 6, 'caps at 6 images per call');
+  const many = ctx.getImagesData(['a','b','c','d','e','f','g','h','i','j']);
+  check(Object.keys(many).length === 8, 'caps at 8 images per call');
 }
 
 console.log('\n== lock hygiene ==');

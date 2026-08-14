@@ -1123,8 +1123,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await moreCount(pdCard, '.jm-warn')).n === 1, "delivery card offers '❓ Haven't received' in its ⋯ menu");
   check(await page.evaluate(() => {
     const mk = t => jobMenuHtml_({ id: 'x', tab: t, status: 'pending', problem: '', photoIds: [] });
-    return mk('want').indexOf('jm-warn') < 0 && mk('defect').indexOf('jm-warn') < 0;
-  }), 'checking/defect cards do NOT');
+    return mk('want').indexOf('jm-warn') < 0 && mk('defect').indexOf('jm-warn') >= 0;
+  }), 'checking cards do NOT (defect cards DO now)');
   await viaMore(pdCard, '.jm-warn');
   await sleep(600);
   check((await pdCard.locator('.prob-line').textContent()).indexOf('Reported at') >= 0, "card shows '🚨 Reported at <time>'");
@@ -1289,6 +1289,80 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(!await page.locator('#badge-defect').isVisible(), 'badge clears when the defect is fixed');
   await page.click('#nav-postage');
   await sleep(300);
+
+  console.log("\n-- defect: Haven't received → Problem page too --");
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'defect', category: '', note: 'Def-missing', customer: 'SN',
+      photos: ['dm1', 'dm2'], thumbs: ['dm1', 'dm2'], jsCount: 1 });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(500);
+  await page.click('#nav-defect');
+  await sleep(400);
+  const dmCard = page.locator('#defect-list .card').filter({ hasText: 'Def-missing' });
+  check((await moreCount(dmCard, '.jm-warn')).n === 1, "defect ⋯ menu offers '❓ Haven't received'");
+  check((await moreCount(dmCard, '.jm-sticker')).n === 0, 'but NOT No sticker (postage-only)');
+  await viaMore(dmCard, '.jm-warn');
+  await sleep(500);
+  check((await dmCard.locator('.prob-line').textContent()).indexOf('Reported at') >= 0, "defect card shows '🚨 Reported at <time>'");
+  await page.click('#problem-btn');
+  await sleep(400);
+  const dmProb = page.locator('#problem-list .prob-card').filter({ hasText: 'Def-missing' });
+  check((await dmProb.count()) === 1 && (await dmProb.textContent()).indexOf('Defect') >= 0,
+    'listed on the Problem page, labelled Defect');
+  await dmProb.locator('.btn.green').click();
+  await page.setInputFiles('#print-file', IMG);
+  await sleep(900);
+  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Def-missing').problem === 'printed'),
+    'office solves it with the printing photo, same loop');
+  await page.evaluate(() => {
+    document.getElementById('problem-overlay').classList.remove('show');
+    window.__mockdb.jobs.find(x => x.note === 'Def-missing').status = 'archived';
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+
+  console.log('\n-- 📦 Inventory: staff key in, admin views --');
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(200);
+  await viaMenu('#inventory-btn');
+  check(await page.locator('#inventory-overlay').isVisible(), 'Inventory opens from the ☰ menu (staff too)');
+  await page.fill('#inv-item', 'Roundneck black XL');
+  await page.fill('#inv-qty', '25');
+  await page.fill('#inv-note', 'from supplier');
+  await page.click('#inventory-overlay .btn.green');
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.inv.length === 1 && window.__mockdb.inv[0].qty === 25),
+    'stock IN saved on the server (staff, no PIN)');
+  await page.click('#inv-dir button[data-dir="out"]');
+  await page.fill('#inv-item', 'Roundneck black XL');
+  await page.fill('#inv-qty', '5');
+  await page.click('#inventory-overlay .btn.green');
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.inv[1] && window.__mockdb.inv[1].qty === -5),
+    'stock OUT saved as a negative movement');
+  check((await page.locator('#inv-totals .inv-table td').nth(1).textContent()) === '20', 'totals show 25 − 5 = 20');
+  check((await page.locator('#inv-log .inv-row').count()) === 2, 'both entries in the log with time');
+  check((await page.locator('#inv-log .inv-del').count()) === 0, 'staff cannot delete entries');
+  await page.fill('#inv-item', '');
+  await page.click('#inventory-overlay .btn.green');
+  await sleep(200);
+  check((await page.locator('#toast').textContent()).indexOf('item name') >= 0, 'blocked without an item name');
+  await page.evaluate(() => closeInventory());
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(300);
+  await viaMenu('#inventory-btn');
+  await sleep(500);
+  check((await page.locator('#inv-log .inv-del').count()) === 2, 'admin sees 🗑️ on every entry');
+  await page.locator('#inv-log .inv-del').first().click();
+  await sleep(200);
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check(await page.evaluate(() => window.__mockdb.inv.length === 1), 'admin delete removes the entry on the server');
+  check((await page.locator('#inv-totals .inv-table td').nth(1).textContent()) === '25',
+    'totals recalculate (only the stock-in remains)');
+  await page.evaluate(() => closeInventory());
+  await sleep(200);
 
   console.log('\n-- bottom nav: icons stay put when tapped --');
   const icoB = await page.locator('#nav-want .ico').boundingBox();
