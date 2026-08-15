@@ -392,6 +392,15 @@
   .proof { display: flex; align-items: center; gap: 10px; background: #f6fbea; border-radius: 14px; padding: 9px; margin-top: 10px; }
   .proof img { width: 60px; height: 60px; object-fit: cover; border-radius: 12px; cursor: pointer; box-shadow: 0 0 0 2.5px var(--lime); }
   .proof .txt { font-size: 13px; color: #3f6212; font-weight: 700; }
+  /* J&T morning number — how many parcels to tell the truck about */
+  .jnt-bar {
+    background: linear-gradient(135deg, #fff7ed, #ffedd5); border: 1.5px solid #fdba74;
+    color: #9a3412; border-radius: 999px; padding: 10px 16px; margin: 4px 0 10px;
+    font-size: 14.5px; font-weight: 800;
+  }
+  .jnt-bar b { font-size: 17px; }
+  .jnt-bar.zero { background: var(--soft); border-color: var(--line); color: var(--muted); }
+
   /* big ✔ — this job is fully finished, stop thinking about it */
   .delivered-big {
     display: flex; align-items: center; gap: 12px; margin-top: 10px;
@@ -1582,6 +1591,9 @@
       if (j.tab === 'delivery' && j.deliveredAt) {
         out += jmItem_('jm-deldeliv warn', 'deldeliv', '↩️ Undo Delivered', 'wrong tap');
       }
+      if (j.tab === 'postage' && j.sentAt) {
+        out += jmItem_('jm-delsent warn', 'delsent', '↩️ Undo Sent', 'back to ready count');
+      }
     }
     if (isAdmin()) {
       out += jmItem_('jm-edit', 'edit', '✏️ Edit job', 'admin');
@@ -1613,6 +1625,7 @@
     else if (what === 'reproof') startReProof(id);
     else if (what === 'delproof') removeProof(id);
     else if (what === 'deldeliv') removeDeliveredNow(id);
+    else if (what === 'delsent') undoSentNow(id);
     else if (what === 'edit') openUpload(id);
     else if (what === 'del') removeJob(id);
     else if (what === 'hide') markJob(id, 'archived');
@@ -1951,19 +1964,19 @@
     var jobs = state.jobs.delivery.filter(function (j) {
       return !state.deliveryCat || j.category === state.deliveryCat;
     });
-    document.getElementById('delivery-list').innerHTML = renderJobList(jobs);
+    document.getElementById('delivery-list').innerHTML = renderJobList(jobs, 'delivery');
   }
 
   // ------------------------------------------------------------ TAB 3: postage
   function renderPostage() {
-    document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage);
+    document.getElementById('postage-list').innerHTML = renderJobList(state.jobs.postage, 'postage');
   }
 
   // ------------------------------------------------------------ TAB 4: defect
   // Same workflow as Postage: To Do → staff fixes the defect and takes a
   // PROOF photo → Done. Cards show Jobsheet | Defect photos side by side.
   function renderDefect() {
-    document.getElementById('defect-list').innerHTML = renderJobList(state.jobs.defect);
+    document.getElementById('defect-list').innerHTML = renderJobList(state.jobs.defect, 'defect');
   }
 
   /** Small progress ring for the Completed tile. */
@@ -1976,7 +1989,7 @@
       'stroke-dasharray="' + pct + ' 100.5" transform="rotate(-90 20 20)"></circle></svg>';
   }
 
-  function renderJobList(jobs) {
+  function renderJobList(jobs, tab) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
     // most urgent deadline first; jobs without a deadline after, newest first
@@ -1993,6 +2006,13 @@
         '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
     }
 
+    // POSTAGE: the J&T truck comes at 11am — this is the number to tell them.
+    // Ready = Done (waybill + proof) but NOT yet handed over; Sent jobs drop out.
+    if (tab === 'postage') {
+      var ready = jobs.filter(function (j) { return j.status === 'done' && !j.sentAt; }).length;
+      html += '<div class="jnt-bar' + (ready ? '' : ' zero') + '">🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
+        (ready ? ' parcel' + (ready > 1 ? 's' : '') : ' — none waiting') + '</div>';
+    }
     // today at a glance: how many left vs finished
     html += '<div class="stat-row">' +
       '<span class="stat-box todo">⏳ <span class="num">' + pending.length + '</span> to do</span>' +
@@ -2105,6 +2125,16 @@
         (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') : '') +
         '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div>' +
         (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
+      // POSTAGE second stage: Done = parcel ready on the shelf; SENT = handed
+      // to the J&T truck. The big ✔ takes it out of the ready count.
+      if (j.tab === 'postage' && !j.proofUploading && !j.uploading) {
+        if (j.sentAt) {
+          html += '<div class="delivered-big"><div class="tick">✔</div><div class="dtxt">' +
+            '<b>SENT TO J&amp;T</b><span>' + fmtDT(j.sentAt) + '</span></div></div>';
+        } else {
+          html += '<button class="btn green small" style="margin-top:8px" onclick="markSentNow(\'' + j.id + '\')">📮 Sent — given to J&amp;T</button>';
+        }
+      }
       // DELIVERY second stage: ready is not DELIVERED. Confirming asks two
       // quick questions (how? by whom?) — no photo — then the big ✔ means
       // nobody has to think about this job again.
@@ -2373,6 +2403,7 @@
         : (j.doneAt ? ' · answered ' + fmtDT(j.doneAt) : ''));
     } else status = '🕐 Still waiting';
 
+    if (j.sentAt) status += ' · ✔ Sent to J&T · ' + fmtDT(j.sentAt);
     if (j.deliveredAt) status += ' · ✔ Delivered — ' + (DELIV_VIA[j.deliveredVia] || '') +
       (j.deliveredBy ? ' by ' + (j.deliveredBy === 'ZH' ? 'Bos (ZH)' : j.deliveredBy) : '') + ' · ' + fmtDT(j.deliveredAt);
     var csv = j.photoIds.join(',');
@@ -2524,6 +2555,29 @@
   }
 
   /** Remove a wrong delivered photo — back to "sent, not yet confirmed". */
+  /** "📮 Sent — given to J&T": one tap when the truck collects; the parcel
+   *  leaves the ready count and gets the big ✔. */
+  function markSentNow(id) {
+    var j = findJob(id);
+    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
+    askConfirm('Given to the J&T truck? This parcel leaves the ready count.', '📮 Yes, Sent', function () {
+      if (j) { j.sentAt = Date.now(); saveJobsCache(state.tab); renderAll(); }
+      toast('📮 Sent to J&T!');
+      gsCall('markSentJnt', [id], function (res) {
+        if (j) { j.sentAt = res.sentAt; saveJobsCache('postage'); }
+      }, bgFail);
+    });
+  }
+  /** Undo a wrong Sent tap — the parcel returns to the ready count. */
+  function undoSentNow(id) {
+    askConfirm('Undo Sent? The parcel goes back to the ready count.', '↩️ Yes, Undo', function () {
+      var j = findJob(id);
+      if (j) { j.sentAt = ''; saveJobsCache(state.tab); renderAll(); }
+      toast('↩️ Sent undone — back in the ready count.');
+      gsCall('undoSentJnt', [id], function () {}, bgFail);
+    });
+  }
+
   /** Undo a wrong Delivered confirmation. */
   function removeDeliveredNow(id) {
     askConfirm('Undo Delivered? The job goes back to "ready, not yet delivered".', '↩️ Yes, Undo', function () {

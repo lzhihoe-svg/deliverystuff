@@ -1101,6 +1101,49 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(300);
 
+  console.log('\n-- 📮 J&T ready count + Sent button --');
+  await page.evaluate(() => {
+    setRole('staff', '');
+    const a = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Jnt-A', customer: 'SN', photos: ['ja1', 'ja2'], thumbs: ['ja1', 'ja2'], jsCount: 1 });
+    const b = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Jnt-B', customer: 'CG', photos: ['jb1', 'jb2'], thumbs: ['jb1', 'jb2'], jsCount: 1 });
+    window.__mockapi.updateStatus(a.id, 'done', 'p', 'pt', null);
+    window.__mockapi.updateStatus(b.id, 'done', 'p', 'pt', null);
+  });
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const jntReady0 = await page.evaluate(() =>
+    window.__kilang.jobs.postage.filter(j => j.status === 'done' && !j.sentAt).length);
+  check((await page.locator('#postage-list .jnt-bar b').textContent()) === String(jntReady0),
+    'the J&T bar shows how many parcels are ready RIGHT NOW (' + jntReady0 + ')');
+  const jaCard = page.locator('#postage-list .card').filter({ hasText: 'Jnt-A' });
+  check((await jaCard.locator('.btn.green').count()) === 1 &&
+    (await jaCard.locator('.btn.green').textContent()).indexOf('Sent') >= 0,
+    "ready parcel shows '📮 Sent — given to J&T' (staff too)");
+  await clickSafe(jaCard.locator('.btn.green'));
+  await sleep(200);
+  await page.click('#confirm-yes');
+  await sleep(700);
+  check(await page.evaluate(() => !!window.__mockdb.jobs.find(x => x.note === 'Jnt-A').sentAt),
+    'server stamps the Sent time');
+  check((await jaCard.locator('.delivered-big').textContent()).indexOf('SENT TO J&T') >= 0,
+    'big ✔ SENT TO J&T appears on the job');
+  check((await page.locator('#postage-list .jnt-bar b').textContent()) === String(jntReady0 - 1),
+    'the ready count drops — sent parcels are OUT of the next count');
+  const jaTools = await moreCount(jaCard, '.jm-delsent');
+  check(jaTools.n === 1, '⋯ offers ↩️ Undo Sent');
+  await viaMore(jaCard, '.jm-delsent');
+  await sleep(200);
+  await page.click('#confirm-yes');
+  await sleep(600);
+  check((await page.locator('#postage-list .jnt-bar b').textContent()) === String(jntReady0),
+    'Undo Sent puts it back in the ready count');
+  await page.evaluate(() => {
+    setRole('admin', '1234');
+    ['Jnt-A', 'Jnt-B'].forEach(n => { const j = window.__mockdb.jobs.find(x => x.note === n); if (j) j.status = 'archived'; });
+  });
+  await page.evaluate(() => refresh());
+  await sleep(400);
+
   console.log('\n-- 📷 lost photo slot: pair layout survives + Edit heals --');
   await page.evaluate(() => {
     const j = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Lost-slot', customer: 'DO',

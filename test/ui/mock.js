@@ -111,7 +111,7 @@
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
         nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
         problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
-        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: ''
+        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: ''
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -204,7 +204,7 @@
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       j.status = 'pending'; j.doneAt = ''; j.proofPhotoId = ''; j.proofThumbId = '';
-      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = ''; j.deliveredBy = '';
+      j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = ''; j.deliveredBy = ''; j.sentAt = '';
       return { id: id, status: 'pending' };
     },
     resetAll: function (pin) {
@@ -254,6 +254,20 @@
       if (!isProblem) throw new Error('This job is not on the Problem page');
       j.problemNote = text;
       return { id: id, problemNote: text };
+    },
+    markSentJnt: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.tab !== 'postage') throw new Error('Sent-to-J&T is for Postage jobs');
+      if (j.status !== 'done') throw new Error('Finish the parcel first (Done + proof), then mark Sent');
+      j.sentAt = Date.now();
+      return { id: id, sentAt: j.sentAt };
+    },
+    undoSentJnt: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      j.sentAt = '';
+      return { id: id, sentAt: '' };
     },
     markDelivered: function (id, via, by) {
       var VIAS = { lalamove: 1, bus: 1, pickup: 1, personal: 1 };

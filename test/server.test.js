@@ -888,6 +888,33 @@ console.log('\n== 📦 Delivered? (how + by whom, no photo) ==');
     'removing the Done proof also clears the delivered confirmation');
 }
 
+console.log('\n== 📮 Sent to J&T (ready count → sent → big ✔) ==');
+{
+  const { ctx } = makeEnv();
+  const a = ctx.addJob({ tab: 'postage', category: '', note: 'parcel A', photos: [B64, B64], jsCount: 1 });
+  const b = ctx.addJob({ tab: 'postage', category: '', note: 'parcel B', photos: [B64, B64], jsCount: 1 });
+  throws(() => ctx.markSentJnt(a.id), 'cannot mark Sent before the parcel is Done');
+  ctx.updateStatus(a.id, 'done', B64, B64, null);
+  ctx.updateStatus(b.id, 'done', B64, B64, null);
+  const ready0 = ctx.getJobs('postage').filter(j => j.status === 'done' && !j.sentAt).length;
+  check(ready0 === 2, 'two parcels ready for the 11am truck');
+  const r = ctx.markSentJnt(a.id);
+  check(r.sentAt > 0 && ctx.getJobs('postage').filter(j => j.id === a.id)[0].sentAt === r.sentAt,
+    'Sent stamps the timestamp on the parcel');
+  check(ctx.getJobs('postage').filter(j => j.status === 'done' && !j.sentAt).length === 1,
+    'the ready count drops — next count is a fresh batch');
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64] });
+  ctx.updateStatus(d.id, 'done', B64, B64, null);
+  throws(() => ctx.markSentJnt(d.id), 'delivery jobs cannot use Sent-to-J&T');
+  ctx.undoSentJnt(a.id);
+  check(ctx.getJobs('postage').filter(j => j.status === 'done' && !j.sentAt).length === 2,
+    'Undo Sent puts the parcel back in the ready count');
+  ctx.markSentJnt(a.id);
+  ctx.deleteProof(a.id);
+  check(ctx.getJobs('postage').filter(j => j.id === a.id)[0].sentAt === '',
+    'removing the Done proof clears Sent too');
+}
+
 console.log('\n== 📦 stock count (staff key in, admin views) ==');
 {
   const { ctx } = makeEnv();
