@@ -1843,6 +1843,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#postage-list .jnt-bar b').textContent()) === '1',
     'the ready count still says 1 parcel for the truck');
 
+  console.log('\n-- symmetrical photo heights on every card --');
+  const pairHs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#postage-list .photo-pair img, #postage-list .photo-pair .lost-photo'))
+      .map(e => parseFloat(getComputedStyle(e).height)));
+  check(pairHs.length >= 2 && pairHs.every(h => h === pairHs[0] && h > 0),
+    'jobsheet & waybill sides share one exact height (' + pairHs[0] + 'px)');
+  await page.click('#nav-delivery');
+  await sleep(400);
+  const singleHs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#delivery-list .carousel img, #delivery-list .carousel .lost-photo'))
+      .map(e => parseFloat(getComputedStyle(e).height)));
+  check(singleHs.length >= 2 && singleHs.every(h => h === singleHs[0] && h > 0),
+    'every delivery card photo has the same height (' + singleHs[0] + 'px)');
+
   await ctx.close();
 
   // ============================================================ DESKTOP
