@@ -1680,6 +1680,95 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }));
   check(early.cards === 1, 'cached jobs render instantly, before the server responds');
 
+  console.log('\n-- UX polish: loading skeleton, pill counts, jump links --');
+  await sleep(700); // let the reload's first refresh land
+
+  // first-load skeleton: an empty tab must say "Loading", never "Nothing here"
+  const skel = await page.evaluate(() => {
+    const st = window.__kilang;
+    const keep = st.jobs.delivery;
+    st.loadedOnce = false;
+    st.jobs.delivery = [];
+    renderDelivery();
+    const txt = document.getElementById('delivery-list').textContent;
+    st.loadedOnce = true;
+    st.jobs.delivery = keep;
+    renderDelivery();
+    return txt;
+  });
+  check(skel.indexOf('Loading jobs') >= 0, 'empty tab says "Loading jobs…" before the first server answer');
+  check(skel.indexOf('Nothing here yet') < 0, 'no misleading "Nothing here yet" while still loading');
+
+  // live to-do count on the delivery pills
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'Count me', customer: 'CG', photos: ['q1'], thumbs: ['q1'] });
+    refresh();
+  });
+  await sleep(500);
+  await page.click('#nav-delivery');
+  await sleep(500);
+  const pillTxt = await page.locator('#delivery-pills button[data-cat="lalamove"]').textContent();
+  check(pillTxt.indexOf('· 1') >= 0, 'delivery pill shows its live to-do count (' + pillTxt.trim() + ')');
+
+  // an empty FILTER explains itself instead of saying "post a job"
+  await page.click('#delivery-pills button[data-cat="bus"]');
+  await sleep(250);
+  const fEmpty = await page.locator('#delivery-list').textContent();
+  check(fEmpty.indexOf('No 🚌 Bus jobs') >= 0, 'empty category filter explains itself');
+  check(fEmpty.indexOf('Tap All') >= 0, '…and points back to the All pill');
+  await page.click('#delivery-pills button[data-cat=""]');
+  await sleep(250);
+
+  // tap the counter bar → glide to that section
+  await page.evaluate(() => {
+    const j = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Done one', customer: 'SN', photos: ['q2'], thumbs: ['q2'] });
+    window.__mockapi.updateStatus(j.id, 'done', 'p', 'pt', null);
+    refresh();
+  });
+  await sleep(500);
+  check((await page.locator('#sec-todo-delivery').count()) === 1 && (await page.locator('#sec-done-delivery').count()) === 1,
+    'To Do / Done sections have jump anchors');
+  await page.evaluate(() => jumpToSec('delivery', 'done'));
+  await sleep(700);
+  check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) > 0,
+    'tapping "✅ done" glides down to the Done section');
+
+  // the Delivered sheet names the job being confirmed
+  const dlvCard = page.locator('#delivery-list .card').filter({ hasText: 'Done one' });
+  await dlvCard.locator('button:has-text("Delivered? Tap to confirm")').click();
+  await sleep(300);
+  check(await page.locator('#deliv-overlay').isVisible(), 'Delivered sheet opens');
+  const djTxt = await page.locator('#deliv-job').textContent();
+  check(djTxt.indexOf('SN') >= 0 && djTxt.indexOf('Done one') >= 0, 'the sheet says WHICH job is being confirmed');
+  await page.click('#deliv-overlay .x-close');
+  await sleep(250);
+
+  // one-tap refresh chip + Enter submits the PIN
+  const chipClick = await page.evaluate(() => {
+    const el = document.querySelector('#sync-row .sync-chip');
+    return el ? (el.getAttribute('onclick') || '') : '';
+  });
+  check(chipClick.indexOf('manualRefresh') >= 0, 'the header status chip is a one-tap refresh');
+  const pinKey = await page.evaluate(() => document.getElementById('pin-input').getAttribute('onkeydown') || '');
+  check(pinKey.indexOf('submitPin') >= 0, 'Enter key submits the admin PIN');
+
+  // switching tabs always starts at the top of the new tab
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 400; });
+  await page.click('#nav-postage');
+  await sleep(350);
+  check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) === 0,
+    'switching tabs starts at the top of the new tab');
+
+  // the J&T ready bar taps through to the waiting parcels
+  await page.evaluate(() => {
+    const s = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Ready parcel', customer: 'CG', photos: ['r1', 'r2'], thumbs: ['r1', 'r2'], jsCount: 1 });
+    window.__mockapi.updateStatus(s.id, 'done', 'p', 'pt', null);
+    refresh();
+  });
+  await sleep(500);
+  const jbar = await page.locator('#postage-list .jnt-bar').getAttribute('onclick');
+  check(String(jbar || '').indexOf('jumpToSec') >= 0, 'J&T ready bar taps through to the parcels');
+
   await ctx.close();
 
   // ============================================================ DESKTOP

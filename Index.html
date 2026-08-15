@@ -57,6 +57,7 @@
   }
   #sync-row .sync-chip {
     display: inline-block; background: var(--lime-soft); border-radius: 999px; padding: 4px 11px;
+    cursor: pointer;
   }
   .role-btn {
     border: 1px solid #e4e8d8; background: #fff; color: #4b5142;
@@ -116,6 +117,7 @@
   .section-title {
     font-size: 12px; font-weight: 800; color: var(--muted);
     text-transform: uppercase; letter-spacing: .08em; margin: 20px 0 10px;
+    scroll-margin-top: 96px; /* jump-to-section lands clear of the sticky header */
   }
   .empty { text-align: center; color: var(--muted); padding: 44px 10px; font-size: 17px; font-weight: 600; grid-column: 1 / -1; }
   .empty .big { font-size: 56px; display: block; margin-bottom: 12px; }
@@ -134,6 +136,7 @@
     box-shadow: var(--shadow); font-size: 14.5px; font-weight: 800;
   }
   .stat-row .sep { color: var(--muted); font-weight: 600; }
+  .stat-row .stat-box { cursor: pointer; }
   .stat-row .stat-ring { margin-left: auto; width: 26px; height: 26px; }
   .stat-box .num { font-variant-numeric: tabular-nums; }
   .stat-box.todo { color: #c2410c; }
@@ -396,10 +399,10 @@
   .jnt-bar {
     background: linear-gradient(135deg, #fff7ed, #ffedd5); border: 1.5px solid #fdba74;
     color: #9a3412; border-radius: 999px; padding: 10px 16px; margin: 4px 0 10px;
-    font-size: 14.5px; font-weight: 800;
+    font-size: 14.5px; font-weight: 800; cursor: pointer;
   }
   .jnt-bar b { font-size: 17px; }
-  .jnt-bar.zero { background: var(--soft); border-color: var(--line); color: var(--muted); }
+  .jnt-bar.zero { background: var(--soft); border-color: #e4e8d8; color: var(--muted); cursor: default; }
 
   /* green tick stamped OVER the photos once the job is out the door */
   .media-sealed { position: relative; }
@@ -744,7 +747,8 @@
     </div>
     <div id="pin-wrap" style="display:none">
       <label style="text-align:left">Admin PIN 🔑</label>
-      <input type="password" id="pin-input" inputmode="numeric" placeholder="Enter PIN">
+      <input type="password" id="pin-input" inputmode="numeric" placeholder="Enter PIN"
+             onkeydown="if(event.key==='Enter')submitPin()">
       <div style="margin-top:14px">
         <button class="btn blue" onclick="submitPin()">✅ OK</button>
       </div>
@@ -884,6 +888,8 @@
   <div class="sheet" style="max-width:380px">
     <button class="x-close" onclick="closeDeliv()">✕</button>
     <h2>📦 Delivered — how?</h2>
+    <!-- which job am I confirming? — stops wrong-job taps -->
+    <div id="deliv-job" style="display:none;font-size:13px;font-weight:700;color:var(--muted);margin:-8px 0 6px"></div>
     <div class="agent-chips" id="deliv-via">
       <button type="button" class="agent-chip" data-v="lalamove">🛵 Lalamove</button>
       <button type="button" class="agent-chip" data-v="bus">🚌 Bus</button>
@@ -994,7 +1000,8 @@
     editing: null,
     proofJobId: null,
     reProof: false,
-    lastSwipe: null
+    lastSwipe: null,
+    loadedOnce: false   // false until the first server answer — empty tabs say "Loading…" not "Nothing here"
   };
   var CAT_LABEL = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Pickup' };
   var DAY = 24 * 60 * 60 * 1000;
@@ -1233,7 +1240,8 @@
     var row = document.getElementById('sync-row');
     clearTimeout(syncTimer);
     if (!txt) { row.style.display = 'none'; return; }
-    row.innerHTML = '<span class="sync-chip">' + txt + '</span>';
+    // the chip is a one-tap refresh — no need to dig into the ☰ menu
+    row.innerHTML = '<span class="sync-chip" onclick="manualRefresh()">' + txt + '</span>';
     row.style.display = 'block';
     if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
   }
@@ -1522,11 +1530,14 @@
 
   // ------------------------------------------------------------ tabs
   function switchTab(tab) {
+    var changed = state.tab !== tab;
     state.tab = tab;
     ['want', 'delivery', 'postage', 'defect'].forEach(function (x) {
       document.getElementById('page-' + x).classList.toggle('active', x === tab);
       document.getElementById('nav-' + x).classList.toggle('active', x === tab);
     });
+    // a new tab starts at the top — never mid-way down the previous tab's scroll
+    if (changed) document.getElementById('scroller').scrollTop = 0;
     // render the cached list instantly, then refresh from the server
     if (!state.jobs[tab].length) state.jobs[tab] = readJobsCache(tab);
     renderAll();
@@ -1554,13 +1565,16 @@
           saveJobsCache(tb);
         });
         lastSyncAt = Date.now();
+        state.loadedOnce = true;
         renderAll(); renderBadges(res.counts);
         refreshSpin(false);
         syncAfterData();
       })
       .withFailureHandler(function (e) {
         refreshSpin(false);
-        setSync('⚠️ Update failed — tap Refresh to retry');
+        // first load failed: swap the "Loading…" skeletons for real empty states
+        if (!state.loadedOnce) { state.loadedOnce = true; renderAll(); }
+        setSync('⚠️ Update failed — tap here to retry');
         toast('⚠️ ' + errMsg_(e));
       })
       .getAllData();
@@ -1752,8 +1766,20 @@
   }
 
   // ------------------------------------------------------------ TAB 1: checking (swipe)
+  function loadingHtml_() {
+    return '<div class="empty"><span class="big">⏳</span>Loading jobs…' +
+      '<br><span class="hint">Getting the latest from the office</span></div>';
+  }
+
   function renderWant() {
     var jobs = state.jobs.want;
+    // nothing cached + first server answer still on the way = say "Loading",
+    // never a misleading "No new jobsheets!"
+    if (!state.loadedOnce && jobs.length === 0) {
+      document.getElementById('want-stack-area').innerHTML = loadingHtml_();
+      document.getElementById('want-responded').innerHTML = '';
+      return;
+    }
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var responded = jobs.filter(function (j) { return j.status === 'got' || j.status === 'notseen'; });
     // pushed-up jobsheets jump to the front of the swipe deck
@@ -1978,9 +2004,30 @@
   });
 
   function renderDelivery() {
+    // live count on each pill — see where today's work is without tapping through
+    var counts = { '': 0, lalamove: 0, bus: 0, pickup: 0 };
+    state.jobs.delivery.forEach(function (j) {
+      if (j.status !== 'pending') return;
+      counts['']++;
+      if (counts[j.category] != null && j.category !== '') counts[j.category]++;
+    });
+    document.querySelectorAll('#delivery-pills button').forEach(function (b) {
+      var base = b.getAttribute('data-lbl') || b.textContent;
+      b.setAttribute('data-lbl', base);
+      var n = counts[b.getAttribute('data-cat')] || 0;
+      b.textContent = n ? base + ' · ' + n : base;
+    });
     var jobs = state.jobs.delivery.filter(function (j) {
       return !state.deliveryCat || j.category === state.deliveryCat;
     });
+    // an empty FILTER is not an empty board — say so instead of "post a job"
+    if (!jobs.length && state.deliveryCat && state.jobs.delivery.length) {
+      document.getElementById('delivery-list').innerHTML =
+        '<div class="empty"><span class="big">🔍</span>No ' +
+        (CAT_LABEL[state.deliveryCat] || state.deliveryCat) + ' jobs.' +
+        '<br><span class="hint">Tap All to see every delivery job</span></div>';
+      return;
+    }
     document.getElementById('delivery-list').innerHTML = renderJobList(jobs, 'delivery');
   }
 
@@ -2019,6 +2066,7 @@
     var html = '';
 
     if (pending.length === 0 && done.length === 0) {
+      if (!state.loadedOnce) return loadingHtml_();
       return '<div class="empty"><span class="big">📭</span>Nothing here yet.' +
         '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
     }
@@ -2027,27 +2075,35 @@
     // Ready = Done (waybill + proof) but NOT yet handed over; Sent jobs drop out.
     if (tab === 'postage') {
       var ready = jobs.filter(function (j) { return j.status === 'done' && !j.sentAt; }).length;
-      html += '<div class="jnt-bar' + (ready ? '' : ' zero') + '">🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
-        (ready ? ' parcel' + (ready > 1 ? 's' : '') : ' — none waiting') + '</div>';
+      html += '<div class="jnt-bar' + (ready ? '' : ' zero') + '"' +
+        (ready ? ' onclick="jumpToSec(\'' + tab + '\',\'done\')"' : '') +
+        '>🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
+        (ready ? ' parcel' + (ready > 1 ? 's' : '') + ' — tap to see them' : ' — none waiting') + '</div>';
     }
-    // today at a glance: how many left vs finished
+    // today at a glance: how many left vs finished — tap a number to jump there
     html += '<div class="stat-row">' +
-      '<span class="stat-box todo">⏳ <span class="num">' + pending.length + '</span> to do</span>' +
+      '<span class="stat-box todo" onclick="jumpToSec(\'' + tab + '\',\'todo\')">⏳ <span class="num">' + pending.length + '</span> to do</span>' +
       '<span class="sep">·</span>' +
-      '<span class="stat-box done">✅ <span class="num">' + done.length + '</span> done</span>' +
+      '<span class="stat-box done" onclick="jumpToSec(\'' + tab + '\',\'done\')">✅ <span class="num">' + done.length + '</span> done</span>' +
       ringSvg_(done.length, pending.length) + '</div>';
 
     if (pending.length) {
-      html += '<div class="section-title">⏳ To Do (' + pending.length + ')</div><div class="grid">';
+      html += '<div class="section-title" id="sec-todo-' + tab + '">⏳ To Do (' + pending.length + ')</div><div class="grid">';
       pending.forEach(function (j) { html += jobCard(j, false); });
       html += '</div>';
     }
     if (done.length) {
-      html += '<div class="section-title">✅ Done (' + done.length + ')</div><div class="grid">';
+      html += '<div class="section-title" id="sec-done-' + tab + '">✅ Done (' + done.length + ')</div><div class="grid">';
       done.forEach(function (j) { html += jobCard(j, true); });
       html += '</div>';
     }
     return html;
+  }
+
+  /** Tap "⏳ 3 to do" / "✅ 5 done" (or the J&T bar) → glide to that section. */
+  function jumpToSec(tab, which) {
+    var el = document.getElementById('sec-' + which + '-' + tab);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /** Postage: how many of the job's photos are Jobsheet pages (rest = Waybill). */
@@ -2303,7 +2359,7 @@
         state.jobs = { want: [], delivery: [], postage: [], defect: [] };
         ['want', 'delivery', 'postage', 'defect'].forEach(saveJobsCache);
         renderAll();
-        renderBadges({ want: 0, delivery: 0, postage: 0 });
+        renderBadges({ want: 0, delivery: 0, postage: 0, defect: 0 });
         toast('🔄 Fresh day! All tabs cleared.');
         google.script.run
           .withFailureHandler(function (e) { toast('⚠️ ' + errMsg_(e)); refresh(); })
@@ -2543,6 +2599,12 @@
     if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
     delivSel = { id: id, via: '', by: '' };
     document.querySelectorAll('#deliv-via button, #deliv-by button').forEach(function (b) { b.classList.remove('active'); });
+    // show WHICH job is being confirmed — no more wrong-job taps
+    var who = (j && j.customer && j.customer !== 'Unassigned') ? j.customer : '';
+    var ctx = who && j.note ? '👤 ' + who + ' — ' + j.note : (who ? '👤 ' + who : (j && j.note) || '');
+    var dj = document.getElementById('deliv-job');
+    dj.textContent = ctx;
+    dj.style.display = ctx ? 'block' : 'none';
     document.getElementById('deliv-overlay').classList.add('show');
   }
   function closeDeliv() { document.getElementById('deliv-overlay').classList.remove('show'); }
