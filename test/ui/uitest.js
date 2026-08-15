@@ -298,6 +298,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     window.__mockapi.updateStatus(ns.id, 'notseen', null, null, null);
     const dd = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'CD-done', photos: ['cd1'], thumbs: ['cdt1'] });
     window.__mockapi.updateStatus(dd.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markDelivered(dd.id, 'bus', 'ZH'); // big ✔ — Clear Done may take it
   });
   await page.evaluate(() => refresh());
   await sleep(600);
@@ -310,8 +311,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.locator('#reset-overlay').isVisible(), 'dropdown menu opens with both choices');
   await page.locator('#reset-overlay .btn.green').click(); // CLEAR DONE
   await sleep(150);
-  check((await page.locator('#confirm-msg').textContent()).indexOf('Unfinished') >= 0,
-    'confirm explains unfinished jobs stay');
+  check((await page.locator('#confirm-msg').textContent()).indexOf('STAY') >= 0,
+    'confirm explains ready-but-not-delivered jobs stay');
   await page.click('#confirm-yes');
   await sleep(600);
   const cd = await page.evaluate(() => ({
@@ -320,7 +321,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     ns: window.__mockdb.jobs.find(j => j.note === 'CD-notseen').status,
     pf: window.__mockdb.jobs.find(j => j.note === 'Proof fix').status
   }));
-  check(cd.done === 'archived' && cd.got === 'archived', 'done job + ❤️ Got It jobsheet archived');
+  check(cd.done === 'archived' && cd.got === 'archived', '✔ delivered job + ❤️ Got It jobsheet archived');
   check(cd.ns === 'notseen' && cd.pf === 'pending', '❌ Not Seen + To Do jobs carried forward');
   check((await pfCard.count()) === 1, 'carried-forward job still on screen');
   await page.evaluate(() => setRole('staff', ''));
@@ -1814,6 +1815,33 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
       .filter(Boolean));
   check(dOrder.indexOf('Waiting dlv') < dOrder.indexOf('Confirmed dlv'),
     'delivery Done: not-yet-confirmed jobs sit above confirmed ones');
+
+  console.log('\n-- Clear Done keeps ready-but-not-sent / not-yet-delivered jobs --');
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(250);
+  await page.evaluate(() => askClearDone());
+  await sleep(250);
+  check((await page.locator('#confirm-msg').textContent()).indexOf('STAY') >= 0,
+    'the confirm text promises waiting jobs stay on the board');
+  await page.click('#confirm-yes');
+  await sleep(600);
+  const afterClear = await page.evaluate(() => ({
+    ready: window.__mockdb.jobs.filter(j => j.tab === 'postage' && j.status === 'done' && !j.sentAt).length,
+    sentArchived: window.__mockdb.jobs.filter(j => j.tab === 'postage' && j.status === 'archived' && j.sentAt).length,
+    waitingDlv: window.__mockdb.jobs.filter(j => j.tab === 'delivery' && j.status === 'done' && !j.deliveredAt).length,
+    confirmedArchived: window.__mockdb.jobs.filter(j => j.tab === 'delivery' && j.status === 'archived' && j.deliveredAt).length
+  }));
+  check(afterClear.ready >= 1, 'READY parcel (not given to J&T) survives Clear Done');
+  check(afterClear.sentArchived >= 2, '✔ sent parcels are archived');
+  check(afterClear.waitingDlv >= 1, 'done-but-not-confirmed delivery survives Clear Done');
+  check(afterClear.confirmedArchived >= 1, '✔ delivered job is archived');
+  // the survivors are still visible on the board
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'Waiting dlv' }).count()) === 1,
+    'the waiting delivery still shows on screen');
+  await page.click('#nav-postage');
+  await sleep(400);
+  check((await page.locator('#postage-list .jnt-bar b').textContent()) === '1',
+    'the ready count still says 1 parcel for the truck');
 
   await ctx.close();
 

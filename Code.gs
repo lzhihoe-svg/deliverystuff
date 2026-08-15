@@ -657,9 +657,14 @@ function undoReset(pin) {
 }
 
 /**
- * ADMIN ONLY. Clear FINISHED work only: archive Delivery/Postage jobs that
- * are done and Checking jobsheets swiped Got It. Everything unfinished
- * (To Do, Not Seen) is carried forward to the next day.
+ * ADMIN ONLY. Clear FINISHED work only. "Finished" means TRULY out the door:
+ *  - Checking jobsheets swiped ❤️ Got It
+ *  - Delivery jobs done AND confirmed ✔ Delivered
+ *  - Postage parcels done AND ✔ given to J&T
+ *  - fixed Defects (done — they have no second stage)
+ * A parcel still waiting for the J&T truck, or a delivery not yet confirmed
+ * Delivered, is NOT finished — it stays on the board so it can't be
+ * forgotten. Everything unfinished carries forward to the next day.
  */
 function resetDone(pin) {
   requireAdmin_(pin);
@@ -669,12 +674,19 @@ function resetDone(pin) {
     var sh = getSheet_();
     var last = sh.getLastRow();
     if (last < 2) return { ok: true, archived: 0, carried: 0 };
-    var vals = sh.getRange(2, 1, last - 1, 6).getValues(); // id .. status
+    // 34 columns: we need deliveredAt (28) and sentAt (34), not just status
+    var vals = sh.getRange(2, 1, last - 1, 34).getValues();
     var out = [], snap = {}, archived = 0, carried = 0;
     for (var i = 0; i < vals.length; i++) {
       var tab = vals[i][1], status = vals[i][5];
       if (status !== 'archived') {
-        if (status === 'done' || (tab === 'want' && status === 'got')) {
+        var finished =
+          (tab === 'want' && status === 'got') ||
+          (status === 'done' && (
+            tab === 'defect' ||
+            (tab === 'delivery' && vals[i][27]) ||   // deliveredAt set
+            (tab === 'postage' && vals[i][33])));    // sentAt set
+        if (finished) {
           snap[vals[i][0]] = status; status = 'archived'; archived++;
         } else {
           carried++;

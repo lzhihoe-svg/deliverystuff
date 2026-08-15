@@ -290,35 +290,56 @@ console.log('\n== resetAll (new day) ==');
   check(ctx.resetAll(PIN).archived === 0, 'second reset archives nothing (idempotent)');
 }
 
-console.log('\n== resetDone (clear finished work only) ==');
+console.log('\n== resetDone (clear finished work only — the big ✔ decides) ==');
 {
   const { ctx } = makeEnv();
   const w1 = ctx.addJob({ tab: 'want', category: '', note: 'seen', photos: [B64] });
   const w2 = ctx.addJob({ tab: 'want', category: '', note: 'notseen', photos: [B64] });
   ctx.addJob({ tab: 'want', category: '', note: 'todo', photos: [B64] });
-  const d1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'done', photos: [B64] });
+  const d1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'done delivered', photos: [B64] });
+  const d2 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'done NOT confirmed', photos: [B64] });
   ctx.addJob({ tab: 'delivery', category: 'bus', note: 'todo', photos: [B64] });
-  const p1 = ctx.addJob({ tab: 'postage', category: '', note: 'done', photos: [B64, B64] });
+  const p1 = ctx.addJob({ tab: 'postage', category: '', note: 'done sent', photos: [B64, B64] });
+  const p2 = ctx.addJob({ tab: 'postage', category: '', note: 'done READY not sent', photos: [B64, B64] });
+  const f1 = ctx.addJob({ tab: 'defect', category: '', note: 'fixed defect', photos: [B64, B64] });
   ctx.updateStatus(w1.id, 'got', null, null, null);
   ctx.updateStatus(w2.id, 'notseen', null, null, null);
   ctx.updateStatus(d1.id, 'done', B64, B64, null);
+  ctx.updateStatus(d2.id, 'done', B64, B64, null);
   ctx.updateStatus(p1.id, 'done', B64, B64, null);
+  ctx.updateStatus(p2.id, 'done', B64, B64, null);
+  ctx.updateStatus(f1.id, 'done', B64, B64, null);
+  ctx.markDelivered(d1.id, 'bus', 'ZH');
+  ctx.markSentJnt(p1.id);
 
   throws(() => ctx.resetDone(''), 'staff cannot clear done');
   throws(() => ctx.resetDone('9999'), 'wrong PIN cannot clear done');
   check(ctx.getJobs('want').length === 3, 'nothing cleared by failed attempts');
 
   const res = ctx.resetDone(PIN);
-  check(res.ok === true && res.archived === 3, 'archives the Got It + 2 done jobs (3 total)');
-  check(res.carried === 3, 'reports 3 unfinished jobs carried forward');
+  check(res.ok === true && res.archived === 4, 'archives Got It + ✔ delivered + ✔ sent + fixed defect (4 total)');
+  check(res.carried === 5, '5 jobs carried forward (incl. ready-not-sent + done-not-confirmed)');
   const want = ctx.getJobs('want');
   check(want.length === 2, 'Got It jobsheet archived, the rest stay');
   check(want.some(j => j.status === 'notseen') && want.some(j => j.status === 'pending'),
     'Not Seen and To Do jobsheets carried forward');
-  check(ctx.getJobs('delivery').length === 1 && ctx.getJobs('delivery')[0].status === 'pending',
-    'unfinished delivery carried forward');
-  check(ctx.getJobs('postage').length === 0, 'done postage archived');
+  const dLeft = ctx.getJobs('delivery');
+  check(dLeft.length === 2, '✔ Delivered job archived; to-do AND done-not-confirmed stay');
+  check(dLeft.some(j => j.id === d2.id && j.status === 'done'),
+    'a done delivery NOT yet confirmed Delivered survives Clear Done');
+  const pLeft = ctx.getJobs('postage');
+  check(pLeft.length === 1 && pLeft[0].id === p2.id && pLeft[0].status === 'done',
+    'a READY parcel not yet given to J&T survives Clear Done');
+  check(!pLeft[0].sentAt, '…and is still counted as ready for the truck');
+  check(ctx.getJobs('defect').length === 0, 'fixed defects are archived (no second stage)');
   check(ctx.resetDone(PIN).archived === 0, 'second clear archives nothing (idempotent)');
+
+  // once the survivors get their big ✔, the NEXT clear takes them
+  ctx.markDelivered(d2.id, 'pickup', 'Bob');
+  ctx.markSentJnt(p2.id);
+  const res2 = ctx.resetDone(PIN);
+  check(res2.archived === 2, 'after their ✔, the next Clear Done archives them');
+  check(ctx.getJobs('postage').length === 0, 'sent parcel gone from the board');
 }
 
 console.log('\n== undoReset (bring back what a reset archived) ==');
@@ -346,8 +367,9 @@ console.log('\n== undoReset (bring back what a reset archived) ==');
   throws(() => ctx.undoReset(PIN), 'second undo throws (one level of undo)');
 
   // undo a CLEAR DONE: only what IT archived comes back
+  ctx.markDelivered(d1.id, 'bus', 'ZH'); // give it the big ✔ so Clear Done takes it
   ctx.resetDone(PIN);
-  check(ctx.getJobs('want').length === 1 && ctx.getJobs('delivery').length === 0, 'clear done archived got + done');
+  check(ctx.getJobs('want').length === 1 && ctx.getJobs('delivery').length === 0, 'clear done archived got + ✔ delivered');
   const u2 = ctx.undoReset(PIN);
   check(u2.restored === 2, 'undo restores the 2 jobs clear-done archived');
   check(ctx.getJobs('want').length === 2 && ctx.getJobs('delivery').length === 1, 'both back on the board');

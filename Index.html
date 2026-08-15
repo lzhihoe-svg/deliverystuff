@@ -2580,19 +2580,22 @@
       .searchHistory(q, state.pin, histTab, histCat);
   }
 
-  /** CLEAR DONE (admin): archive ONLY finished work — done Delivery/Postage
-      jobs + Got It jobsheets. Unfinished jobs carry forward to the next day. */
+  /** CLEAR DONE (admin): archive ONLY truly finished work — ✔ Delivered
+      deliveries, ✔ Sent-to-J&T parcels, fixed defects + Got It jobsheets.
+      A done job still WAITING for its big ✔ stays on the board. */
   function askClearDone() {
-    askConfirm('Clear FINISHED work only? Completed jobs and ❤️ Got It jobsheets are archived. Unfinished jobs stay for the next day.',
+    askConfirm('Clear FINISHED work only? Jobs with the big ✔ (Delivered / Sent to J&T), fixed defects and ❤️ Got It jobsheets are archived. Ready-but-not-delivered jobs STAY on the board.',
       '✅ Yes, Clear Done', function () {
         ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
           state.jobs[tb] = state.jobs[tb].filter(function (j) {
-            return !(j.status === 'done' || (tb === 'want' && j.status === 'got'));
+            var finished = (tb === 'want' && j.status === 'got') ||
+              (j.status === 'done' && !waitingSecond_(j));
+            return !finished;
           });
           saveJobsCache(tb);
         });
         renderAll(); updateBadgeLocal();
-        toast('✅ Finished work cleared — unfinished carried forward.');
+        toast('✅ Finished work cleared — unfinished + waiting jobs carried forward.');
         google.script.run
           .withFailureHandler(function (e) { toast('⚠️ ' + errMsg_(e)); refresh(); })
           .resetDone(state.pin);

@@ -175,7 +175,11 @@
       var archived = 0, carried = 0, snap = {};
       db.jobs.forEach(function (j) {
         if (j.status === 'archived') return;
-        if (j.status === 'done' || (j.tab === 'want' && j.status === 'got')) {
+        var finished = (j.tab === 'want' && j.status === 'got') ||
+          (j.status === 'done' && (j.tab === 'defect' ||
+            (j.tab === 'delivery' && j.deliveredAt) ||
+            (j.tab === 'postage' && j.sentAt)));
+        if (finished) {
           snap[j.id] = j.status; j.status = 'archived'; archived++;
         } else carried++;
       });
