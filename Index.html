@@ -392,9 +392,20 @@
   .proof { display: flex; align-items: center; gap: 10px; background: #f6fbea; border-radius: 14px; padding: 9px; margin-top: 10px; }
   .proof img { width: 60px; height: 60px; object-fit: cover; border-radius: 12px; cursor: pointer; box-shadow: 0 0 0 2.5px var(--lime); }
   .proof .txt { font-size: 13px; color: #3f6212; font-weight: 700; }
-  .proof.delivered { background: #eff8fd; }
-  .proof.delivered img { box-shadow: 0 0 0 2.5px #38bdf8; }
-  .proof.delivered .txt { color: #0369a1; }
+  /* big ✔ — this job is fully finished, stop thinking about it */
+  .delivered-big {
+    display: flex; align-items: center; gap: 12px; margin-top: 10px;
+    background: linear-gradient(135deg, #f2fbe4, #ecfccb);
+    border: 1.5px solid var(--lime); border-radius: 16px; padding: 12px 14px;
+  }
+  .delivered-big .tick {
+    width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--lime), var(--green)); color: #fff;
+    font-size: 27px; font-weight: 900; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 14px rgba(101,163,13,.4);
+  }
+  .delivered-big b { font-size: 14.5px; letter-spacing: .05em; color: var(--blue); }
+  .delivered-big span { display: block; font-size: 12.5px; color: #4b5142; font-weight: 600; margin-top: 2px; }
 
   /* ---------- modals (always centered) ---------- */
   .overlay {
@@ -842,6 +853,26 @@
   </div>
 </div>
 
+<!-- ================= 📦 DELIVERED? (how + by whom, no photo) ================= -->
+<div class="overlay" id="deliv-overlay">
+  <div class="sheet" style="max-width:380px">
+    <button class="x-close" onclick="closeDeliv()">✕</button>
+    <h2>📦 Delivered — how?</h2>
+    <div class="agent-chips" id="deliv-via">
+      <button type="button" class="agent-chip" data-v="lalamove">🛵 Lalamove</button>
+      <button type="button" class="agent-chip" data-v="bus">🚌 Bus</button>
+      <button type="button" class="agent-chip" data-v="pickup">🤝 Self pickup</button>
+      <button type="button" class="agent-chip" data-v="personal">🚗 Sent personally</button>
+    </div>
+    <label>Delivered by</label>
+    <div class="agent-chips" id="deliv-by">
+      <button type="button" class="agent-chip" data-b="ZH">👔 Bos (ZH)</button>
+      <button type="button" class="agent-chip" data-b="Bob">👤 Bob</button>
+    </div>
+    <button class="btn green" style="margin-top:16px" onclick="confirmDeliv()">✔️ Yes, Delivered</button>
+  </div>
+</div>
+
 <!-- ================= ⋯ PER-JOB MENU (everything else, one tap away) ================= -->
 <div class="overlay" id="jobmenu-overlay">
   <div class="sheet" style="max-width:380px">
@@ -913,8 +944,6 @@
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 <!-- printing-status photo for the Problem page (no capture attr: screenshots come from the gallery) -->
 <input type="file" id="print-file" accept="image/*" onchange="printPicked(this)">
-<!-- delivered-proof photo: Lalamove/Bolt screenshots live in the GALLERY, so no forced camera -->
-<input type="file" id="deliv-file" accept="image/*" onchange="proofPicked(this)">
 
 <div class="viewer" id="viewer">
   <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
@@ -1551,9 +1580,7 @@
       out += jmItem_('jm-reproof', 'reproof', '📷 Retake Proof', '');
       out += jmItem_('jm-delproof warn', 'delproof', '🗑️ Remove Proof', 'back to To Do');
       if (j.tab === 'delivery' && j.deliveredAt) {
-        out += jmItem_('jm-redeliv', 'redeliv',
-          j.deliveredVia === 'snbus' ? '📬 Attach Delivered Photo' : '📬 Retake Delivered Photo', '');
-        out += jmItem_('jm-deldeliv warn', 'deldeliv', '🗑️ Undo Delivered', '');
+        out += jmItem_('jm-deldeliv warn', 'deldeliv', '↩️ Undo Delivered', 'wrong tap');
       }
     }
     if (isAdmin()) {
@@ -1585,7 +1612,6 @@
     else if (what === 'nosticker') reportNoReceive(id, 'sticker');
     else if (what === 'reproof') startReProof(id);
     else if (what === 'delproof') removeProof(id);
-    else if (what === 'redeliv') startDelivered(id);
     else if (what === 'deldeliv') removeDeliveredNow(id);
     else if (what === 'edit') openUpload(id);
     else if (what === 'del') removeJob(id);
@@ -2079,19 +2105,17 @@
         (j.proofPhotoId ? imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') : '') +
         '<div class="txt">' + (j.proofUploading ? '📤 Done · proof uploading…' : '✅ Done · ' + timeAgo(j.doneAt)) + '</div>' +
         (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
-      // DELIVERY second stage: sent is not ARRIVED — everyone sees which
+      // DELIVERY second stage: ready is not DELIVERED. Confirming asks two
+      // quick questions (how? by whom?) — no photo — then the big ✔ means
+      // nobody has to think about this job again.
       if (j.tab === 'delivery' && !j.proofUploading && !j.uploading) {
         if (j.deliveredAt) {
-          var dt = j.deliveredThumbId || j.deliveredPhotoId;
-          html += '<div class="proof delivered">' +
-            (j.deliveredPhotoId ? imgTag(dt, '', 'onclick="viewPhoto(\'' + j.deliveredPhotoId + '\', \'' + dt + '\')"') : '') +
-            '<div class="txt">' + (j.deliveredVia === 'snbus' ? '🚌 Delivered by SN BUS · ' : '📬 Delivered · ') +
-            timeAgo(j.deliveredAt) + '</div></div>';
+          html += '<div class="delivered-big"><div class="tick">✔</div><div class="dtxt">' +
+            '<b>DELIVERED</b><span>' + (DELIV_VIA[j.deliveredVia] || '') +
+            (j.deliveredBy ? ' · by ' + (j.deliveredBy === 'ZH' ? 'Bos (ZH)' : esc(j.deliveredBy)) : '') +
+            ' · ' + fmtDT(j.deliveredAt) + '</span></div></div>';
         } else {
-          html += '<button class="btn green small" style="margin-top:8px" onclick="startDelivered(\'' + j.id + '\')">📬 Done Delivered — attach photo</button>';
-          // fortnightly SN BUS run: no delivery photo exists — one tap marks
-          // it delivered WITHOUT the picture requirement
-          html += '<button class="btn bus small" style="margin-top:8px;padding:10px" onclick="snBusDelivered(\'' + j.id + '\')">🚌 Delivered by SN BUS — no photo</button>';
+          html += '<button class="btn green small" style="margin-top:8px" onclick="openDeliv(\'' + j.id + '\')">📦 Delivered? Tap to confirm</button>';
         }
       }
       html += '<div class="spacer"></div>';
@@ -2349,7 +2373,8 @@
         : (j.doneAt ? ' · answered ' + fmtDT(j.doneAt) : ''));
     } else status = '🕐 Still waiting';
 
-    if (j.deliveredAt) status += ' · 📬 Delivered' + (j.deliveredVia === 'snbus' ? ' by SN BUS' : '');
+    if (j.deliveredAt) status += ' · ✔ Delivered — ' + (DELIV_VIA[j.deliveredVia] || '') +
+      (j.deliveredBy ? ' by ' + (j.deliveredBy === 'ZH' ? 'Bos (ZH)' : j.deliveredBy) : '') + ' · ' + fmtDT(j.deliveredAt);
     var csv = j.photoIds.join(',');
     var tcsv = j.photoIds.map(function (_, k) { return thumbOf(j, k); }).join(',');
     var pics = '';
@@ -2436,7 +2461,6 @@
     state.proofJobId = jobId;
     state.reProof = false;
     state.sentBus = false;
-    state.delivered = false;
     document.getElementById('proof-file').click();
   }
   /** Retake the proof photo on a done job — staff AND admin. */
@@ -2446,7 +2470,6 @@
     state.proofJobId = jobId;
     state.reProof = true;
     state.sentBus = false;
-    state.delivered = false;
     document.getElementById('proof-file').click();
   }
   /** "🚌 Sent bus" — this postage parcel went by BUS instead. The proof
@@ -2456,49 +2479,61 @@
     if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
     state.proofJobId = jobId;
     state.reProof = false;
-    state.sentBus = false;
-    state.delivered = false;
     state.sentBus = true;
     document.getElementById('proof-file').click();
   }
-  /** "📬 Done Delivered" — the parcel ARRIVED; attach the delivered-proof
-   *  picture (staff AND admin) so everyone can see it, not just one admin. */
-  function startDelivered(jobId) {
-    var j = findJob(jobId);
-    if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
-    state.proofJobId = jobId;
-    state.reProof = false;
-    state.sentBus = false;
-    state.delivered = true;
-    document.getElementById('deliv-file').click(); // camera OR gallery
-  }
-  /** "🚌 Delivered by SN BUS" — the fortnightly bus has no delivery photo,
-   *  so this marks Delivered WITHOUT the picture requirement (confirmed first). */
-  function snBusDelivered(id) {
+  // "📦 Delivered?" — two quick questions, no photo: HOW did it reach the
+  // customer, and WHO delivered it (Bos ZH / Bob). Then the big ✔.
+  var DELIV_VIA = { lalamove: '🛵 Lalamove', bus: '🚌 Bus', pickup: '🤝 Self pickup', personal: '🚗 Sent personally' };
+  var delivSel = { id: '', via: '', by: '' };
+  function openDeliv(id) {
     var j = findJob(id);
     if (j && (j.uploading || j.proofUploading)) { toast('📤 Still uploading — wait a moment'); return; }
-    askConfirm('Delivered by SN BUS? The fortnightly bus needs no photo.', '🚌 Yes, SN BUS', function () {
-      if (j) {
-        j.deliveredAt = Date.now();
-        j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = 'snbus';
-        saveJobsCache(state.tab); renderAll();
-      }
-      toast('🚌 Delivered by SN BUS!');
-      gsCall('markDelivered', [id, null, null, 'snbus'], function (res) {
-        if (j) { j.deliveredAt = res.deliveredAt; saveJobsCache(j.tab); }
-      }, bgFail);
-    });
+    delivSel = { id: id, via: '', by: '' };
+    document.querySelectorAll('#deliv-via button, #deliv-by button').forEach(function (b) { b.classList.remove('active'); });
+    document.getElementById('deliv-overlay').classList.add('show');
+  }
+  function closeDeliv() { document.getElementById('deliv-overlay').classList.remove('show'); }
+  document.getElementById('deliv-via').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    delivSel.via = b.getAttribute('data-v');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+  document.getElementById('deliv-by').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    delivSel.by = b.getAttribute('data-b');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+  function confirmDeliv() {
+    if (!delivSel.via) { toast('🚚 Choose HOW it was delivered'); return; }
+    if (!delivSel.by) { toast('👔 Who delivered — Bos (ZH) or Bob?'); return; }
+    var id = delivSel.id;
+    closeDeliv();
+    var j = findJob(id);
+    if (j) {
+      j.deliveredAt = Date.now();
+      j.deliveredVia = delivSel.via; j.deliveredBy = delivSel.by;
+      saveJobsCache(state.tab); renderAll();
+    }
+    toast('✔️ Delivered — job complete!');
+    gsCall('markDelivered', [id, delivSel.via, delivSel.by], function (res) {
+      if (j) { j.deliveredAt = res.deliveredAt; saveJobsCache('delivery'); }
+    }, bgFail);
   }
 
   /** Remove a wrong delivered photo — back to "sent, not yet confirmed". */
+  /** Undo a wrong Delivered confirmation. */
   function removeDeliveredNow(id) {
-    askConfirm('Remove the delivered photo? The job goes back to "sent, not confirmed".', '🗑️ Yes, Remove', function () {
+    askConfirm('Undo Delivered? The job goes back to "ready, not yet delivered".', '↩️ Yes, Undo', function () {
       var j = findJob(id);
       if (j) {
-        j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; j.deliveredVia = '';
+        j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = '';
+        j.deliveredVia = ''; j.deliveredBy = '';
         saveJobsCache(state.tab); renderAll();
       }
-      toast('🗑️ Delivered photo removed.');
+      toast('↩️ Delivered undone — back to ready.');
       gsCall('removeDelivered', [id], function () {}, bgFail);
     });
   }
@@ -2507,9 +2542,7 @@
     var id = state.proofJobId;
     var redo = state.reProof;
     var sb = state.sentBus;
-    var dl = state.delivered;
     state.sentBus = false;
-    state.delivered = false;
     var jobTab = state.tab;
     compressImage(input.files[0], function (img) {
       // NON-BLOCKING: update the screen instantly, upload in the background
@@ -2517,12 +2550,7 @@
       var tempKey = 'localproof-' + (++localSeq);
       imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
       if (j) {
-        if (dl) {
-          // second-stage delivery confirmation — it ARRIVED
-          j.deliveredAt = Date.now();
-          j.deliveredPhotoId = tempKey; j.deliveredThumbId = tempKey;
-          j.deliveredVia = 'photo';
-        } else if (sb) {
+        if (sb) {
           // sent by bus: the job leaves Postage and lands on Delivery as done
           j.status = 'done'; j.doneAt = Date.now();
           j.tab = 'delivery'; j.category = 'bus';
@@ -2530,33 +2558,21 @@
           state.jobs.delivery.unshift(j);
           saveJobsCache('postage');
         } else if (!redo) { j.status = 'done'; j.doneAt = Date.now(); }
-        if (!dl) { j.proofPhotoId = tempKey; j.proofThumbId = tempKey; }
+        j.proofPhotoId = tempKey; j.proofThumbId = tempKey;
         j.proofUploading = true;
         inflightJobs.push(j);
       }
       renderAll(); updateBadgeLocal();
-      toast(dl ? '📬 Delivered! Photo uploading… 🙏'
-        : sb ? '🚌 Sent by bus — moved to Delivery! Proof uploading… 🙏'
+      toast(sb ? '🚌 Sent by bus — moved to Delivery! Proof uploading… 🙏'
         : redo ? '📷 New proof photo uploading… 🙏' : '✅ Done! Proof uploading… 🙏');
       uploadsPending++; updatePill();
       var okH = function (res) {
         uploadsPending--; updatePill();
-        if (dl) {
-          seedImage(res.deliveredPhotoId, img.full);
-          seedImage(res.deliveredThumbId, img.thumb);
-        } else {
-          seedImage(res.proofPhotoId, img.full);
-          seedImage(res.proofThumbId, img.thumb);
-        }
+        seedImage(res.proofPhotoId, img.full);
+        seedImage(res.proofThumbId, img.thumb);
         if (j) {
-          if (dl) {
-            j.deliveredAt = res.deliveredAt;
-            j.deliveredPhotoId = res.deliveredPhotoId; j.deliveredThumbId = res.deliveredThumbId;
-            j.deliveredVia = res.deliveredVia || 'photo';
-          } else {
-            j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
-            if (res.doneAt) j.doneAt = res.doneAt;
-          }
+          j.proofPhotoId = res.proofPhotoId; j.proofThumbId = res.proofThumbId;
+          if (res.doneAt) j.doneAt = res.doneAt;
           delete j.proofUploading;
           inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
           saveJobsCache(sb ? 'delivery' : jobTab); renderAll();
@@ -2564,15 +2580,10 @@
       };
       var failH = function (e) {
         uploadsPending--; updatePill();
-        if (j) {
-          if (dl) { j.deliveredAt = ''; j.deliveredPhotoId = ''; j.deliveredThumbId = ''; }
-          delete j.proofUploading;
-          inflightJobs = inflightJobs.filter(function (x) { return x !== j; });
-        }
+        if (j) { delete j.proofUploading; inflightJobs = inflightJobs.filter(function (x) { return x !== j; }); }
         toast('⚠️ ' + errMsg_(e)); refresh();
       };
-      if (dl) gsCall('markDelivered', [id, img.full, img.thumb], okH, failH);
-      else if (sb) gsCall('sentBus', [id, img.full, img.thumb], okH, failH);
+      if (sb) gsCall('sentBus', [id, img.full, img.thumb], okH, failH);
       else if (redo) gsCall('updateProof', [id, img.full, img.thumb], okH, failH);
       else gsCall('updateStatus', [id, 'done', img.full, img.thumb, null], okH, failH);
     });
@@ -3162,7 +3173,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -3174,6 +3185,7 @@
       else if (id === 'menu-overlay') closeMenu();
       else if (id === 'jobmenu-overlay') closeJobMenu();
       else if (id === 'inventory-overlay') closeInventory();
+      else if (id === 'deliv-overlay') closeDeliv();
       else closeUpload();
     });
   });

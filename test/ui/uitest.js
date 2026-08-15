@@ -1041,7 +1041,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(300);
 
-  console.log('\n-- 📬 Done Delivered: second-stage proof for deliveries --');
+  console.log('\n-- 📦 Delivered? how + by whom, no photo → big ✔ --');
   await page.evaluate(() => {
     const d = window.__mockapi.addJob({ tab: 'delivery', category: 'lalamove', note: 'Deliv-confirm', customer: 'SN', photos: ['dc1'], thumbs: ['dc1'] });
     window.__mockapi.updateStatus(d.id, 'done', 'p', 'pt', null);
@@ -1053,92 +1053,48 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(400);
   const dcCard = page.locator('#delivery-list .card').filter({ hasText: 'Deliv-confirm' });
   check((await dcCard.locator('.btn.green').count()) === 1 &&
-    (await dcCard.locator('.btn.green').textContent()).indexOf('Done Delivered') >= 0,
-    "done delivery card shows '📬 Done Delivered — attach photo' (staff too)");
+    (await dcCard.locator('.btn.green').textContent()).indexOf('Delivered?') >= 0,
+    "done delivery card asks '📦 Delivered? Tap to confirm' (staff too)");
   await clickSafe(dcCard.locator('.btn.green'));
-  await page.setInputFiles('#deliv-file', IMG);
-  await sleep(900);
+  await sleep(300);
+  check(await page.locator('#deliv-overlay').isVisible(), 'the Delivered sheet opens');
+  check((await page.locator('#deliv-via button').count()) === 4,
+    'four methods: Lalamove / Bus / Self pickup / Sent personally');
+  await page.click('#deliv-overlay .btn.green');
+  await sleep(200);
+  check((await page.locator('#toast').textContent()).indexOf('HOW') >= 0, 'blocked without choosing HOW');
+  await page.click('#deliv-via button[data-v="lalamove"]');
+  await page.click('#deliv-overlay .btn.green');
+  await sleep(200);
+  check((await page.locator('#toast').textContent()).indexOf('Bos (ZH) or Bob') >= 0, 'blocked without choosing WHO');
+  await page.click('#deliv-by button[data-b="ZH"]');
+  await page.click('#deliv-overlay .btn.green');
+  await sleep(700);
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm');
-    return !!j.deliveredAt && !!j.deliveredPhotoId;
-  }), 'delivered photo REQUIRED and saved on the server');
-  check(await page.evaluate(() => {
-    const pf = document.getElementById('proof-file');
-    const df = document.getElementById('deliv-file');
-    return pf.hasAttribute('capture') && !!df && !df.hasAttribute('capture');
-  }), 'delivered photo can come from the GALLERY (no forced camera)');
-  check((await dcCard.locator('.proof.delivered').count()) === 1 &&
-    (await dcCard.locator('.proof.delivered .txt').textContent()).indexOf('Delivered') >= 0,
-    "card shows the second proof row '📬 Delivered' WITH the photo");
-  check((await dcCard.locator('.btn.green').count()) === 0, 'the Done Delivered button disappears once confirmed');
-  await viaMenu('#history-btn');
-  await sleep(700);
-  await page.fill('#history-q', 'Deliv-confirm');
-  await page.click('#history-overlay .btn.blue');
-  await sleep(500);
-  check((await page.locator('#history-results .deliv-pic').count()) === 1,
-    'Evidence shows the photo marked DELIVERED');
-  await page.evaluate(() => closeHistory());
-  await sleep(200);
-  const dcTools = await moreCount(dcCard, '.jm-redeliv, .jm-deldeliv');
-  check(dcTools.n === 2, '⋯ menu offers Retake + Remove Delivered Photo');
+    return !!j.deliveredAt && j.deliveredVia === 'lalamove' && j.deliveredBy === 'ZH';
+  }), 'server records how + who + timestamp — no photo anywhere');
+  const tickTxt = await dcCard.locator('.delivered-big').textContent();
+  check((await dcCard.locator('.delivered-big .tick').count()) === 1 &&
+    tickTxt.indexOf('DELIVERED') >= 0 && tickTxt.indexOf('Lalamove') >= 0 &&
+    tickTxt.indexOf('Bos (ZH)') >= 0,
+    'card shows the BIG ✔ with method, person and time');
+  check((await dcCard.locator('.btn.green').count()) === 0, 'the Delivered button is gone — nothing left to think about');
+  const dcTools = await moreCount(dcCard, '.jm-deldeliv');
+  check(dcTools.n === 1, '⋯ offers ↩️ Undo Delivered for wrong taps');
   await viaMore(dcCard, '.jm-deldeliv');
   await sleep(200);
   await page.click('#confirm-yes');
   await sleep(600);
-  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm').deliveredAt === ''),
-    'Remove puts it back to "sent, not yet confirmed"');
-  check((await dcCard.locator('.btn.green').count()) === 1, 'the Done Delivered button returns');
-  check((await page.locator('#postage-list .proof.delivered').count()) === 0, 'postage cards have no delivered stage');
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm');
+    return j.deliveredAt === '' && j.deliveredBy === '';
+  }), 'Undo clears the record');
+  check((await dcCard.locator('.btn.green').count()) === 1, "the 'Delivered?' button returns");
+  check((await page.locator('#postage-list .delivered-big').count()) === 0, 'postage cards have no Delivered stage');
   await page.evaluate(() => {
     setRole('admin', '1234');
     window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm').status = 'archived';
-  });
-  await page.evaluate(() => refresh());
-  await sleep(400);
-  await page.click('#nav-postage');
-  await sleep(300);
-
-  console.log('\n-- 🚌 SN BUS: delivered WITHOUT a photo (fortnightly bus) --');
-  await page.evaluate(() => {
-    setRole('staff', '');
-    const d = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'SNBus-deliv', customer: 'SN', photos: ['sn1'], thumbs: ['sn1'] });
-    window.__mockapi.updateStatus(d.id, 'done', 'p', 'pt', null);
-  });
-  await page.evaluate(() => refresh());
-  await sleep(600);
-  await page.click('#nav-delivery');
-  await sleep(400);
-  const snCard = page.locator('#delivery-list .card').filter({ hasText: 'SNBus-deliv' });
-  check((await snCard.locator('.btn.green').count()) === 1 && (await snCard.locator('.btn.bus').count()) === 1,
-    'done card shows BOTH: attach-photo button + SN BUS button');
-  await clickSafe(snCard.locator('.btn.bus'));
-  await sleep(200);
-  check(await page.locator('#confirm-overlay').isVisible() &&
-    (await page.locator('#confirm-msg').textContent()).indexOf('SN BUS') >= 0,
-    'SN BUS asks are-you-sure first (no photo = easy to fat-finger)');
-  await page.click('#confirm-yes');
-  await sleep(600);
-  check(await page.evaluate(() => {
-    const j = window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv');
-    return !!j.deliveredAt && j.deliveredVia === 'snbus' && !j.deliveredPhotoId;
-  }), 'server: delivered by SN BUS, no photo required');
-  check((await snCard.locator('.proof.delivered .txt').textContent()).indexOf('SN BUS') >= 0,
-    "card shows '🚌 Delivered by SN BUS'");
-  check((await snCard.locator('.btn.green, .btn.bus').count()) === 0, 'both delivered buttons gone once confirmed');
-  const snTools = await moreCount(snCard, '.jm-redeliv, .jm-deldeliv');
-  check(snTools.n === 2 && snTools.txts.some(t => t.indexOf('Attach Delivered Photo') >= 0),
-    '⋯ offers Attach Delivered Photo (upgrade) + Undo Delivered');
-  await viaMore(snCard, '.jm-deldeliv');
-  await sleep(200);
-  await page.click('#confirm-yes');
-  await sleep(600);
-  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv').deliveredVia === ''),
-    'Undo Delivered clears the SN BUS stamp');
-  check((await snCard.locator('.btn.bus').count()) === 1, 'the SN BUS button returns');
-  await page.evaluate(() => {
-    setRole('admin', '1234');
-    window.__mockdb.jobs.find(x => x.note === 'SNBus-deliv').status = 'archived';
   });
   await page.evaluate(() => refresh());
   await sleep(400);

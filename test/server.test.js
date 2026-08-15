@@ -837,66 +837,54 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
   check(ctx.solveProblem(df.id, B64, B64).problem === 'printed', 'office solves a defect report the same way');
 }
 
-console.log('\n== 📬 Done Delivered (second-stage delivery confirmation) ==');
+console.log('\n== 📦 Delivered? (how + by whom, no photo) ==');
 {
-  const { ctx, files } = makeEnv();
+  const { ctx } = makeEnv();
   const d = ctx.addJob({ tab: 'delivery', category: 'lalamove', note: 'jersey 20pcs', customer: 'SN', photos: [B64], thumbs: [B64] });
-  throws(() => ctx.markDelivered(d.id, B64, B64), 'cannot confirm delivered BEFORE the job is done');
+  throws(() => ctx.markDelivered(d.id, 'lalamove', 'ZH'), 'cannot confirm delivered BEFORE the job is done');
   ctx.updateStatus(d.id, 'done', B64, B64, null);
-  throws(() => ctx.markDelivered(d.id, null, null), 'delivered-proof photo is REQUIRED');
+  throws(() => ctx.markDelivered(d.id, '', 'ZH'), 'must choose HOW it was delivered');
+  throws(() => ctx.markDelivered(d.id, 'teleport', 'ZH'), 'only the four real methods are accepted');
+  throws(() => ctx.markDelivered(d.id, 'lalamove', ''), 'must choose WHO delivered');
+  throws(() => ctx.markDelivered(d.id, 'lalamove', 'Ali'), 'only Bos (ZH) or Bob');
 
-  const r = ctx.markDelivered(d.id, B64, B64);
-  check(r.deliveredAt > 0 && !!r.deliveredPhotoId, 'staff/admin confirm delivered with the photo (no PIN)');
+  const r = ctx.markDelivered(d.id, 'lalamove', 'ZH');
+  check(r.deliveredAt > 0 && r.deliveredVia === 'lalamove' && r.deliveredBy === 'ZH',
+    'confirmed: how + who + timestamp, NO photo needed');
   const dj = ctx.getJobs('delivery')[0];
-  check(dj.deliveredAt === r.deliveredAt && dj.deliveredPhotoId === r.deliveredPhotoId,
-    'delivered stamp + photo persisted on the job');
-  check(files[r.deliveredPhotoId].folder === files[dj.photoIds[0]].folder,
-    "DELIVERED photo files into the job's own Drive folder");
+  check(dj.deliveredAt === r.deliveredAt && dj.deliveredVia === 'lalamove' && dj.deliveredBy === 'ZH',
+    'job carries the full delivered record');
 
-  const r2 = ctx.markDelivered(d.id, B64, B64);
-  check(files[r.deliveredPhotoId].trashed && !files[r2.deliveredPhotoId].trashed,
-    'retake replaces (and trashes) the old delivered photo');
-
-  const ev = ctx.searchHistory('', PIN, 'delivery', '');
-  check(ev.results[0].deliveredPhotoId === r2.deliveredPhotoId, 'Evidence includes the delivered photo');
+  const r2 = ctx.markDelivered(d.id, 'personal', 'Bob');
+  check(r2.deliveredVia === 'personal' && ctx.getJobs('delivery')[0].deliveredBy === 'Bob',
+    're-confirming corrects the record');
 
   ctx.removeDelivered(d.id);
-  check(ctx.getJobs('delivery')[0].deliveredAt === '' && files[r2.deliveredPhotoId].trashed,
-    'remove clears the stamp and trashes the photo');
+  const back = ctx.getJobs('delivery')[0];
+  check(back.deliveredAt === '' && back.deliveredVia === '' && back.deliveredBy === '',
+    'Undo Delivered clears everything');
 
   const p = ctx.addJob({ tab: 'postage', category: '', note: 'p', photos: [B64] });
   ctx.updateStatus(p.id, 'done', B64, B64, null);
-  throws(() => ctx.markDelivered(p.id, B64, B64), 'postage jobs cannot use Done Delivered');
+  throws(() => ctx.markDelivered(p.id, 'bus', 'Bob'), 'postage jobs cannot use Delivered');
 
   // sent-bus jobs become Delivery done → they CAN be confirmed delivered
   const sb = ctx.addJob({ tab: 'postage', category: '', note: 'bus one', photos: [B64] });
   ctx.sentBus(sb.id, B64, B64);
-  check(ctx.markDelivered(sb.id, B64, B64).deliveredAt > 0, 'a Sent-bus job can be confirmed delivered too');
+  check(ctx.markDelivered(sb.id, 'bus', 'ZH').deliveredAt > 0, 'a Sent-bus job can be confirmed delivered too');
 
-  // 🚌 SN BUS shortcut: fortnightly bus needs NO photo
-  const sn = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'SN fortnight', customer: 'SN', photos: [B64] });
-  throws(() => ctx.markDelivered(sn.id, null, null, 'snbus'), 'even SN BUS needs the job Done first');
-  ctx.updateStatus(sn.id, 'done', B64, B64, null);
-  const snr = ctx.markDelivered(sn.id, null, null, 'snbus');
-  check(snr.deliveredAt > 0 && snr.deliveredVia === 'snbus' && snr.deliveredPhotoId === '',
-    'SN BUS marks delivered WITHOUT a photo');
-  check(ctx.getJobs('delivery').filter(j => j.id === sn.id)[0].deliveredVia === 'snbus',
-    "job remembers it was 'delivered by SN BUS'");
-  const snr2 = ctx.markDelivered(sn.id, B64, B64);
-  check(snr2.deliveredVia === 'photo' && !!snr2.deliveredPhotoId,
-    'attaching a photo later upgrades SN BUS → photo proof');
-  ctx.removeDelivered(sn.id);
-  check(ctx.getJobs('delivery').filter(j => j.id === sn.id)[0].deliveredVia === '',
-    'undo clears the SN BUS stamp too');
-  throws(() => ctx.markDelivered(sn.id, null, null), 'normal delivered still REQUIRES the photo');
+  // ...and evidence/history carries the record
+  const ev = ctx.searchHistory('', PIN, 'delivery', '');
+  const evJob = ev.results.filter(j => j.id === sb.id)[0];
+  check(!!evJob && evJob.deliveredVia === 'bus' && evJob.deliveredBy === 'ZH', 'Evidence keeps how + who');
 
-  // un-doing the job clears the delivered confirmation with it
+  // un-doing the job's Done clears the delivered confirmation with it
   const d2 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64] });
   ctx.updateStatus(d2.id, 'done', B64, B64, null);
-  const rd2 = ctx.markDelivered(d2.id, B64, B64);
+  ctx.markDelivered(d2.id, 'pickup', 'Bob');
   ctx.deleteProof(d2.id);
-  const back = ctx.getJobs('delivery').filter(j => j.id === d2.id)[0];
-  check(back.status === 'pending' && back.deliveredAt === '' && files[rd2.deliveredPhotoId].trashed,
+  const b2 = ctx.getJobs('delivery').filter(j => j.id === d2.id)[0];
+  check(b2.status === 'pending' && b2.deliveredAt === '' && b2.deliveredBy === '',
     'removing the Done proof also clears the delivered confirmation');
 }
 

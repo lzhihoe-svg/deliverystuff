@@ -59,7 +59,7 @@ function ensureSetup_() {
                     'customer', 'folderId',
                     'nextTab', 'nextCategory', 'nextDueAt', 'nextJobId',
                     'problem', 'problemAt', 'printedAt', 'printPhotoId', 'printThumbId',
-                    'deliveredAt', 'deliveredPhotoId', 'deliveredThumbId', 'problemNote', 'deliveredVia']);
+                    'deliveredAt', 'deliveredPhotoId', 'deliveredThumbId', 'problemNote', 'deliveredVia', 'deliveredBy']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -287,7 +287,8 @@ function rowToJob_(r) {
     // second-stage delivery confirmation: it actually ARRIVED
     deliveredAt: r[27] || '', deliveredPhotoId: r[28] || '', deliveredThumbId: r[29] || '',
     problemNote: r[30] || '',  // shared info both sides can read on the Problem page
-    deliveredVia: r[31] || ''  // 'photo' | 'snbus' (fortnightly bus needs no photo)
+    deliveredVia: r[31] || '', // how it reached the customer (lalamove/bus/pickup/personal)
+    deliveredBy: r[32] || ''   // who delivered — 'ZH' (Bos) or 'Bob'
   };
 }
 
@@ -343,7 +344,7 @@ function addJob(payload) {
     var sh = getSheet_();
     if (payload.clientId) {
       var row = findRow_(sh, id);
-      if (row > 0) existing = sh.getRange(row, 1, 1, 32).getValues()[0];
+      if (row > 0) existing = sh.getRange(row, 1, 1, 33).getValues()[0];
     }
     if (!existing) {
       sh.appendRow([
@@ -354,7 +355,7 @@ function addJob(payload) {
         customer, folderId,
         nextTab, nextCategory, nextDueAt, '',
         '', '', '', '', '',
-        '', '', '', '', ''
+        '', '', '', '', '', ''
       ]);
     }
   } finally {
@@ -514,7 +515,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -563,7 +564,7 @@ function deleteJob(id, pin) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     // pipeline jobs SHARE photos with their check partner — when either
     // side is deleted, only its own proof is trashed, never the shared set
     var sharesPhotos = vals[6] === 'check' || !!vals[21];
@@ -745,7 +746,7 @@ function deleteProof(id) {
     if (dv[1]) toTrash.push(dv[1]);
     if (dv[2]) toTrash.push(dv[2]);
     sh.getRange(row, 28, 1, 3).setValues([['', '', '']]);
-    sh.getRange(row, 32).setValue('');
+    sh.getRange(row, 32, 1, 2).setValues([['', '']]);
   } finally {
     lock.releaseLock();
   }
@@ -758,7 +759,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 32).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 33).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -784,7 +785,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [], defect: [] };
   var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
   if (last < 2) return { jobs: jobs, counts: counts };
-  var rows = sh.getRange(2, 1, last - 1, 32).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 33).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
@@ -838,7 +839,7 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
     // nextJobId guards against double-push (re-swipes after Push Up).
     var pushed = null;
     if (status === 'got') {
-      var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+      var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
       if (vals[18] && !vals[21]) {
         var pid = Utilities.getUuid();
         var prow = [
@@ -849,7 +850,7 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
           vals[16] || 'Unassigned', vals[17] || '',
           '', '', '', '',
           '', '', '', '', '',
-          '', '', '', '', ''
+          '', '', '', '', '', ''
         ];
         sh.appendRow(prow);
         sh.getRange(row, 22).setValue(pid);
@@ -889,7 +890,7 @@ function sentBus(id, proofBase64, proofThumbBase64) {
       trashFile_(proofId); trashFile_(proofThumbId);
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     if (vals[1] !== 'postage') {
       trashFile_(proofId); trashFile_(proofThumbId);
       throw new Error('Only a postage job can be marked Sent bus');
@@ -937,7 +938,7 @@ function reportProblem(id, kind) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     if (vals[1] !== 'delivery' && vals[1] !== 'postage' && vals[1] !== 'defect') {
       throw new Error('Only Delivery/Postage/Defect jobs can be reported');
     }
@@ -982,7 +983,7 @@ function solveProblem(id, photoB64, thumbB64) {
       trashFile_(photoId); trashFile_(thumbId);
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' ||
       (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) {
@@ -1014,7 +1015,7 @@ function setProblemNote(id, text) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' ||
       (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) throw new Error('This job is not on the Problem page');
@@ -1026,56 +1027,35 @@ function setProblemNote(id, text) {
 }
 
 /**
- * "📬 DONE DELIVERED" — second-stage confirmation on a DELIVERY job that is
- * already Done (sent). Staff OR admin attach the delivered-proof picture
- * (Lalamove completed screenshot / recipient photo) so EVERYONE can see the
- * parcel really arrived — not just the admin who sent it. Photo REQUIRED;
- * it files into the job's Drive folder as DELIVERED and shows in Evidence.
+ * "📦 DELIVERED?" — second-stage confirmation on a DELIVERY job that is
+ * already Done (ready/sent). No photo: the answer to "how did it reach the
+ * customer, and who delivered it?" IS the record. Staff or admin confirm;
+ * the job then shows a big ✔ so nobody thinks about it again.
  */
-function markDelivered(id, photoB64, thumbB64, via) {
-  // via 'snbus': the fortnightly SN BUS run has no delivery photo — the tap
-  // itself (confirmed on the page) is the record. Everything else needs the photo.
-  var snbus = via === 'snbus';
-  if (!snbus && !photoB64) throw new Error('Delivered-proof photo required');
-  var lbl = jobLabel_(id);
-  var pFolder = photoB64 ? jobFolderOf_(lbl) : null;
-  var photoId = photoB64 ? savePhotoTo_(pFolder, photoB64, fileLabel_('DELIVERED', lbl.customer)) : '';
-  var thumbId = (photoB64 && thumbB64) ? savePhotoTo_(pFolder, thumbB64, fileLabel_('DELIVERED (thumb)', lbl.customer)) : '';
+var DELIVERED_VIAS = { lalamove: 1, bus: 1, pickup: 1, personal: 1 };
+function markDelivered(id, via, by) {
+  if (!DELIVERED_VIAS[via]) throw new Error('Choose HOW it was delivered');
+  if (by !== 'ZH' && by !== 'Bob') throw new Error('Choose who delivered — Bos (ZH) or Bob');
   var ts = new Date().getTime();
-  var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
-    if (row < 0) {
-      trashFile_(photoId); trashFile_(thumbId);
-      throw new Error('Job not found');
-    }
-    var vals = sh.getRange(row, 1, 1, 32).getValues()[0];
-    if (vals[1] !== 'delivery') {
-      trashFile_(photoId); trashFile_(thumbId);
-      throw new Error('Done Delivered is for Delivery jobs');
-    }
-    if (vals[5] !== 'done') {
-      trashFile_(photoId); trashFile_(thumbId);
-      throw new Error('Finish the job first (Done + proof), then confirm delivered');
-    }
-    if (vals[28]) toTrash.push(vals[28]); // retake replaces the old photo
-    if (vals[29]) toTrash.push(vals[29]);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 1, 1, 33).getValues()[0];
+    if (vals[1] !== 'delivery') throw new Error('Delivered confirmation is for Delivery jobs');
+    if (vals[5] !== 'done') throw new Error('Finish the job first (Done + proof), then confirm delivered');
     sh.getRange(row, 28).setValue(ts);
-    sh.getRange(row, 29).setValue(photoId);
-    sh.getRange(row, 30).setValue(thumbId);
-    sh.getRange(row, 32).setValue(snbus ? 'snbus' : 'photo');
+    sh.getRange(row, 32).setValue(via);
+    sh.getRange(row, 33).setValue(by);
   } finally {
     lock.releaseLock();
   }
-  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
-  return { id: id, deliveredAt: ts, deliveredPhotoId: photoId, deliveredThumbId: thumbId,
-           deliveredVia: snbus ? 'snbus' : 'photo' };
+  return { id: id, deliveredAt: ts, deliveredVia: via, deliveredBy: by };
 }
 
-/** Remove a wrong delivered-proof — the job goes back to "sent, not yet confirmed". */
+/** Undo a wrong Delivered confirmation — back to "ready, not yet delivered". */
 function removeDelivered(id) {
   var toTrash = [];
   var lock = LockService.getScriptLock();
@@ -1088,7 +1068,7 @@ function removeDelivered(id) {
     if (vals[1]) toTrash.push(vals[1]);
     if (vals[2]) toTrash.push(vals[2]);
     sh.getRange(row, 28, 1, 3).setValues([['', '', '']]);
-    sh.getRange(row, 32).setValue('');
+    sh.getRange(row, 32, 1, 2).setValues([['', '']]);
   } finally {
     lock.releaseLock();
   }
@@ -1201,7 +1181,7 @@ function searchHistory(q, pin, tab, category) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { results: [], total: 0, driveFolderId: masterFolder_().getId() };
-  var rows = sh.getRange(2, 1, last - 1, 32).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 33).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
