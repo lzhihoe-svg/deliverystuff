@@ -1759,15 +1759,61 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) === 0,
     'switching tabs starts at the top of the new tab');
 
-  // the J&T ready bar taps through to the waiting parcels
+  // the J&T ready bar jumps EXACTLY to the first ready parcel card
   await page.evaluate(() => {
-    const s = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Ready parcel', customer: 'CG', photos: ['r1', 'r2'], thumbs: ['r1', 'r2'], jsCount: 1 });
-    window.__mockapi.updateStatus(s.id, 'done', 'p', 'pt', null);
+    // sent long ago (oldest), sent recently, and one READY (unsent) parcel
+    const old1 = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Old sent parcel', customer: 'CG', photos: ['r1', 'r2'], thumbs: ['r1', 'r2'], jsCount: 1 });
+    window.__mockapi.updateStatus(old1.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markSentJnt(old1.id);
+    const new1 = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'New sent parcel', customer: 'SN', photos: ['r3', 'r4'], thumbs: ['r3', 'r4'], jsCount: 1 });
+    window.__mockapi.updateStatus(new1.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markSentJnt(new1.id);
+    const ready = window.__mockapi.addJob({ tab: 'postage', category: '', note: 'Ready parcel', customer: 'WAN', photos: ['r5', 'r6'], thumbs: ['r5', 'r6'], jsCount: 1 });
+    window.__mockapi.updateStatus(ready.id, 'done', 'p', 'pt', null);
+    // deterministic ordering: force distinct sent times (old = 2 hrs ago)
+    window.__mockdb.jobs.find(x => x.id === old1.id).sentAt = Date.now() - 7200000;
+    window.__mockdb.jobs.find(x => x.id === new1.id).sentAt = Date.now() - 60000;
     refresh();
   });
   await sleep(500);
   const jbar = await page.locator('#postage-list .jnt-bar').getAttribute('onclick');
-  check(String(jbar || '').indexOf('jumpToSec') >= 0, 'J&T ready bar taps through to the parcels');
+  check(String(jbar || '').indexOf('jumpToReady') >= 0, 'J&T ready bar jumps straight to the parcels');
+  check((await page.locator('#postage-list .card.jnt-ready').count()) === 1, 'ready (unsent) parcels carry the jump-target marker');
+
+  // Done sorting: READY parcels first, then newest → oldest
+  const doneOrder = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#postage-list .card'))
+      .map(c => (c.textContent.match(/Old sent parcel|New sent parcel|Ready parcel/) || [''])[0])
+      .filter(Boolean));
+  check(doneOrder[0] === 'Ready parcel', 'a not-yet-sent parcel sits at the TOP of Done');
+  check(doneOrder.indexOf('New sent parcel') < doneOrder.indexOf('Old sent parcel'),
+    'sent parcels: newest above, oldest at the bottom');
+
+  // tapping the bar scrolls + flashes the ready card
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; jumpToReady(); });
+  await sleep(700);
+  check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) > 0, 'the jump actually scrolls down to the card');
+  check((await page.evaluate(() => document.querySelector('#postage-list .card.jnt-ready').className.indexOf('flash') >= 0)),
+    'the target card flashes a highlight ring so it is easy to spot');
+
+  // Delivery Done sorting: unconfirmed deliveries float above delivered ones
+  await page.evaluate(() => {
+    const a = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Confirmed dlv', customer: 'CG', photos: ['s1'], thumbs: ['s1'] });
+    window.__mockapi.updateStatus(a.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markDelivered(a.id, 'bus', 'Bob');
+    const b = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Waiting dlv', customer: 'SN', photos: ['s2'], thumbs: ['s2'] });
+    window.__mockapi.updateStatus(b.id, 'done', 'p', 'pt', null);
+    refresh();
+  });
+  await sleep(500);
+  await page.click('#nav-delivery');
+  await sleep(400);
+  const dOrder = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#delivery-list .card'))
+      .map(c => (c.textContent.match(/Confirmed dlv|Waiting dlv/) || [''])[0])
+      .filter(Boolean));
+  check(dOrder.indexOf('Waiting dlv') < dOrder.indexOf('Confirmed dlv'),
+    'delivery Done: not-yet-confirmed jobs sit above confirmed ones');
 
   await ctx.close();
 

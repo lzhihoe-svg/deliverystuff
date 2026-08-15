@@ -402,6 +402,8 @@
     font-size: 14.5px; font-weight: 800; cursor: pointer;
   }
   .jnt-bar b { font-size: 17px; }
+  /* short highlight ring when a jump lands on a card — "here it is!" */
+  .card.flash { box-shadow: 0 0 0 4px var(--lime), 0 10px 26px rgba(101,163,13,.35); }
   .jnt-bar.zero { background: var(--soft); border-color: #e4e8d8; color: var(--muted); cursor: default; }
 
   /* green tick stamped OVER the photos once the job is out the door */
@@ -2056,6 +2058,14 @@
   function renderJobList(jobs, tab) {
     var pending = jobs.filter(function (j) { return j.status === 'pending'; });
     var done = jobs.filter(function (j) { return j.status === 'done'; });
+    // Done section order: jobs still WAITING for their second stage (J&T
+    // pickup / delivered confirmation) float to the top, then everything
+    // newest → oldest so old finished cards sink to the bottom
+    done.sort(function (a, b) {
+      var wa = waitingSecond_(a) ? 1 : 0, wb = waitingSecond_(b) ? 1 : 0;
+      if (wa !== wb) return wb - wa;
+      return lastActivity_(b) - lastActivity_(a);
+    });
     // most urgent deadline first; jobs without a deadline after, newest first
     pending.sort(function (a, b) {
       var da = a.dueAt ? Number(a.dueAt) : Infinity;
@@ -2076,7 +2086,7 @@
     if (tab === 'postage') {
       var ready = jobs.filter(function (j) { return j.status === 'done' && !j.sentAt; }).length;
       html += '<div class="jnt-bar' + (ready ? '' : ' zero') + '"' +
-        (ready ? ' onclick="jumpToSec(\'' + tab + '\',\'done\')"' : '') +
+        (ready ? ' onclick="jumpToReady()"' : '') +
         '>🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
         (ready ? ' parcel' + (ready > 1 ? 's' : '') + ' — tap to see them' : ' — none waiting') + '</div>';
     }
@@ -2100,10 +2110,32 @@
     return html;
   }
 
-  /** Tap "⏳ 3 to do" / "✅ 5 done" (or the J&T bar) → glide to that section. */
+  /** Still waiting for its second stage? (parcel not handed to J&T yet /
+      delivery not confirmed delivered yet) — these must sit on TOP of Done. */
+  function waitingSecond_(j) {
+    if (j.tab === 'postage') return !j.sentAt;
+    if (j.tab === 'delivery') return !j.deliveredAt;
+    return false;
+  }
+  /** When did this job last move? — for newest-first sorting of Done. */
+  function lastActivity_(j) {
+    return Math.max(Number(j.sentAt || 0), Number(j.deliveredAt || 0),
+      Number(j.doneAt || 0), Number(j.createdAt || 0));
+  }
+
+  /** Tap "⏳ 3 to do" / "✅ 5 done" → glide to that section. */
   function jumpToSec(tab, which) {
     var el = document.getElementById('sec-' + which + '-' + tab);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  /** J&T bar tap → land EXACTLY on the first ready parcel card, centered,
+      with a short highlight ring so there's no hunting. */
+  function jumpToReady() {
+    var el = document.querySelector('#postage-list .card.jnt-ready');
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('flash');
+    setTimeout(function () { el.classList.remove('flash'); }, 1800);
   }
 
   /** Postage: how many of the job's photos are Jobsheet pages (rest = Waybill). */
@@ -2166,7 +2198,9 @@
     // tick OVER the jobsheet/waybill photos so it's clearly marked as sent
     var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
     if (sealed) media = '<div class="media-sealed">' + media + '<div class="seal-tick">✔</div></div>';
-    var html = '<div class="card">' + media;
+    // ready-for-J&T parcels get a marker class — the J&T bar jumps straight to them
+    var ready = j.tab === 'postage' && isDone && !j.sentAt;
+    var html = '<div class="card' + (ready ? ' jnt-ready' : '') + '">' + media;
 
     html += '<div class="body">';
     if (j.uploading) html += '<span class="chip up">📤 Uploading…</span> ';
