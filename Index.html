@@ -3369,7 +3369,7 @@
   });
 
   // ------------------------------------------------------------ image compression
-  /** Produces BOTH sizes in one pass: full (1280px, for zoom) + thumb (480px, for cards). */
+  /** Produces BOTH sizes in one pass: full (1100px, for zoom) + thumb (480px, for cards). */
   function compressImage(file, cb) {
     var reader = new FileReader();
     reader.onload = function (e) {
@@ -3386,9 +3386,10 @@
           c.getContext('2d').drawImage(img, 0, 0, w, h);
           return c.toDataURL('image/jpeg', q).split(',')[1];
         }
-        // 1100px q0.75 keeps waybill text readable at ~35% fewer bytes
-        // than the old 1280 q0.8 — uploads finish noticeably faster on 4G
-        cb({ full: scale(1100, 0.75), thumb: scale(480, 0.7) });
+        // full 1100px q0.75 keeps waybill text readable when zoomed;
+        // thumbs at q0.60 — cards only need recognition, not detail, and
+        // the lighter files make lists load noticeably faster
+        cb({ full: scale(1100, 0.75), thumb: scale(480, 0.6) });
       };
       img.src = e.target.result;
     };
