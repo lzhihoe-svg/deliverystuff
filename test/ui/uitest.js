@@ -1074,6 +1074,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const j = window.__mockdb.jobs.find(x => x.note === 'Deliv-confirm');
     return !!j.deliveredAt && j.deliveredVia === 'lalamove' && j.deliveredBy === 'ZH';
   }), 'server records how + who + timestamp — no photo anywhere');
+  check((await dcCard.locator('.media-sealed .seal-tick').count()) === 1,
+    'a green tick is stamped OVER the photos');
   const tickTxt = await dcCard.locator('.delivered-big').textContent();
   check((await dcCard.locator('.delivered-big .tick').count()) === 1 &&
     tickTxt.indexOf('DELIVERED') >= 0 && tickTxt.indexOf('Lalamove') >= 0 &&
@@ -1091,6 +1093,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     return j.deliveredAt === '' && j.deliveredBy === '';
   }), 'Undo clears the record');
   check((await dcCard.locator('.btn.green').count()) === 1, "the 'Delivered?' button returns");
+  check((await dcCard.locator('.seal-tick').count()) === 0, 'the photo tick disappears after Undo');
   check((await page.locator('#postage-list .delivered-big').count()) === 0, 'postage cards have no Delivered stage');
   await page.evaluate(() => {
     setRole('admin', '1234');
@@ -1127,6 +1130,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'server stamps the Sent time');
   check((await jaCard.locator('.delivered-big').textContent()).indexOf('SENT TO J&T') >= 0,
     'big ✔ SENT TO J&T appears on the job');
+  check((await jaCard.locator('.media-sealed .seal-tick').count()) === 1,
+    'the jobsheet + waybill photos get the green tick stamp too');
   check((await page.locator('#postage-list .jnt-bar b').textContent()) === String(jntReady0 - 1),
     'the ready count drops — sent parcels are OUT of the next count');
   const jaTools = await moreCount(jaCard, '.jm-delsent');

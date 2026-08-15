@@ -401,6 +401,23 @@
   .jnt-bar b { font-size: 17px; }
   .jnt-bar.zero { background: var(--soft); border-color: var(--line); color: var(--muted); }
 
+  /* green tick stamped OVER the photos once the job is out the door */
+  .media-sealed { position: relative; }
+  .media-sealed::after {
+    content: ''; position: absolute; inset: 0; z-index: 2;
+    background: rgba(236, 252, 203, .32); pointer-events: none;
+    border-radius: 15px;
+  }
+  .media-sealed .seal-tick {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg);
+    width: 86px; height: 86px; border-radius: 50%; z-index: 3;
+    background: rgba(101, 163, 13, .93); color: #fff;
+    font-size: 52px; font-weight: 900; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 26px rgba(23, 27, 16, .35), 0 0 0 6px rgba(255, 255, 255, .6);
+    pointer-events: none;
+  }
+
   /* big ✔ — this job is fully finished, stop thinking about it */
   .delivered-big {
     display: flex; align-items: center; gap: 12px; margin-top: 10px;
@@ -2089,6 +2106,10 @@
     // whole card quietly falling back to one mixed carousel)
     var media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2)
       ? pairHtml(j) : carouselHtml(j);
+    // out the door — delivered (any way) or given to J&T: stamp a big green
+    // tick OVER the jobsheet/waybill photos so it's clearly marked as sent
+    var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
+    if (sealed) media = '<div class="media-sealed">' + media + '<div class="seal-tick">✔</div></div>';
     var html = '<div class="card">' + media;
 
     html += '<div class="body">';
