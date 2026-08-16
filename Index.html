@@ -530,6 +530,7 @@
   .perf-sum .cell { flex: 1; background: var(--lime-soft); border-radius: 12px; padding: 9px 4px; text-align: center; }
   .perf-sum .cell .n { font-size: 20px; font-weight: 800; color: var(--blue); line-height: 1.15; }
   .perf-sum .cell .l { font-size: 10px; font-weight: 700; color: #4b5142; text-transform: uppercase; letter-spacing: .04em; }
+  .perf-sum .cell .l .sub { display: block; font-size: 8.5px; font-weight: 700; color: var(--muted); text-transform: none; letter-spacing: 0; }
   .perf-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
   .perf-table th, .perf-table td {
     border-bottom: 1px solid var(--soft); padding: 8px 5px;
@@ -2530,10 +2531,11 @@
     var denom = tp + (Number(res.startBacklog) || 0);
     var overall = denom ? Math.round(td * 100 / denom) : 0;
     var h = '<div class="perf-sum">' +
-      '<div class="cell"><div class="n">' + tp + '</div><div class="l">Posted 14d</div></div>' +
-      '<div class="cell"><div class="n">' + td + '</div><div class="l">Done 14d</div></div>' +
-      '<div class="cell"><div class="n">' + to + '</div><div class="l">Out ✔ 14d</div></div>' +
-      '<div class="cell"><div class="n">' + (denom ? overall + '%' : '—') + '</div><div class="l">KPI 14d</div></div>' +
+      '<div class="cell"><div class="n">' + tp + '</div><div class="l">Posted</div></div>' +
+      '<div class="cell"><div class="n">' + td + '</div><div class="l">Done</div></div>' +
+      '<div class="cell"><div class="n">' + to + '</div><div class="l">Out ✔</div></div>' +
+      '<div class="cell"><div class="n">' + (denom ? overall + '%' : '—') +
+        '</div><div class="l">KPI <span class="sub">(Done/Posted)</span></div></div>' +
       '</div>';
     h += '<table class="perf-table"><tr><th style="text-align:left">Day</th>' +
       '<th>Posted</th><th>Load</th><th>Done</th><th>Left</th><th>Out ✔</th><th>KPI</th></tr>';
