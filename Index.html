@@ -2532,7 +2532,7 @@
       '<div class="cell"><div class="n">' + (tp ? avg + '%' : '—') + '</div><div class="l">KPI done÷posted</div></div>' +
       '</div>';
     h += '<table class="perf-table"><tr><th style="text-align:left">Day</th>' +
-      '<th>Posted</th><th>Done</th><th>Not yet</th><th>Out ✔</th><th>Checks</th><th>KPI</th></tr>';
+      '<th>Posted</th><th>Done</th><th>Not yet</th><th>Out ✔</th><th>KPI</th></tr>';
     days.forEach(function (d, i) {
       var kpi = d.posted ? Math.round(d.done * 100 / d.posted) : null;
       var kCls = kpi === null ? 'mut' : (kpi >= 80 ? 'good' : (kpi < 50 ? 'bad' : ''));
@@ -2541,7 +2541,7 @@
       }
       h += '<tr' + (i === 0 ? ' class="today"' : '') + '>' +
         '<td class="d">' + perfDay_(d.at, i === 0) + '</td>' +
-        n(d.posted) + n(d.done, 'good') + n(d.open, 'bad') + n(d.out, 'good') + n(d.checks) +
+        n(d.posted) + n(d.done, 'good') + n(d.open, 'bad') + n(d.out, 'good') +
         '<td class="' + kCls + '">' + (kpi === null ? '—' : kpi + '%') + '</td></tr>';
     });
     h += '</table>';
