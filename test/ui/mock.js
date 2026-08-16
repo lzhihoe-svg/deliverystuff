@@ -148,7 +148,46 @@
         if (!q) return true;
         return (j.note + ' ' + (j.customer || '') + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
       });
-      return { results: JSON.parse(JSON.stringify(all.slice(0, 50))), total: all.length, driveFolderId: 'MASTERFOLD' };
+      all.sort(function (a, b) {
+        var oa = (a.deliveredAt || a.sentAt) ? 1 : 0;
+        var ob = (b.deliveredAt || b.sentAt) ? 1 : 0;
+        if (oa !== ob) return ob - oa;
+        var ka = Math.max(Number(a.sentAt || 0), Number(a.deliveredAt || 0), Number(a.doneAt || 0), Number(a.createdAt || 0));
+        var kb = Math.max(Number(b.sentAt || 0), Number(b.deliveredAt || 0), Number(b.doneAt || 0), Number(b.createdAt || 0));
+        return kb - ka;
+      });
+      return { results: JSON.parse(JSON.stringify(all.slice(0, 100))), total: all.length, driveFolderId: 'MASTERFOLD' };
+    },
+    getPerformance: function (pin) {
+      requireAdmin(pin);
+      var now = new Date();
+      function ymd(ts) {
+        var d = new Date(Number(ts));
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+      }
+      var days = [], idx = {};
+      for (var k = 13; k >= 0; k--) {
+        var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k);
+        idx[ymd(dt.getTime())] = days.length;
+        days.push({ ymd: ymd(dt.getTime()), at: dt.getTime(), posted: 0, done: 0, out: 0, open: 0, checks: 0 });
+      }
+      db.jobs.forEach(function (j) {
+        var createdAt = Number(j.createdAt || 0), doneAt = Number(j.doneAt || 0);
+        var deliveredAt = Number(j.deliveredAt || 0), sentAt = Number(j.sentAt || 0);
+        if (j.tab === 'want') {
+          if (doneAt && idx[ymd(doneAt)] != null) days[idx[ymd(doneAt)]].checks++;
+          return;
+        }
+        if (createdAt && idx[ymd(createdAt)] != null) {
+          days[idx[ymd(createdAt)]].posted++;
+          if (j.status === 'pending') days[idx[ymd(createdAt)]].open++;
+        }
+        if (doneAt && j.proofPhotoId && idx[ymd(doneAt)] != null) days[idx[ymd(doneAt)]].done++;
+        if (deliveredAt && idx[ymd(deliveredAt)] != null) days[idx[ymd(deliveredAt)]].out++;
+        if (sentAt && idx[ymd(sentAt)] != null) days[idx[ymd(sentAt)]].out++;
+      });
+      days.reverse();
+      return { days: days };
     },
     undoSwipe: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });

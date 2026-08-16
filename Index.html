@@ -523,6 +523,25 @@
   }
   #history-btn { color: #4338ca; }
   #stats-btn { color: #0369a1; display: none; }
+  #perf-btn { color: #0e7490; display: none; }
+
+  /* 📈 performance — daily production KPI table */
+  .perf-sum { display: flex; gap: 8px; margin: 2px 0 12px; }
+  .perf-sum .cell { flex: 1; background: var(--lime-soft); border-radius: 12px; padding: 9px 4px; text-align: center; }
+  .perf-sum .cell .n { font-size: 20px; font-weight: 800; color: var(--blue); line-height: 1.15; }
+  .perf-sum .cell .l { font-size: 10px; font-weight: 700; color: #4b5142; text-transform: uppercase; letter-spacing: .04em; }
+  .perf-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
+  .perf-table th, .perf-table td {
+    border-bottom: 1px solid var(--soft); padding: 8px 5px;
+    font-size: 12.5px; font-weight: 700; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .perf-table th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 7px 5px; }
+  .perf-table td.d { text-align: left; white-space: nowrap; font-size: 12px; }
+  .perf-table tr.today td { background: #f7fee7; }
+  .perf-table .good { color: var(--green); }
+  .perf-table .bad { color: #b91c1c; }
+  .perf-table .mut { color: var(--muted); font-weight: 600; }
 
   /* admin stats — all 4 pages at a glance */
   .st-card { border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 12px; margin-top: 12px; }
@@ -871,6 +890,7 @@
     <h2>☰ Menu</h2>
     <button class="menu-item" id="refresh-btn" onclick="closeMenu();manualRefresh()">🔄 Refresh</button>
     <button class="menu-item" id="stats-btn" onclick="closeMenu();openStats()">📊 Stats</button>
+    <button class="menu-item" id="perf-btn" onclick="closeMenu();openPerf()">📈 Performance</button>
     <button class="menu-item" id="history-btn" onclick="closeMenu();openHistory()">🗂️ History &amp; evidence</button>
     <button class="menu-item" id="inventory-btn" onclick="closeMenu();openInventory()">📦 Inventory</button>
     <button class="menu-item warn" id="reset-btn" onclick="closeMenu();askReset()">🧹 Clear / Reset ▾</button>
@@ -886,6 +906,20 @@
     <div id="inv-last" style="font-size:12.5px;color:var(--muted);font-weight:600;margin:-6px 0 6px"></div>
     <div id="inv-body"><div class="empty"><span class="big">⏳</span>Loading stock list…</div></div>
     <button class="btn green" id="inv-submit" style="margin-top:14px" onclick="submitStockTake()">📤 Submit stock count</button>
+  </div>
+</div>
+
+<!-- ================= 📈 PERFORMANCE (daily production KPI, admin) ================= -->
+<div class="overlay" id="perf-overlay">
+  <div class="sheet">
+    <button class="x-close" onclick="closePerf()">✕</button>
+    <h2>📈 Performance — last 14 days</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 10px">
+      Daily production KPI. <b>Done</b> = jobs finished that day (proof taken).
+      <b>Out ✔</b> = delivered / given to J&amp;T that day. <b>Not yet</b> = posted
+      that day, still waiting now. Counts survive CLEAR DONE and RESET.
+    </p>
+    <div id="perf-body"></div>
   </div>
 </div>
 
@@ -1484,6 +1518,7 @@
     document.getElementById('hello').textContent = isAdmin() ? 'Hello, Admin 👋' : 'Hello! 👋';
     document.getElementById('reset-btn').style.display = isAdmin() ? 'flex' : 'none';
     document.getElementById('stats-btn').style.display = isAdmin() ? 'flex' : 'none';
+    document.getElementById('perf-btn').style.display = isAdmin() ? 'flex' : 'none';
   }
   function openRoleModal() {
     document.getElementById('pin-wrap').style.display = 'none';
@@ -2466,6 +2501,55 @@
         'fixed', pct(f.done, f.pend));
   }
 
+  // ------------------------------------------------------------ 📈 performance (daily KPI)
+  function openPerf() {
+    document.getElementById('perf-overlay').classList.add('show');
+    document.getElementById('perf-body').innerHTML =
+      '<div class="empty"><span class="big">⏳</span>Calculating…</div>';
+    gsCall('getPerformance', [state.pin], renderPerf, function (e) {
+      document.getElementById('perf-body').innerHTML = '';
+      closePerf();
+      toast('⚠️ ' + errMsg_(e));
+    });
+  }
+  function closePerf() { document.getElementById('perf-overlay').classList.remove('show'); }
+  function perfDay_(ms, isToday) {
+    if (isToday) return '📍 Today';
+    var d = new Date(Number(ms));
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONS[d.getMonth()];
+  }
+  function renderPerf(res) {
+    var days = res.days || [];
+    var tp = 0, td = 0, to = 0, topen = 0;
+    days.forEach(function (d) { tp += d.posted; td += d.done; to += d.out; topen += d.open; });
+    var avg = tp ? Math.round(td * 100 / tp) : 0;
+    var h = '<div class="perf-sum">' +
+      '<div class="cell"><div class="n">' + tp + '</div><div class="l">Posted 14d</div></div>' +
+      '<div class="cell"><div class="n">' + td + '</div><div class="l">Done 14d</div></div>' +
+      '<div class="cell"><div class="n">' + to + '</div><div class="l">Out ✔ 14d</div></div>' +
+      '<div class="cell"><div class="n">' + (tp ? avg + '%' : '—') + '</div><div class="l">KPI done÷posted</div></div>' +
+      '</div>';
+    h += '<table class="perf-table"><tr><th style="text-align:left">Day</th>' +
+      '<th>Posted</th><th>Done</th><th>Not yet</th><th>Out ✔</th><th>Checks</th><th>KPI</th></tr>';
+    days.forEach(function (d, i) {
+      var kpi = d.posted ? Math.round(d.done * 100 / d.posted) : null;
+      var kCls = kpi === null ? 'mut' : (kpi >= 80 ? 'good' : (kpi < 50 ? 'bad' : ''));
+      function n(v, cls) {
+        return '<td class="' + (v ? (cls || '') : 'mut') + '">' + (v || '·') + '</td>';
+      }
+      h += '<tr' + (i === 0 ? ' class="today"' : '') + '>' +
+        '<td class="d">' + perfDay_(d.at, i === 0) + '</td>' +
+        n(d.posted) + n(d.done, 'good') + n(d.open, 'bad') + n(d.out, 'good') + n(d.checks) +
+        '<td class="' + kCls + '">' + (kpi === null ? '—' : kpi + '%') + '</td></tr>';
+    });
+    h += '</table>';
+    h += '<div style="font-size:11.5px;color:var(--muted);font-weight:600;margin-top:9px">' +
+      '💡 KPI = jobs done ÷ jobs posted that day. "Not yet" flags the day the backlog came from.</div>';
+    document.getElementById('perf-body').innerHTML = h;
+  }
+
   // ------------------------------------------------------------ evidence history
   function fmtDT(ms) {
     if (!ms) return '';
@@ -2841,7 +2925,7 @@
       } else {
         noteHtml = (j.problemNote ? '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>' : '') +
           '<button class="prob-edit" onclick="editProbNote(\'' + j.id + '\')">✏️ ' +
-          (j.problemNote ? 'Edit info' : 'Write info for both sides') + '</button>';
+          (j.problemNote ? 'Edit Problem Info' : 'Write Problem Info') + '</button>';
       }
       html += '<div class="prob-card">' +
         '<div class="row">' +
@@ -3351,7 +3435,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay', 'perf-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -3364,6 +3448,7 @@
       else if (id === 'jobmenu-overlay') closeJobMenu();
       else if (id === 'inventory-overlay') closeInventory();
       else if (id === 'deliv-overlay') closeDeliv();
+      else if (id === 'perf-overlay') closePerf();
       else closeUpload();
     });
   });

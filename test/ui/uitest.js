@@ -1305,8 +1305,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(400);
   const npProb = page.locator('#problem-list .prob-card').filter({ hasText: 'Note-prob' });
   check((await npProb.locator('.prob-edit').count()) === 1 &&
-    (await npProb.locator('.prob-edit').textContent()).indexOf('Write info') >= 0,
-    "problem card has '✏️ Write info for both sides'");
+    (await npProb.locator('.prob-edit').textContent()).indexOf('Write Problem Info') >= 0,
+    "problem card has '✏️ Write Problem Info'");
   await npProb.locator('.prob-edit').click();
   await sleep(300);
   await npProb.locator('.prob-note-edit').fill('Jobsheet with Kak Ros — reprint page 2 only');
@@ -1318,8 +1318,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), 'staff saved the info on the server (no PIN)');
   check((await npProb.locator('.prob-note').textContent()).indexOf('Kak Ros') >= 0,
     'info shows on the Problem page');
-  check((await npProb.locator('.prob-edit').textContent()).indexOf('Edit info') >= 0,
-    "button now reads 'Edit info'");
+  check((await npProb.locator('.prob-edit').textContent()).indexOf('Edit Problem Info') >= 0,
+    "button now reads 'Edit Problem Info'");
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(300);
   check((await npCard.locator('.prob-note').textContent()).indexOf('Kak Ros') >= 0,
@@ -1856,6 +1856,40 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
       .map(e => parseFloat(getComputedStyle(e).height)));
   check(singleHs.length >= 2 && singleHs.every(h => h === singleHs[0] && h > 0),
     'every delivery card photo has the same height (' + singleHs[0] + 'px)');
+
+  console.log('\n-- 📈 Performance (daily production KPI) --');
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(250);
+  check(!(await menuItemVisible('#perf-btn')), 'staff does NOT see Performance');
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(250);
+  check(await menuItemVisible('#perf-btn'), 'admin sees 📈 Performance in the ☰ menu');
+  await viaMenu('#perf-btn');
+  await sleep(600);
+  check(await page.locator('#perf-overlay').isVisible(), 'Performance window opens');
+  check((await page.locator('#perf-body .perf-table tr').count()) === 15, 'always shows 14 days (+ header row)');
+  check((await page.locator('#perf-body .perf-table tr').nth(1).textContent()).indexOf('Today') >= 0,
+    'today is the first row');
+  const expPosted = await page.evaluate(() => {
+    const t = new Date();
+    const sameDay = ms => { const d = new Date(Number(ms)); return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate(); };
+    return window.__mockdb.jobs.filter(j => j.tab !== 'want' && sameDay(j.createdAt)).length;
+  });
+  const postedCell = (await page.locator('#perf-body .perf-table tr').nth(1).locator('td').nth(1).textContent()).trim();
+  check(String(expPosted) === (postedCell === '·' ? '0' : postedCell),
+    "today's Posted matches the database (" + postedCell + ')');
+  check((await page.locator('#perf-body .perf-sum .cell').count()) === 4, '14-day summary tiles on top');
+  await page.evaluate(() => closePerf());
+  await sleep(250);
+
+  console.log('\n-- history: ✔ out-the-door jobs on top --');
+  await viaMenu('#history-btn');
+  await sleep(700);
+  const firstHist = await page.locator('#history-results .h-card').first().textContent();
+  check(firstHist.indexOf('Sent to J&T') >= 0 || firstHist.indexOf('Delivered') >= 0,
+    '✔ delivered / sent jobs sort to the top of Evidence History');
+  await page.evaluate(() => closeHistory());
+  await sleep(200);
 
   await ctx.close();
 

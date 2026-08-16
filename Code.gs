@@ -1225,8 +1225,10 @@ function getStockTake() {
  * STAFF AND ADMIN (read-only). Evidence history: search EVERY job ever
  * posted — including archived ones (RESET never deletes records). Matches
  * the query against the note, category, tab and the posted/finished dates
- * ("2026-08-05"). Empty query = the 50 most recent jobs. Newest first,
- * capped at 50. (The pin argument is kept for compatibility, unused.)
+ * ("2026-08-05"). Empty query = the most recent jobs. Jobs fully OUT THE
+ * DOOR (✔ Delivered / ✔ Sent to J&T) sort to the very top, then everything
+ * newest first. Capped at 100 results.
+ * (The pin argument is kept for compatibility, unused.)
  */
 function searchHistory(q, pin, tab, category) {
   q = String(q || '').toLowerCase().trim();
@@ -1247,9 +1249,66 @@ function searchHistory(q, pin, tab, category) {
     }
     out.push(rowToJob_(r));
   }
+  // ✔ out-the-door jobs (Delivered / Sent to J&T) float to the very top,
+  // then everything else — newest first within each group
+  out.sort(function (a, b) {
+    var oa = (a.deliveredAt || a.sentAt) ? 1 : 0;
+    var ob = (b.deliveredAt || b.sentAt) ? 1 : 0;
+    if (oa !== ob) return ob - oa;
+    var ka = Math.max(Number(a.sentAt || 0), Number(a.deliveredAt || 0), Number(a.doneAt || 0), Number(a.createdAt || 0));
+    var kb = Math.max(Number(b.sentAt || 0), Number(b.deliveredAt || 0), Number(b.doneAt || 0), Number(b.createdAt || 0));
+    return kb - ka;
+  });
   // driveFolderId: the "Kilang App Photos" master folder, so the page can
   // offer an "open in Google Drive" link next to the results.
-  return { results: out.slice(0, 50), total: out.length, driveFolderId: masterFolder_().getId() };
+  return { results: out.slice(0, 100), total: out.length, driveFolderId: masterFolder_().getId() };
+}
+
+/**
+ * ADMIN ONLY. 📈 Daily production KPI — the last 14 days, every day.
+ * Counts WORK jobs (Delivery / Postage / Defect; Checking swipes are listed
+ * separately as "checks"). Per day:
+ *   posted — jobs posted that day
+ *   done   — jobs COMPLETED that day (proof photo taken)
+ *   out    — out the door that day (✔ Delivered + ✔ Sent to J&T)
+ *   open   — jobs posted that day that are STILL not done right now
+ *   checks — Checking jobsheets answered that day (swiped ❤️ / ❌)
+ * Archived jobs count too — CLEAR DONE / RESET never hides performance.
+ * Newest day first.
+ */
+function getPerformance(pin) {
+  requireAdmin_(pin);
+  var now = new Date();
+  var days = [], idx = {};
+  for (var d = 13; d >= 0; d--) {
+    var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+    var key = dayStr_(dt.getTime());
+    idx[key] = days.length;
+    days.push({ ymd: key, at: dt.getTime(), posted: 0, done: 0, out: 0, open: 0, checks: 0 });
+  }
+  var sh = getSheet_();
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var rows = sh.getRange(2, 1, last - 1, 34).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var createdAt = Number(r[7] || 0), doneAt = Number(r[9] || 0);
+      var deliveredAt = Number(r[27] || 0), sentAt = Number(r[33] || 0);
+      if (r[1] === 'want') {
+        if (doneAt && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].checks++;
+        continue;
+      }
+      if (createdAt && idx[dayStr_(createdAt)] != null) {
+        days[idx[dayStr_(createdAt)]].posted++;
+        if (r[5] === 'pending') days[idx[dayStr_(createdAt)]].open++;
+      }
+      if (doneAt && r[10] && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].done++;
+      if (deliveredAt && idx[dayStr_(deliveredAt)] != null) days[idx[dayStr_(deliveredAt)]].out++;
+      if (sentAt && idx[dayStr_(sentAt)] != null) days[idx[dayStr_(sentAt)]].out++;
+    }
+  }
+  days.reverse(); // today first
+  return { days: days };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */

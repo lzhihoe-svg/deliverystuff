@@ -636,13 +636,13 @@ console.log('\n== searchHistory (evidence = jobs WITH a proof photo) ==');
     'after RESET the job is still findable WITH its proof (archived, not deleted)');
   check(ctx.searchHistory('no-such-customer', PIN).total === 0, 'no match returns empty');
 
-  // cap at 50
-  for (let i = 0; i < 55; i++) {
+  // cap at 100
+  for (let i = 0; i < 105; i++) {
     const x = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'bulk' + i, photos: [B64] });
     ctx.updateStatus(x.id, 'done', B64, B64, null);
   }
   const r6 = ctx.searchHistory('bulk', PIN);
-  check(r6.total === 55 && r6.results.length === 50, 'results capped at 50 (total still reported)');
+  check(r6.total === 105 && r6.results.length === 100, 'results capped at 100 (total still reported)');
 }
 
 console.log('\n== defect tab (jobsheet + defect photos + PROOF to finish) ==');
@@ -1053,6 +1053,59 @@ console.log('\n== lock hygiene ==');
   try { env.ctx.deleteJob('ghost', PIN); } catch (e) {}
   const l = env.locks();
   check(l.lockCount === l.unlockCount, 'every lock acquired is released (' + l.lockCount + '/' + l.unlockCount + ')');
+}
+
+console.log('\n== history sorting: ✔ out-the-door jobs first, cap 100 ==');
+{
+  const { ctx } = makeEnv();
+  const a = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'plain done', photos: [B64] });
+  ctx.updateStatus(a.id, 'done', B64, B64, null);
+  const b = ctx.addJob({ tab: 'postage', category: '', note: 'sent one', photos: [B64, B64] });
+  ctx.updateStatus(b.id, 'done', B64, B64, null);
+  ctx.markSentJnt(b.id);
+  const c = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'delivered one', photos: [B64] });
+  ctx.updateStatus(c.id, 'done', B64, B64, null);
+  ctx.markDelivered(c.id, 'pickup', 'Bob');
+  const res = ctx.searchHistory('', PIN);
+  const notes = res.results.map(j => j.note);
+  check(notes.length === 3, 'all three finished jobs listed');
+  check(notes.indexOf('plain done') === 2, '✔ delivered / sent jobs rank ABOVE a plain done job');
+  check(notes[0] === 'delivered one' || notes[0] === 'sent one', 'newest ✔ job first within the top group');
+}
+
+console.log('\n== getPerformance (daily production KPI, 14 days) ==');
+{
+  const { ctx, sheetData } = makeEnv();
+  throws(() => ctx.getPerformance(''), 'staff cannot open performance');
+  throws(() => ctx.getPerformance('9999'), 'wrong PIN rejected');
+  const d1 = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'perf done', photos: [B64] });
+  ctx.updateStatus(d1.id, 'done', B64, B64, null);
+  ctx.markDelivered(d1.id, 'bus', 'ZH');
+  const p1 = ctx.addJob({ tab: 'postage', category: '', note: 'perf open', photos: [B64, B64] });
+  const w1 = ctx.addJob({ tab: 'want', category: '', note: 'perf check', photos: [B64] });
+  ctx.updateStatus(w1.id, 'got', null, null, null);
+
+  const perf = ctx.getPerformance(PIN);
+  check(perf.days.length === 14, 'always exactly 14 days');
+  check(perf.days[0].at > perf.days[13].at, 'newest day (today) first');
+  const t = perf.days[0];
+  check(t.posted === 2 && t.done === 1 && t.out === 1 && t.open === 1 && t.checks === 1,
+    'today: 2 posted · 1 done · 1 out ✔ · 1 not-yet · 1 check (want swipes counted separately)');
+
+  // move the finished job's dates back one day, straight in the sheet
+  const DAY = 86400000;
+  const row = sheetData.find(r => r[0] === d1.id);
+  row[7] -= DAY; row[9] -= DAY; row[27] -= DAY;
+  const perf2 = ctx.getPerformance(PIN);
+  check(perf2.days[1].posted === 1 && perf2.days[1].done === 1 && perf2.days[1].out === 1,
+    'yesterday: counts follow the dates (true day-by-day split)');
+  check(perf2.days[0].posted === 1 && perf2.days[0].done === 0, 'today keeps only its own jobs');
+
+  // CLEAR DONE / RESET must never erase performance history
+  ctx.resetAll(PIN);
+  const perf3 = ctx.getPerformance(PIN);
+  check(perf3.days[1].done === 1 && perf3.days[0].posted === 1, 'RESET does not erase performance history');
+  check(perf3.days[0].open === 0, 'an archived pending job no longer counts as "not yet"');
 }
 
 console.log('\n================================');
