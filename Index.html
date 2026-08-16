@@ -915,9 +915,11 @@
     <button class="x-close" onclick="closePerf()">✕</button>
     <h2>📈 Performance — last 14 days</h2>
     <p style="font-size:13px;color:var(--muted);margin:-6px 0 10px">
-      Daily production KPI. <b>Done</b> = jobs finished that day (proof taken).
-      <b>Out ✔</b> = delivered / given to J&amp;T that day. <b>Not yet</b> = posted
-      that day, still waiting now. Counts survive CLEAR DONE and RESET.
+      Daily production KPI. <b>Load</b> = everything on the board that day
+      (leftover + new posts). <b>Done</b> = finished that day (proof taken).
+      <b>KPI = Done ÷ Load</b> — clearing old backlog counts fairly, and it
+      can never go above 100%. <b>Left</b> = still waiting at day's end.
+      Counts survive CLEAR DONE and RESET.
     </p>
     <div id="perf-body"></div>
   </div>
@@ -2522,31 +2524,34 @@
   }
   function renderPerf(res) {
     var days = res.days || [];
-    var tp = 0, td = 0, to = 0, topen = 0;
-    days.forEach(function (d) { tp += d.posted; td += d.done; to += d.out; topen += d.open; });
-    var avg = tp ? Math.round(td * 100 / tp) : 0;
+    var tp = 0, td = 0, to = 0;
+    days.forEach(function (d) { tp += d.posted; td += d.done; to += d.out; });
+    // 14-day KPI: done ÷ (backlog waiting at the window start + all new posts)
+    var denom = tp + (Number(res.startBacklog) || 0);
+    var overall = denom ? Math.round(td * 100 / denom) : 0;
     var h = '<div class="perf-sum">' +
       '<div class="cell"><div class="n">' + tp + '</div><div class="l">Posted 14d</div></div>' +
       '<div class="cell"><div class="n">' + td + '</div><div class="l">Done 14d</div></div>' +
       '<div class="cell"><div class="n">' + to + '</div><div class="l">Out ✔ 14d</div></div>' +
-      '<div class="cell"><div class="n">' + (tp ? avg + '%' : '—') + '</div><div class="l">KPI done÷posted</div></div>' +
+      '<div class="cell"><div class="n">' + (denom ? overall + '%' : '—') + '</div><div class="l">KPI 14d</div></div>' +
       '</div>';
     h += '<table class="perf-table"><tr><th style="text-align:left">Day</th>' +
-      '<th>Posted</th><th>Done</th><th>Not yet</th><th>Out ✔</th><th>KPI</th></tr>';
+      '<th>Posted</th><th>Load</th><th>Done</th><th>Left</th><th>Out ✔</th><th>KPI</th></tr>';
     days.forEach(function (d, i) {
-      var kpi = d.posted ? Math.round(d.done * 100 / d.posted) : null;
+      var kpi = d.load ? Math.round(d.done * 100 / d.load) : null;
       var kCls = kpi === null ? 'mut' : (kpi >= 80 ? 'good' : (kpi < 50 ? 'bad' : ''));
       function n(v, cls) {
         return '<td class="' + (v ? (cls || '') : 'mut') + '">' + (v || '·') + '</td>';
       }
       h += '<tr' + (i === 0 ? ' class="today"' : '') + '>' +
         '<td class="d">' + perfDay_(d.at, i === 0) + '</td>' +
-        n(d.posted) + n(d.done, 'good') + n(d.open, 'bad') + n(d.out, 'good') +
+        n(d.posted) + n(d.load) + n(d.done, 'good') + n(d.left, 'bad') + n(d.out, 'good') +
         '<td class="' + kCls + '">' + (kpi === null ? '—' : kpi + '%') + '</td></tr>';
     });
     h += '</table>';
     h += '<div style="font-size:11.5px;color:var(--muted);font-weight:600;margin-top:9px">' +
-      '💡 KPI = jobs done ÷ jobs posted that day. "Not yet" flags the day the backlog came from.</div>';
+      '💡 KPI = Done ÷ Load. Load counts leftover jobs from earlier days too, ' +
+      'so finishing old work counts fairly — 100% means the whole board was cleared that day.</div>';
     document.getElementById('perf-body').innerHTML = h;
   }
 

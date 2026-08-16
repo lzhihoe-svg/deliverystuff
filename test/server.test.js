@@ -1089,23 +1089,38 @@ console.log('\n== getPerformance (daily production KPI, 14 days) ==');
   check(perf.days.length === 14, 'always exactly 14 days');
   check(perf.days[0].at > perf.days[13].at, 'newest day (today) first');
   const t = perf.days[0];
-  check(t.posted === 2 && t.done === 1 && t.out === 1 && t.open === 1 && t.checks === 1,
-    'today: 2 posted · 1 done · 1 out ✔ · 1 not-yet · 1 check (want swipes counted separately)');
+  check(t.posted === 2 && t.load === 2 && t.done === 1 && t.left === 1 && t.out === 1,
+    'today: 2 posted · load 2 · 1 done · 1 left · 1 out ✔ (want swipes excluded)');
 
   // move the finished job's dates back one day, straight in the sheet
   const DAY = 86400000;
   const row = sheetData.find(r => r[0] === d1.id);
   row[7] -= DAY; row[9] -= DAY; row[27] -= DAY;
   const perf2 = ctx.getPerformance(PIN);
-  check(perf2.days[1].posted === 1 && perf2.days[1].done === 1 && perf2.days[1].out === 1,
+  check(perf2.days[1].posted === 1 && perf2.days[1].done === 1 && perf2.days[1].out === 1 &&
+        perf2.days[1].load === 1 && perf2.days[1].left === 0,
     'yesterday: counts follow the dates (true day-by-day split)');
-  check(perf2.days[0].posted === 1 && perf2.days[0].done === 0, 'today keeps only its own jobs');
+  check(perf2.days[0].posted === 1 && perf2.days[0].done === 0 && perf2.days[0].load === 1,
+    'today keeps only its own jobs');
+
+  // THE FIX: a leftover job finished today counts against today's LOAD,
+  // so the KPI stays honest (≤ 100%) even when done > posted that day
+  const p2 = ctx.addJob({ tab: 'postage', category: '', note: 'leftover', photos: [B64, B64] });
+  const row2 = sheetData.find(r => r[0] === p2.id);
+  row2[7] -= 3 * DAY; // posted 3 days ago…
+  ctx.updateStatus(p2.id, 'done', B64, B64, null); // …finished today
+  const perf4 = ctx.getPerformance(PIN);
+  check(perf4.days[0].posted === 1 && perf4.days[0].done === 1 && perf4.days[0].load === 2,
+    'leftover finished today: done 1 vs load 2 — KPI 50%, never 350%');
+  check(perf4.days[3].posted === 1 && perf4.days[3].load === 1 && perf4.days[3].left === 1,
+    'the 3 days it sat waiting show it in Load and Left');
 
   // CLEAR DONE / RESET must never erase performance history
   ctx.resetAll(PIN);
   const perf3 = ctx.getPerformance(PIN);
   check(perf3.days[1].done === 1 && perf3.days[0].posted === 1, 'RESET does not erase performance history');
-  check(perf3.days[0].open === 0, 'an archived pending job no longer counts as "not yet"');
+  check(perf3.days[0].left === 0 && perf3.days[0].load === 1,
+    'a job archived without finishing stops counting as workload (no eternal backlog)');
 }
 
 console.log('\n================================');

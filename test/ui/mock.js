@@ -167,27 +167,35 @@
       }
       var days = [], idx = {};
       for (var k = 13; k >= 0; k--) {
-        var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k);
-        idx[ymd(dt.getTime())] = days.length;
-        days.push({ ymd: ymd(dt.getTime()), at: dt.getTime(), posted: 0, done: 0, out: 0, open: 0, checks: 0 });
+        var ds = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k).getTime();
+        var de = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k + 1).getTime() - 1;
+        idx[ymd(ds)] = days.length;
+        days.push({ ymd: ymd(ds), at: ds, end: de, posted: 0, load: 0, done: 0, left: 0, out: 0 });
       }
+      var winStart = days[0].at, startBacklog = 0;
       db.jobs.forEach(function (j) {
-        var createdAt = Number(j.createdAt || 0), doneAt = Number(j.doneAt || 0);
+        if (j.tab === 'want') return;
+        var createdAt = Number(j.createdAt || 0);
+        var doneAt = j.proofPhotoId ? Number(j.doneAt || 0) : 0;
         var deliveredAt = Number(j.deliveredAt || 0), sentAt = Number(j.sentAt || 0);
-        if (j.tab === 'want') {
-          if (doneAt && idx[ymd(doneAt)] != null) days[idx[ymd(doneAt)]].checks++;
-          return;
-        }
-        if (createdAt && idx[ymd(createdAt)] != null) {
-          days[idx[ymd(createdAt)]].posted++;
-          if (j.status === 'pending') days[idx[ymd(createdAt)]].open++;
-        }
-        if (doneAt && j.proofPhotoId && idx[ymd(doneAt)] != null) days[idx[ymd(doneAt)]].done++;
+        if (!createdAt) return;
+        if (idx[ymd(createdAt)] != null) days[idx[ymd(createdAt)]].posted++;
+        if (doneAt && idx[ymd(doneAt)] != null) days[idx[ymd(doneAt)]].done++;
         if (deliveredAt && idx[ymd(deliveredAt)] != null) days[idx[ymd(deliveredAt)]].out++;
         if (sentAt && idx[ymd(sentAt)] != null) days[idx[ymd(sentAt)]].out++;
+        var ghost = (j.status === 'archived' && !doneAt);
+        if (ghost) return;
+        if (createdAt < winStart && (!doneAt || doneAt >= winStart)) startBacklog++;
+        for (var k2 = 0; k2 < days.length; k2++) {
+          if (createdAt > days[k2].end) continue;
+          if (doneAt && doneAt < days[k2].at) continue;
+          days[k2].load++;
+          if (!doneAt || doneAt > days[k2].end) days[k2].left++;
+        }
       });
+      days.forEach(function (d) { delete d.end; });
       days.reverse();
-      return { days: days };
+      return { days: JSON.parse(JSON.stringify(days)), startBacklog: startBacklog };
     },
     undoSwipe: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });

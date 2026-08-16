@@ -1266,49 +1266,65 @@ function searchHistory(q, pin, tab, category) {
 
 /**
  * ADMIN ONLY. 📈 Daily production KPI — the last 14 days, every day.
- * Counts WORK jobs (Delivery / Postage / Defect; Checking swipes are listed
- * separately as "checks"). Per day:
- *   posted — jobs posted that day
+ * Counts WORK jobs (Delivery / Postage / Defect; Checking swipes excluded).
+ *
+ * The KPI is done ÷ WORKLOAD, not done ÷ posted — a job finished today may
+ * have been posted days ago, so measuring against that day's real board
+ * (leftover + new) keeps the number honest and never above 100%.
+ * Per day:
+ *   posted — new jobs posted that day
+ *   load   — WORKLOAD: every job open on the board at any point that day
+ *            (carried over from before + newly posted)
  *   done   — jobs COMPLETED that day (proof photo taken)
+ *   left   — still unfinished at the END of that day (tomorrow's carryover)
  *   out    — out the door that day (✔ Delivered + ✔ Sent to J&T)
- *   open   — jobs posted that day that are STILL not done right now
- *   checks — Checking jobsheets answered that day (swiped ❤️ / ❌)
- * Archived jobs count too — CLEAR DONE / RESET never hides performance.
- * Newest day first.
+ * A job archived WITHOUT ever being finished (cancelled / reset away) stops
+ * counting as workload — otherwise it would inflate "left" forever.
+ * Archived finished jobs count on their real dates — CLEAR DONE / RESET
+ * never hides performance. Newest day first.
  */
 function getPerformance(pin) {
   requireAdmin_(pin);
   var now = new Date();
   var days = [], idx = {};
   for (var d = 13; d >= 0; d--) {
-    var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
-    var key = dayStr_(dt.getTime());
-    idx[key] = days.length;
-    days.push({ ymd: key, at: dt.getTime(), posted: 0, done: 0, out: 0, open: 0, checks: 0 });
+    var ds = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d).getTime();
+    var de = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d + 1).getTime() - 1;
+    idx[dayStr_(ds)] = days.length;
+    days.push({ ymd: dayStr_(ds), at: ds, end: de, posted: 0, load: 0, done: 0, left: 0, out: 0 });
   }
+  var winStart = days[0].at;
+  var startBacklog = 0; // jobs already waiting when the 14-day window opens
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last >= 2) {
     var rows = sh.getRange(2, 1, last - 1, 34).getValues();
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var createdAt = Number(r[7] || 0), doneAt = Number(r[9] || 0);
+      if (r[1] === 'want') continue;
+      var createdAt = Number(r[7] || 0);
+      var doneAt = r[10] ? Number(r[9] || 0) : 0; // finished = has a proof photo
       var deliveredAt = Number(r[27] || 0), sentAt = Number(r[33] || 0);
-      if (r[1] === 'want') {
-        if (doneAt && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].checks++;
-        continue;
-      }
-      if (createdAt && idx[dayStr_(createdAt)] != null) {
-        days[idx[dayStr_(createdAt)]].posted++;
-        if (r[5] === 'pending') days[idx[dayStr_(createdAt)]].open++;
-      }
-      if (doneAt && r[10] && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].done++;
+      if (!createdAt) continue;
+      if (idx[dayStr_(createdAt)] != null) days[idx[dayStr_(createdAt)]].posted++;
+      if (doneAt && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].done++;
       if (deliveredAt && idx[dayStr_(deliveredAt)] != null) days[idx[dayStr_(deliveredAt)]].out++;
       if (sentAt && idx[dayStr_(sentAt)] != null) days[idx[dayStr_(sentAt)]].out++;
+      // workload: which days did this job sit on the board?
+      var ghost = (r[5] === 'archived' && !doneAt); // cleared without being finished
+      if (ghost) continue;
+      if (createdAt < winStart && (!doneAt || doneAt >= winStart)) startBacklog++;
+      for (var k = 0; k < days.length; k++) {
+        if (createdAt > days[k].end) continue;       // not posted yet that day
+        if (doneAt && doneAt < days[k].at) continue; // finished before that day
+        days[k].load++;
+        if (!doneAt || doneAt > days[k].end) days[k].left++;
+      }
     }
   }
+  for (var j2 = 0; j2 < days.length; j2++) delete days[j2].end;
   days.reverse(); // today first
-  return { days: days };
+  return { days: days, startBacklog: startBacklog };
 }
 
 /** Badge counts for the bottom navigation (pending items per tab). */
