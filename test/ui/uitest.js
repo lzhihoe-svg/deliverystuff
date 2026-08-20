@@ -1593,8 +1593,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   check(await page.locator('#prodview').isVisible(), 'production view opens full screen');
   check((await page.locator('#prodview .pv-col').count()) === 5,
-    '5 columns: Checking · Delivery · Postage · Defect · Stats');
-  check((await page.locator('#pv-stats .st-card').count()) === 4, 'Stats column carries all 4 page summaries');
+    '5 columns: Checking · Delivery · Postage · Defect · Problems');
+  check((await page.locator('#pv-statsbar .pv-sb').count()) === 5,
+    'the 📊 stats bar sits ON TOP as a horizontal strip (5 groups)');
+  const sbTxt = await page.locator('#pv-statsbar').textContent();
+  check(sbTxt.indexOf('Raised') >= 0 && sbTxt.indexOf('Solved') >= 0 && sbTxt.indexOf('Balance') >= 0,
+    'the Problems tile counts Raised · Solved · Balance');
   check((await page.locator('#pv-postage .pv-card2').count()) >= 1, 'postage jobs listed in their column');
   check((await page.locator('#pv-postage .pv-sec').count()) >= 1, 'jobs are grouped by status inside the column');
   const pvCols = await page.evaluate(() => {
@@ -1622,11 +1626,39 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const pvCount = await page.locator('#pv-postage .pv-count').textContent();
   check(pvCount.indexOf('To Do') >= 0 && pvCount.indexOf('J&T') >= 0 && pvCount.indexOf('Sent') >= 0,
     'column header counts every status: ' + pvCount.trim());
-  const statsW = await page.evaluate(() => {
+  const colW = await page.evaluate(() => {
     const cols = document.querySelectorAll('#prodview .pv-col');
-    return cols[4].getBoundingClientRect().width / cols[0].getBoundingClientRect().width;
+    const wd = cols[1].getBoundingClientRect().width; // Delivery = full width
+    return { want: cols[0].getBoundingClientRect().width / wd,
+             defect: cols[3].getBoundingClientRect().width / wd,
+             probs: cols[4].getBoundingClientRect().width / wd };
   });
-  check(statsW < 0.8, 'the Stats column is narrower than the job columns (' + statsW.toFixed(2) + 'x)');
+  check(colW.want < 0.7, 'Checking column is HALF width (' + colW.want.toFixed(2) + 'x)');
+  check(colW.defect < 0.7, 'Defect column is HALF width (' + colW.defect.toFixed(2) + 'x)');
+  check(colW.probs < 0.7, '…and the freed space is the 🚨 Problems column');
+  const oneUp = await page.evaluate(() =>
+    ['pv-want', 'pv-defect', 'pv-problems'].every(id => {
+      const g = document.querySelector('#' + id + ' .pv-grid2');
+      return !g || getComputedStyle(g).gridTemplateColumns.split(' ').length === 1;
+    }));
+  check(oneUp, 'half-width columns fit ONE card per row');
+  check((await page.locator('#pv-problems .pv-card2').count()) >= 1,
+    'the Problems column lists every open problem');
+  check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('open') >= 0,
+    'with an open-problems count on top');
+  // every card identical — symmetrical heights across ALL columns
+  const cardHs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#prodview .pv-card2')).map(e => e.getBoundingClientRect().height));
+  check(cardHs.length >= 3 && cardHs.every(h => Math.abs(h - cardHs[0]) < 1),
+    'every TV card is EXACTLY the same height (' + Math.round(cardHs[0]) + 'px)');
+  // double-click a card → fullscreen viewer with ‹ › through its photos
+  await page.locator('#pv-postage .pv-card2').first().dblclick();
+  await sleep(400);
+  check(await page.locator('#viewer').isVisible(), 'double-click opens the fullscreen photo viewer');
+  check(await page.locator('#viewer-next').isVisible(), '‹ › arrows ready for next / backward');
+  await page.locator('.viewer-x').click();
+  await sleep(250);
+  check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
   check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
     'auto-refresh indicator in the header');
   await page.evaluate(() => {
