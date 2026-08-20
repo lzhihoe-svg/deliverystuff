@@ -502,7 +502,7 @@
   /* 📊 horizontal stats bar on top — SAME grid as the columns below, so
      each tile sits exactly above its own column */
   .pv-statsbar {
-    display: grid; grid-template-columns: 1fr 1fr 1fr 0.55fr;
+    display: grid; grid-template-columns: 2.5fr 2.5fr 1fr 1fr;
     gap: 10px; padding: 10px 12px 0;
   }
   .pv-sb {
@@ -518,13 +518,13 @@
   .pv-nb.good { background: var(--lime-soft); color: var(--blue); }
   .pv-nb.bad { background: #fee2e2; color: #b91c1c; }
   .pv-sb.prob { border: 1.5px solid #fecaca; }
-  /* Delivery · Postage · Defect: 2-card width; Problems: 1-card width */
+  /* Delivery 2.5 · Postage 2.5 · Defect 1 · Problems 1 */
   .pv-grid {
-    flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr 0.55fr;
+    flex: 1; display: grid; grid-template-columns: 2.5fr 2.5fr 1fr 1fr;
     gap: 10px; padding: 10px 12px 12px; min-height: 0;
   }
-  /* the slim Problems column fits ONE card per row */
-  #pv-problems .pv-grid2 { grid-template-columns: 1fr; }
+  /* the slim Defect + Problems columns fit ONE card per row */
+  #pv-defect .pv-grid2, #pv-problems .pv-grid2 { grid-template-columns: 1fr; }
   .pv-col h3.pv-h-prob { background: linear-gradient(135deg, #b91c1c, #dc2626); }
   .pv-card2 { cursor: pointer; }
   /* click a TV card → its detail card (above the TV, below the viewer) */
@@ -568,9 +568,25 @@
   }
   .pv-card2.prob { border-color: #dc2626; background: #fef2f2; box-shadow: 0 2px 7px rgba(220,38,38,.25); }
   /* the WHOLE jobsheet visible — contained, never cropped, top-anchored */
-  .pv-card2 > img {
-    width: 100%; height: 165px; object-fit: contain; object-position: top;
-    display: block; background: #fff; border-bottom: 1.5px solid #d9f99d;
+  .pv-img-wrap { position: relative; background: #fff; border-bottom: 1.5px solid #d9f99d; }
+  .pv-img-wrap img {
+    width: 100%; height: 275px; object-fit: contain; object-position: top;
+    display: block; background: #fff;
+  }
+  /* hover ‹ › — flip through the job's photos right on the card */
+  .pv-nav {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+    width: 34px; height: 34px; border-radius: 50%; border: 0;
+    background: rgba(31,43,19,.55); color: #fff; font-size: 18px; font-weight: 700;
+    cursor: pointer; display: none; line-height: 34px;
+  }
+  .pv-nav.prev { left: 6px; }
+  .pv-nav.next { right: 6px; }
+  .pv-img-wrap:hover .pv-nav { display: block; }
+  .pv-cnt {
+    position: absolute; bottom: 6px; right: 8px; pointer-events: none;
+    background: rgba(31,43,19,.7); color: #fff; font-size: 11px; font-weight: 800;
+    border-radius: 999px; padding: 2px 8px;
   }
   /* fixed body height → EVERY card is exactly the same size */
   .pv-body2 { padding: 5px 7px 7px; height: 58px; overflow: hidden; }
@@ -1325,6 +1341,8 @@
       var id = els[i].getAttribute('data-img');
       if (imgCache[id] && els[i].getAttribute('src') !== imgCache[id]) els[i].src = imgCache[id];
     }
+    // the TV progress % counts photos as they land
+    if (typeof pvProg !== 'undefined' && pvProg.active) pvProgTick_();
   }
 
   // Extra ids to download soon (e.g. the next/previous photo while the
@@ -1873,6 +1891,7 @@
     // ONE round trip refreshes ALL THREE tabs + badges together
     refreshSpin(true);
     setSync('🔄 Updating…');
+    if (state.prodView) { pvProg.active = true; pvProgSet_(5, 'Updating…'); }
     google.script.run
       .withSuccessHandler(function (res) {
         ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
@@ -1894,12 +1913,18 @@
         renderAll(); renderBadges(res.counts);
         refreshSpin(false);
         syncAfterData();
+        if (state.prodView) pvProgTick_(); // data in — now count the photos up to 100%
       })
       .withFailureHandler(function (e) {
         refreshSpin(false);
         // first load failed: swap the "Loading…" skeletons for real empty states
         if (!state.loadedOnce) { state.loadedOnce = true; renderAll(); }
         setSync('⚠️ Update failed — tap here to retry');
+        if (state.prodView) {
+          pvProg.active = false;
+          var pe = document.getElementById('pv-upd');
+          if (pe) pe.textContent = '⚠️ Update failed — tap Refresh';
+        }
         toast('⚠️ ' + errMsg_(e));
       })
       .getAllData();
@@ -2843,13 +2868,37 @@
     }
     return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : '') + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
-      imgTag(thumbOf(j, 0)) +
+      '<div class="pv-img-wrap" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
+      imgTag(liveT[0] || '') +
+      (liveT.length > 1
+        ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
+          '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +
+          '<span class="pv-cnt">1/' + liveT.length + '</span>'
+        : '') +
+      '</div>' +
       '<div class="pv-body2">' +
       // every row always renders (blank if empty) so all cards match in height
       '<div class="pv-cust">' + ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) : '&nbsp;') + '</div>' +
       '<div class="pv-note">' + (j.note ? esc(j.note) : '&nbsp;') + '</div>' +
       '<div class="pv-st">' + (showTab ? (PROB_TAB[j.tab] || j.tab) + ' · ' : '') + when + chips + '</div></div></div>';
   }
+  /** Hover ‹ › on a TV card — flip its photos without opening the detail. */
+  function pvFlip(e, btn, dir) {
+    e.stopPropagation();
+    var wrap = btn.parentNode;
+    var ids = (wrap.getAttribute('data-thumbs') || '').split(',').filter(function (x) { return x; });
+    if (ids.length < 2) return;
+    var idx = (parseInt(wrap.getAttribute('data-idx') || '0', 10) + dir + ids.length) % ids.length;
+    wrap.setAttribute('data-idx', idx);
+    var img = wrap.querySelector('img[data-img]');
+    img.setAttribute('data-img', ids[idx]);
+    img.setAttribute('data-vis', '1');
+    img.src = cachedImg(ids[idx]) || PLACEHOLDER;
+    var cnt = wrap.querySelector('.pv-cnt');
+    if (cnt) cnt.textContent = (idx + 1) + '/' + ids.length;
+    loadImages();
+  }
+
   /** The status groups for one TV column (sh = short label for the counter). */
   function pvGroups_(tb, jobs) {
     function g(lbl, sh, cls, f) { return { lbl: lbl, sh: sh, cls: cls, jobs: jobs.filter(f) }; }
@@ -2873,6 +2922,38 @@
       g('✅ Fixed', '✅ Fixed', 'good', function (j) { return j.status === 'done'; })
     ];
   }
+  /* 🔄 refresh progress on the TV: 5% = request sent, 30% = data in,
+     30→100% counts the photos as they download. Auto and manual alike. */
+  var pvProg = { active: false };
+  function pvProgSet_(pct, txt) {
+    var el = document.getElementById('pv-upd');
+    if (el) el.innerHTML = '🔄 ' + txt + ' <b>' + pct + '%</b>';
+  }
+  function pvProgTick_() {
+    if (!state.prodView || !pvProg.active) return;
+    var imgs = document.querySelectorAll('#prodview img[data-img]');
+    var total = 0, have = 0, seen = {};
+    for (var i = 0; i < imgs.length; i++) {
+      var id = imgs[i].getAttribute('data-img');
+      if (!id || String(id).indexOf('local') === 0 || seen[id]) continue;
+      seen[id] = 1; total++;
+      if (cachedImg(id)) have++;
+    }
+    var pct = total ? Math.round(30 + 70 * have / total) : 100;
+    if (pct >= 100) {
+      pvProg.active = false;
+      pvProgSet_(100, 'Updated');
+      setTimeout(function () {
+        var el = document.getElementById('pv-upd');
+        if (el && state.prodView && !pvProg.active) {
+          el.textContent = '🔄 Auto-refresh · updated ' + fmtTime(lastSyncAt || Date.now());
+        }
+      }, 1500);
+    } else {
+      pvProgSet_(pct, 'Loading photos…');
+    }
+  }
+
   /** Click a TV card → its DETAIL CARD: fullsize photo (‹ › through the
       set, tap to zoom), customer, note, status and problem history. */
   var pvd = { id: '', idx: 0 };
@@ -2896,7 +2977,9 @@
     var n = live.length || 1;
     pvd.idx = ((pvd.idx % n) + n) % n;
     var csv = live.join(','), tcsv = liveT.join(',');
-    var html = '<div class="pvd-img-wrap">' +
+    // out the door → the same big green ✔ stamp as on normal cards
+    var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
+    var html = '<div class="pvd-img-wrap' + (sealed ? ' media-sealed' : '') + '">' +
       (live.length
         ? imgTag(live[pvd.idx], '', 'onclick="viewPhotoSet(\'' + csv + '\', ' + pvd.idx + ', \'' + tcsv + '\')"')
         : lostTile_()) +
@@ -2905,6 +2988,7 @@
           '<button class="car-btn next" onclick="pvdNav(1)">›</button>' +
           '<div class="car-count">' + (pvd.idx + 1) + ' / ' + live.length + '</div>'
         : '') +
+      (sealed ? '<div class="seal-tick">✔</div>' : '') +
       '</div><div style="margin-top:12px">';
     if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + (CAT_LABEL[j.category] || j.category) + '</span> ';
@@ -2918,6 +3002,12 @@
       if (j.tab === 'delivery' && j.deliveredAt) st += ' · ✔ Delivered ' + (DELIV_VIA[j.deliveredVia] || '') + ' · ' + fmtDT(j.deliveredAt);
       if (j.tab === 'postage') st += j.sentAt ? ' · ✔ Sent to J&T · ' + fmtDT(j.sentAt) : ' · 📦 Ready for J&T';
       html += '<div class="h-status" style="margin-top:6px">' + st + '</div>';
+      // the PROOF picture — tap to zoom
+      if (j.proofPhotoId) {
+        html += '<div class="proof">' +
+          imgTag(proofThumbOf(j), '', 'onclick="viewPhoto(\'' + j.proofPhotoId + '\', \'' + proofThumbOf(j) + '\')"') +
+          '<div class="txt">✅ Proof photo · ' + fmtDT(j.doneAt) + '</div></div>';
+      }
     }
     html += probHistoryHtml_(j);
     document.getElementById('pvd-body').innerHTML = html;
@@ -2987,8 +3077,10 @@
         nb(raised, 'Raised') +
         nb(solved, 'Solved', 'good') +
         nb(probs.length, 'Balance', 'bad') + '</div>';
-    document.getElementById('pv-upd').textContent =
-      '🔄 Auto-refresh' + (lastSyncAt ? ' · updated ' + fmtTime(lastSyncAt) : ' on');
+    if (!pvProg.active) {
+      document.getElementById('pv-upd').textContent =
+        '🔄 Auto-refresh' + (lastSyncAt ? ' · updated ' + fmtTime(lastSyncAt) : ' on');
+    }
     // this view lives outside the scroller — mark its photos visible by hand
     var imgs = document.querySelectorAll('#prodview img[data-img]');
     for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');

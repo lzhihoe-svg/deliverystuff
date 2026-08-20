@@ -1591,6 +1591,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { // seed content: a defect job + a postage job for the detail-card test
     window.__mockapi.addJob({ tab: 'defect', category: '', note: 'TV-defect', customer: 'CG', photos: ['tvd1', 'tvd2'], thumbs: ['tvd1', 'tvd2'], jsCount: 1 });
     window.__mockapi.addJob({ tab: 'postage', category: '', note: 'TV-detail', customer: 'WAN', photos: ['tvp1', 'tvp2'], thumbs: ['tvp1', 'tvp2'], jsCount: 1 });
+    const sd = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'TV-sealed', customer: 'HB', photos: ['tvs1'], thumbs: ['tvs1'] });
+    window.__mockapi.updateStatus(sd.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markDelivered(sd.id, 'bus', 'ZH');
     refresh();
   });
   await sleep(500);
@@ -1613,12 +1616,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   check(pvCols === 2, 'each group lays jobs out 2-up (' + pvCols + ' columns)');
   const pvImgH = await page.evaluate(() => {
-    const im = document.querySelector('#pv-postage .pv-card2 > img');
+    const im = document.querySelector('#pv-postage .pv-card2 .pv-img-wrap img');
     return im ? parseFloat(getComputedStyle(im).height) : 0;
   });
   check(pvImgH >= 100, 'the jobsheet picture leads each card (' + pvImgH + 'px tall)');
   const pvImgPos = await page.evaluate(() =>
-    getComputedStyle(document.querySelector('#pv-postage .pv-card2 > img')).objectPosition);
+    getComputedStyle(document.querySelector('#pv-postage .pv-card2 .pv-img-wrap img')).objectPosition);
   check(pvImgPos === '50% 0%', 'the TOP of the jobsheet shows, not the middle (' + pvImgPos + ')');
   const pvBorder = await page.evaluate(() =>
     getComputedStyle(document.querySelector('#pv-postage .pv-card2:not(.prob)')).borderTopColor);
@@ -1639,15 +1642,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
              defect: cols[2].getBoundingClientRect().width / wd,
              probs: cols[3].getBoundingClientRect().width / wd };
   });
-  check(colW.postage > 0.95 && colW.defect > 0.95,
-    'Delivery · Postage · Defect share the same 2-card width');
-  check(colW.probs < 0.7, 'Problems is the slim 1-card column (' + colW.probs.toFixed(2) + 'x)');
+  check(colW.postage > 0.9, 'Delivery & Postage share 2.5 width each (' + colW.postage.toFixed(2) + 'x)');
+  check(colW.defect < 0.5 && colW.probs < 0.5,
+    'Defect & Problems are slim 1-width columns (' + colW.defect.toFixed(2) + ' / ' + colW.probs.toFixed(2) + ')');
   const gridCols = await page.evaluate(() => ({
     defect: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-defect .pv-grid2')),
     probs: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-problems .pv-grid2'))
   }));
-  check(gridCols.defect === 2 && gridCols.probs === 1,
-    'Defect lays out 2-up; Problems 1-up');
+  check(gridCols.defect === 1 && gridCols.probs === 1,
+    'the slim Defect + Problems columns lay out 1-up');
   const barAligned = await page.evaluate(() => {
     const tiles = document.querySelectorAll('#pv-statsbar .pv-sb');
     const cols = document.querySelectorAll('#prodview .pv-col');
@@ -1688,7 +1691,40 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#pvd-overlay .x-close');
   await sleep(250);
   check(!(await page.locator('#pvd-overlay').isVisible()), '✕ closes the detail card');
+  // a DELIVERED job's detail card: proof picture + the big green tick stamp
+  await page.locator('#pv-delivery .pv-card2').filter({ hasText: 'TV-sealed' }).first().click();
+  await sleep(500);
+  check((await page.locator('#pvd-body .proof img').count()) === 1, 'delivered detail shows the PROOF picture');
+  check((await page.locator('#pvd-body .media-sealed .seal-tick').count()) === 1,
+    'and the big green ✔ stamp over the photo, like a normal card');
+  check((await page.locator('#pvd-body').textContent()).indexOf('Delivered') >= 0, 'delivered status written out');
+  await page.click('#pvd-overlay .x-close');
+  await sleep(250);
+  // hover ‹ › on the card flips its photos WITHOUT opening the detail
+  const flipWrap = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' }).locator('.pv-img-wrap');
+  await flipWrap.hover();
+  await sleep(200);
+  check(await flipWrap.locator('.pv-nav.next').isVisible(), 'hover shows the ‹ › buttons on the card');
+  await flipWrap.locator('.pv-nav.next').click();
+  await sleep(300);
+  check((await flipWrap.locator('.pv-cnt').textContent()) === '2/2', '› flips to the next photo on the card');
+  check(!(await page.locator('#pvd-overlay').isVisible()), '…without opening the detail card');
+  // a PROBLEM job's detail: the unsolved report AND earlier solved pictures
+  await page.locator('#pv-problems .pv-card2').first().click();
+  await sleep(500);
+  check((await page.locator('#pvd-body .prob-line').count()) >= 1, 'detail shows the UNSOLVED problem line');
+  check((await page.locator('#pvd-body .proof.printed img').count()) >= 1,
+    'and the earlier SOLVED picture too — full history');
+  await page.click('#pvd-overlay .x-close');
+  await sleep(250);
   check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
+  // refresh shows % progress — manual AND auto
+  await page.evaluate(() => refresh());
+  const pvup = await page.locator('#pv-upd').textContent();
+  check(pvup.indexOf('%') >= 0, 'refresh shows % progress (' + pvup.trim() + ')');
+  await sleep(2600);
+  check((await page.locator('#pv-upd').textContent()).indexOf('updated') >= 0,
+    'back to "updated at" once 100% done');
   check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
     'auto-refresh indicator in the header');
   await page.evaluate(() => {
@@ -1702,7 +1738,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(250);
   check(!(await page.locator('#prodview').isVisible()), '✕ leaves production view');
   await page.evaluate(() => {
-    ['TV-live-test', 'TV-defect', 'TV-detail'].forEach(n => {
+    ['TV-live-test', 'TV-defect', 'TV-detail', 'TV-sealed'].forEach(n => {
       const j = window.__mockdb.jobs.find(x => x.note === n);
       if (j) j.status = 'archived';
     });
