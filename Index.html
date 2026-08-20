@@ -309,14 +309,9 @@
   }
   .js-missing .q { font-size: 52px; font-weight: 900; line-height: 1; }
   .js-missing .t { font-size: 12.5px; font-weight: 800; margin-top: 4px; }
-  /* 🕐 chronology — every timestamp of the job's life, folded away */
-  .chrono-btn {
-    display: block; width: 100%; text-align: left; background: none; border: 0;
-    color: var(--muted); font-size: 12px; font-weight: 700; padding: 9px 2px 2px;
-    cursor: pointer; font-family: inherit;
-  }
-  .chrono { background: var(--soft); border-radius: 12px; padding: 8px 11px; margin-top: 5px; }
-  .ch-row { display: flex; gap: 9px; font-size: 12px; font-weight: 600; color: #4b5142; padding: 3px 0; }
+  /* 🕐 chronology — every timestamp of the job's life (⋯ → Chronology) */
+  .chrono { background: var(--soft); border-radius: 14px; padding: 11px 13px; margin-top: 6px; }
+  .ch-row { display: flex; gap: 10px; font-size: 13px; font-weight: 600; color: #4b5142; padding: 5px 0; }
   .ch-row .ch-t { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
   #problem-btn { color: #b91c1c; }
   .prob-card { border: 1.5px solid #fecaca; border-radius: 16px; padding: 10px; margin-top: 12px; background: #fff; }
@@ -1008,6 +1003,15 @@
   </div>
 </div>
 
+<!-- ================= 🕐 CHRONOLOGY (from the ⋯ menu) ================= -->
+<div class="overlay" id="chrono-overlay">
+  <div class="sheet" style="max-width:420px">
+    <button class="x-close" onclick="closeChrono()">✕</button>
+    <h2 id="chrono-title" style="font-size:17px">🕐 Chronology</h2>
+    <div id="chrono-body"></div>
+  </div>
+</div>
+
 <div class="overlay" id="problem-overlay">
   <div class="sheet">
     <button class="x-close" onclick="closeProblems()">✕</button>
@@ -1427,19 +1431,22 @@
     if (j.deliveredAt) ev.push({ at: j.deliveredAt, txt: '📦 Delivered' + (DELIV_VIA[j.deliveredVia] ? ' — ' + DELIV_VIA[j.deliveredVia] : '') });
     if (j.sentAt) ev.push({ at: j.sentAt, txt: '📮 Sent to J&T' });
     ev.sort(function (a, b) { return Number(a.at) - Number(b.at); });
-    if (ev.length < 2) return ''; // only "Posted" — nothing to tell yet
     var rows = ev.map(function (e) {
       return '<div class="ch-row"><span class="ch-t">' + fmtDT(e.at) + '</span><span>' + e.txt + '</span></div>';
     }).join('');
-    return '<button class="chrono-btn" onclick="toggleChrono(this)">🕐 Chronology (' + ev.length + ') ▾</button>' +
-      '<div class="chrono" style="display:none">' + rows + '</div>';
+    return '<div class="chrono">' + rows + '</div>';
   }
-  function toggleChrono(btn) {
-    var d = btn.nextElementSibling;
-    var open = d.style.display !== 'none';
-    d.style.display = open ? 'none' : 'block';
-    btn.textContent = btn.textContent.replace(open ? '▴' : '▾', open ? '▾' : '▴');
+  /** ⋯ → 🕐 Chronology: this job's full timeline in its own window. */
+  function openChrono(id) {
+    var j = findJobAll(id);
+    if (!j) return;
+    document.getElementById('chrono-title').textContent =
+      '🕐 ' + (((j.customer && j.customer !== 'Unassigned') ? j.customer + ' — ' : '') + (j.note || (PROB_TAB[j.tab] || 'Job')));
+    document.getElementById('chrono-body').innerHTML =
+      chronoHtml_(j) || '<div class="empty"><span class="big">🕐</span>Only just posted — no story yet.</div>';
+    document.getElementById('chrono-overlay').classList.add('show');
   }
+  function closeChrono() { document.getElementById('chrono-overlay').classList.remove('show'); }
 
   /** A photo slot whose background upload never finished (empty id in the
       job) — shown as a friendly tile instead of an eternal grey spinner. */
@@ -1782,6 +1789,9 @@
         out += jmItem_('jm-delsent warn', 'delsent', '↩️ Undo Sent', 'back to ready count');
       }
     }
+    if (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') {
+      out += jmItem_('jm-chrono', 'chrono', '🕐 Chronology', 'full timeline');
+    }
     if (isAdmin()) {
       out += jmItem_('jm-edit', 'edit', '✏️ Edit job', 'admin');
       out += jmItem_('jm-del danger', 'del', '🗑️ Delete', 'admin');
@@ -1810,6 +1820,7 @@
     else if (what === 'noreceive') reportNoReceive(id);
     else if (what === 'nosticker') reportNoReceive(id, 'sticker');
     else if (what === 'nojob') reportNoReceive(id, 'nojob');
+    else if (what === 'chrono') openChrono(id);
     else if (what === 'reproof') startReProof(id);
     else if (what === 'delproof') removeProof(id);
     else if (what === 'deldeliv') removeDeliveredNow(id);
@@ -2437,8 +2448,6 @@
           (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
       }
     }
-    // 🕐 every timestamp of the job's life — posted, problems, done, delivered
-    if (!j.uploading) html += chronoHtml_(j);
     html += '</div></div>';
     return html;
   }
@@ -3667,7 +3676,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay', 'perf-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay', 'perf-overlay', 'chrono-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -3681,6 +3690,7 @@
       else if (id === 'inventory-overlay') closeInventory();
       else if (id === 'deliv-overlay') closeDeliv();
       else if (id === 'perf-overlay') closePerf();
+      else if (id === 'chrono-overlay') closeChrono();
       else closeUpload();
     });
   });

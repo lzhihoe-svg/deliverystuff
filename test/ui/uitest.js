@@ -1480,16 +1480,21 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   check(orderOk, 'the server log reads report → solve → report');
 
-  console.log('\n-- 🕐 chronology fold on the card --');
-  check((await cycCard.locator('.chrono-btn').count()) === 1, 'the card has a 🕐 Chronology fold');
-  check((await cycCard.locator('.chrono').isVisible()) === false, 'folded by default — cards stay clean');
-  await cycCard.locator('.chrono-btn').click();
+  console.log('\n-- 🕐 chronology lives in the ⋯ menu --');
+  check((await cycCard.locator('.chrono').count()) === 0, 'no chronology clutter on the card face');
+  const chronoInMenu = await moreCount(cycCard, '.jm-chrono');
+  check(chronoInMenu.n === 1 && chronoInMenu.txts.some(t => t.indexOf('Chronology') >= 0),
+    'the ⋯ menu has a 🕐 Chronology button');
+  await viaMore(cycCard, '.jm-chrono');
+  await sleep(300);
+  check(await page.locator('#chrono-overlay').isVisible(), 'Chronology opens in its own window');
+  const chronoTxt = await page.locator('#chrono-body').textContent();
+  check(chronoTxt.indexOf('Posted') >= 0 && chronoTxt.indexOf('Problem solved') >= 0 &&
+    (await page.locator('#chrono-body .ch-row').count()) === 4,
+    'it lists Posted + report + solved + report, each with its timestamp');
+  await page.click('#chrono-overlay .x-close');
   await sleep(250);
-  const chronoTxt = await cycCard.locator('.chrono').textContent();
-  check((await cycCard.locator('.chrono').isVisible()) &&
-    chronoTxt.indexOf('Posted') >= 0 && chronoTxt.indexOf('Problem solved') >= 0 &&
-    (await cycCard.locator('.chrono .ch-row').count()) === 4,
-    'chronology lists Posted + report + solved + report, each with its timestamp');
+  check(!(await page.locator('#chrono-overlay').isVisible()), '✕ closes the chronology window');
 
   console.log('\n-- tap the header → glide back to the top --');
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 600; });
