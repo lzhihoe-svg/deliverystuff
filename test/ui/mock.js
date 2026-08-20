@@ -111,7 +111,7 @@
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
         nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
         problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
-        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: ''
+        deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: '', probLog: []
       };
       db.jobs.push(job);
       return JSON.parse(JSON.stringify(job));
@@ -275,12 +275,14 @@
       return { ok: true, id: id };
     },
     reportStickerNoJob: function (payload) {
-      if (!payload || !payload.photo) throw new Error('Sticker photo required');
-      var job = api.addJob({ tab: 'postage', category: '', note: String(payload.note || ''),
-        customer: '', clientId: payload.clientId, photos: [payload.photo],
-        thumbs: [payload.thumb], jsCount: 0 });
+      var photos = (payload && payload.photos) || (payload && payload.photo ? [payload.photo] : []);
+      var thumbs = (payload && payload.thumbs) || (payload && payload.thumb ? [payload.thumb] : []);
+      if (!photos.length) throw new Error('Sticker photo required');
+      var job = api.addJob({ tab: 'postage', category: '', note: String((payload && payload.note) || ''),
+        customer: String((payload && payload.customer) || ''), clientId: payload && payload.clientId,
+        photos: photos, thumbs: thumbs, dueAt: (payload && payload.dueAt) || '', jsCount: 0 });
       var r = api.reportProblem(job.id, 'nojob');
-      job.problem = r.problem; job.problemAt = r.problemAt;
+      job.problem = r.problem; job.problemAt = r.problemAt; job.probLog = r.probLog;
       return job;
     },
     reportProblem: function (id, kind) {
@@ -290,9 +292,10 @@
       if (j.tab !== 'delivery' && j.tab !== 'postage' && j.tab !== 'defect') throw new Error('Only Delivery/Postage/Defect jobs can be reported');
       if (mark === 'nosticker' && j.tab !== 'postage') throw new Error('No-sticker reports are for Postage jobs');
       if (mark === 'nojob' && j.tab !== 'postage') throw new Error('Got-sticker-no-job reports are for Postage jobs');
-      if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt };
+      if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt, probLog: j.probLog || [] };
       j.problem = mark; j.problemAt = Date.now(); j.printedAt = '';
-      return { id: id, problem: mark, problemAt: j.problemAt };
+      j.probLog = (j.probLog || []).concat([{ k: 'report', kind: mark, at: j.problemAt }]);
+      return { id: id, problem: mark, problemAt: j.problemAt, probLog: JSON.parse(JSON.stringify(j.probLog)) };
     },
     solveProblem: function (id, photo, thumb) {
       if (!photo) throw new Error('Printing photo required');
@@ -301,10 +304,23 @@
       var isProblem = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
         (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
+      var wasNojob = j.problem === 'nojob';
       j.problem = 'printed'; j.printedAt = Date.now();
-      j.printPhotoId = 'print-' + id;
-      j.printThumbId = thumb ? ('printth-' + id) : '';
-      return { id: id, problem: 'printed', printedAt: j.printedAt, printPhotoId: j.printPhotoId, printThumbId: j.printThumbId };
+      j.printPhotoId = 'print-' + id + '-' + Date.now();
+      j.printThumbId = thumb ? ('printth-' + id + '-' + Date.now()) : '';
+      j.probLog = (j.probLog || []).concat([
+        { k: 'solve', at: j.printedAt, photoId: j.printPhotoId, thumbId: j.printThumbId, note: j.problemNote || '' }]);
+      var attached = false;
+      if (wasNojob && j.tab === 'postage') {
+        j.photoIds.unshift(j.printPhotoId);
+        j.thumbIds.unshift(j.printThumbId);
+        j.jsCount = (Number(j.jsCount) || 0) + 1;
+        attached = true;
+      }
+      j.problemNote = '';
+      return { id: id, problem: 'printed', printedAt: j.printedAt, printPhotoId: j.printPhotoId, printThumbId: j.printThumbId,
+               probLog: JSON.parse(JSON.stringify(j.probLog)), attachedJobsheet: attached,
+               photoIds: j.photoIds.slice(), thumbIds: j.thumbIds.slice(), jsCount: j.jsCount };
     },
     setProblemNote: function (id, text) {
       text = String(text || '').slice(0, 300);

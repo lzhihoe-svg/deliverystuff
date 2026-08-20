@@ -282,12 +282,42 @@
   }
   .inv-table.stock .inv-in:focus { border-color: var(--lime); outline: none; }
 
-  /* 🚨 problem flow — "haven't received / office will print" status lines */
+  /* 🚨 problem flow — BRIGHT RED: a report is a serious matter */
   .prob-line {
-    margin-top: 8px; background: #fef2f2; color: #b91c1c;
+    margin-top: 8px; background: #dc2626; color: #fff;
     border-radius: 10px; padding: 8px 11px; font-size: 13.5px; font-weight: 700;
+    box-shadow: 0 3px 10px rgba(220,38,38,.3);
   }
-  .prob-line.ok { background: var(--lime-soft); color: var(--blue); cursor: pointer; }
+  .prob-line.ok { background: var(--lime-soft); color: var(--blue); cursor: pointer; box-shadow: none; }
+  /* solved printing photo — RED background: urgent evidence, take notice */
+  .proof.printed {
+    background: #dc2626;
+  }
+  .proof.printed .txt { color: #fff; }
+  .proof.printed img { box-shadow: 0 0 0 2.5px #fff; }
+  /* big red ? — the jobsheet side of a "Got sticker, No Job" card */
+  .js-q {
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    height: 270px; background: #fee2e2; color: #dc2626;
+    font-size: 96px; font-weight: 900; gap: 4px;
+  }
+  .js-q span { font-size: 12px; font-weight: 800; }
+  /* the same red ? inside the report form */
+  .js-missing {
+    display: none; background: #fee2e2; border: 2px dashed #dc2626; color: #dc2626;
+    border-radius: 14px; text-align: center; padding: 14px; margin-bottom: 6px;
+  }
+  .js-missing .q { font-size: 52px; font-weight: 900; line-height: 1; }
+  .js-missing .t { font-size: 12.5px; font-weight: 800; margin-top: 4px; }
+  /* 🕐 chronology — every timestamp of the job's life, folded away */
+  .chrono-btn {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    color: var(--muted); font-size: 12px; font-weight: 700; padding: 9px 2px 2px;
+    cursor: pointer; font-family: inherit;
+  }
+  .chrono { background: var(--soft); border-radius: 12px; padding: 8px 11px; margin-top: 5px; }
+  .ch-row { display: flex; gap: 9px; font-size: 12px; font-weight: 600; color: #4b5142; padding: 3px 0; }
+  .ch-row .ch-t { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
   #problem-btn { color: #b91c1c; }
   .prob-card { border: 1.5px solid #fecaca; border-radius: 16px; padding: 10px; margin-top: 12px; background: #fff; }
   .prob-card .row { display: flex; gap: 10px; margin-bottom: 9px; }
@@ -821,8 +851,13 @@
 
     <div id="postage-groups" style="display:none">
       <label>📄 Jobsheet photos</label>
+      <!-- "Got sticker, No Job" report: the jobsheet does not exist yet -->
+      <div class="js-missing" id="js-missing">
+        <div class="q">?</div>
+        <div class="t">NO JOBSHEET — office will print it,<br>then it attaches here</div>
+      </div>
       <div class="thumbs" id="js-thumbs"></div>
-      <button class="photo-btn" onclick="document.getElementById('js-file').click()">📷 Add Jobsheet Photo(s)</button>
+      <button class="photo-btn" id="js-add-btn" onclick="document.getElementById('js-file').click()">📷 Add Jobsheet Photo(s)</button>
       <input type="file" id="js-file" accept="image/*" multiple onchange="photosPickedG(this, 'js')">
 
       <label id="wb-label">🏷️ Waybill photos (J&amp;T)</label>
@@ -1034,8 +1069,6 @@
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 <!-- printing-status photo for the Problem page (no capture attr: screenshots come from the gallery) -->
 <input type="file" id="print-file" accept="image/*" onchange="printPicked(this)">
-<!-- "Got sticker, No Job" — snap the orphan sticker from the top of Postage -->
-<input type="file" id="sticker-file" accept="image/*" onchange="stickerPicked(this)">
 
 <div class="viewer" id="viewer">
   <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
@@ -1340,13 +1373,72 @@
     return s + '</div>';
   }
 
-  /** "🖨️ Printed at <time>" WITH the printing-status photo the office
-      snapped when solving the problem — tap the picture to zoom. */
-  function printedHtml_(j) {
-    var t = j.printThumbId || j.printPhotoId;
+  /** One SOLVED cycle: the office's printing photo on an URGENT red block. */
+  function solvedHtml_(ev) {
+    var t = ev.thumbId || ev.photoId;
     return '<div class="proof printed">' +
-      (j.printPhotoId ? imgTag(t, '', 'onclick="viewPhoto(\'' + j.printPhotoId + '\', \'' + t + '\')"') : '') +
-      '<div class="txt">🖨️ Printed at ' + fmtTime(j.printedAt) + '</div></div>';
+      (ev.photoId ? imgTag(t, '', 'onclick="viewPhoto(\'' + ev.photoId + '\', \'' + t + '\')"') : '') +
+      '<div class="txt">🖨️ SOLVED — Printed at ' + fmtTime(ev.at) + '</div></div>';
+  }
+  var PROB_KIND = {
+    reported: '❓ Haven\'t received',
+    nosticker: '🏷️ No sticker',
+    nojob: '📄 Got sticker, no jobsheet'
+  };
+  /** FULL problem history on the card — report A, solved A, report B,
+      solved B… every cycle, in order. The info note sits ABOVE its solved
+      picture; the current open report shows its live note at the end. */
+  function probHistoryHtml_(j) {
+    var log = (j.probLog || []).slice();
+    if (!log.length) {
+      // legacy jobs from before the history log
+      if (j.printedAt) log.push({ k: 'solve', at: j.printedAt, photoId: j.printPhotoId, thumbId: j.printThumbId, note: j.problemNote });
+      else if (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob') {
+        log.push({ k: 'report', kind: j.problem, at: j.problemAt });
+      }
+    }
+    var h = '';
+    log.forEach(function (ev) {
+      if (ev.k === 'report') {
+        h += '<div class="prob-line">' + (PROB_KIND[ev.kind] || '🚨 Reported') +
+          ' — Reported at ' + fmtTime(ev.at) + ' — office will print it</div>';
+      } else {
+        if (ev.note) h += '<div class="prob-note">📝 ' + esc(ev.note) + '</div>';
+        h += solvedHtml_(ev);
+      }
+    });
+    var active = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
+      (j.tab === 'want' && j.status === 'notseen' && j.problem !== 'printed');
+    if (active && j.problemNote) h += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
+    return h;
+  }
+
+  /** 🕐 Chronology — every timestamp of this job's life, folded away. */
+  function chronoHtml_(j) {
+    var ev = [];
+    if (j.createdAt) ev.push({ at: j.createdAt, txt: '📌 Posted' });
+    var log = (j.probLog || []);
+    log.forEach(function (e) {
+      if (e.k === 'report') ev.push({ at: e.at, txt: '🚨 Problem — ' + (PROB_KIND[e.kind] || 'reported').replace(/^\S+\s/, '') });
+      else ev.push({ at: e.at, txt: '🖨️ Problem solved — printed' });
+    });
+    if (!log.length && j.printedAt) ev.push({ at: j.printedAt, txt: '🖨️ Problem solved — printed' });
+    if (j.doneAt && j.proofPhotoId) ev.push({ at: j.doneAt, txt: '✅ Done — proof taken' });
+    if (j.deliveredAt) ev.push({ at: j.deliveredAt, txt: '📦 Delivered' + (DELIV_VIA[j.deliveredVia] ? ' — ' + DELIV_VIA[j.deliveredVia] : '') });
+    if (j.sentAt) ev.push({ at: j.sentAt, txt: '📮 Sent to J&T' });
+    ev.sort(function (a, b) { return Number(a.at) - Number(b.at); });
+    if (ev.length < 2) return ''; // only "Posted" — nothing to tell yet
+    var rows = ev.map(function (e) {
+      return '<div class="ch-row"><span class="ch-t">' + fmtDT(e.at) + '</span><span>' + e.txt + '</span></div>';
+    }).join('');
+    return '<button class="chrono-btn" onclick="toggleChrono(this)">🕐 Chronology (' + ev.length + ') ▾</button>' +
+      '<div class="chrono" style="display:none">' + rows + '</div>';
+  }
+  function toggleChrono(btn) {
+    var d = btn.nextElementSibling;
+    var open = d.style.display !== 'none';
+    d.style.display = open ? 'none' : 'block';
+    btn.textContent = btn.textContent.replace(open ? '▴' : '▾', open ? '▾' : '▴');
   }
 
   /** A photo slot whose background upload never finished (empty id in the
@@ -1672,7 +1764,7 @@
     if (j.status === 'pending') {
       if (j.tab === 'postage') out += jmItem_('jm-sentbus', 'sentbus', '🚌 Oops! Sent bus', 'take proof');
       if ((j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') && !hasProb) {
-        out += jmItem_('jm-warn warn', 'noreceive', '❓ Haven\'t received', 'tell office');
+        out += jmItem_('jm-warn danger', 'noreceive', '❓ Haven\'t received', 'serious — tell office');
         if (j.tab === 'postage') {
           out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
           out += jmItem_('jm-nojob warn', 'nojob', '📄 Got sticker, No Job', 'tell office');
@@ -1913,10 +2005,9 @@
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
         (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
-        (!isGot ? (j.printedAt
-          ? printedHtml_(j)
-          : '<div class="prob-line">🚨 On the Problem page — office will print it</div>') +
-          (j.problemNote ? '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>' : '') : '') +
+        (!isGot ? ((j.problem !== 'printed' && !j.printedAt
+            ? '<div class="prob-line">🚨 On the Problem page — office will print it</div>' : '') +
+          probHistoryHtml_(j)) : '') +
         (!isGot ? '<button class="btn green small" style="margin-top:8px" onclick="markJob(\'' + j.id + '\',\'got\')">❤️ Found it</button>' : '') +
         '<div class="rowbtn">' +
         (isAdmin() ? '<button class="ask-btn" style="margin-top:0" onclick="askAgainJob(\'' + j.id + '\')">⬆️ Push Up — ask staff again</button>' : '<div style="flex:1"></div>') +
@@ -2266,8 +2357,20 @@
     // postage/defect ALWAYS keep the Jobsheet | Waybill split — even when a
     // photo slot is still empty (its tile explains itself instead of the
     // whole card quietly falling back to one mixed carousel)
-    var media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2)
-      ? pairHtml(j) : carouselHtml(j);
+    // "Got sticker, No Job": jobsheet side is a BIG RED ? until the office
+    // prints it (their photo then attaches as the real jobsheet)
+    var jsMissing = j.tab === 'postage' && Number(j.jsCount || 0) === 0 &&
+      (j.problem === 'nojob' || (j.probLog || []).some(function (e) { return e.kind === 'nojob'; }));
+    var media;
+    if (jsMissing && j.photoIds.length) {
+      media = '<div class="photo-pair">' +
+        '<div class="carousel"><span class="lbl">📄 Jobsheet</span>' +
+        '<div class="js-q">?<span>NO JOBSHEET</span></div></div>' +
+        miniCarousel(j, 0, j.photoIds.length, '🏷️ Waybill') + '</div>';
+    } else {
+      media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2)
+        ? pairHtml(j) : carouselHtml(j);
+    }
     // out the door — delivered (any way) or given to J&T: stamp a big green
     // tick OVER the jobsheet/waybill photos so it's clearly marked as sent
     var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
@@ -2292,19 +2395,9 @@
     html += '<div class="meta">Posted ' + timeAgo(j.createdAt) +
       (j.category && statusChip.indexOf('chip ' + j.category) < 0 ? ' · ' + CAT_LABEL[j.category] : '') +
       (j.fromCheck ? ' · ✅ passed check' : '') + '</div>';
-    // "haven't received" problem status — visible to everyone on the card
+    // FULL problem history — every report + solved cycle, chronological
     if (!isDone && (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect')) {
-      if (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob') {
-        html += '<div class="prob-line">' +
-          (j.problem === 'nosticker' ? '🏷️ No sticker — reported at '
-            : j.problem === 'nojob' ? '📄 Got sticker, no jobsheet — reported at '
-            : '🚨 Reported at ') +
-          fmtTime(j.problemAt) + ' — office will print it</div>';
-        if (j.problemNote) html += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
-      } else if (j.printedAt) {
-        html += printedHtml_(j);
-        if (j.problemNote) html += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
-      }
+      html += probHistoryHtml_(j);
     }
 
     if (isDone) {
@@ -2344,6 +2437,8 @@
           (jobMenuHtml_(j) ? moreBtn_(j) : '') + '</div>';
       }
     }
+    // 🕐 every timestamp of the job's life — posted, problems, done, delivered
+    if (!j.uploading) html += chronoHtml_(j);
     html += '</div></div>';
     return html;
   }
@@ -2999,13 +3094,18 @@
     if (j) {
       j.problem = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
       j.problemAt = Date.now();
+      j.probLog = (j.probLog || []).concat([{ k: 'report', kind: j.problem, at: j.problemAt }]);
       saveJobsCache(state.tab); renderAll();
     }
     toast(kind === 'sticker' ? '🏷️ Office informed — they will print the sticker'
       : kind === 'nojob' ? '📄 Office informed — they will print the jobsheet'
       : '🚨 Office informed — they will print it');
     gsCall('reportProblem', [id, kind || ''], function (res) {
-      if (j) { j.problemAt = res.problemAt; saveJobsCache(j.tab); }
+      if (j) {
+        j.problemAt = res.problemAt;
+        if (res.probLog) j.probLog = res.probLog;
+        saveJobsCache(j.tab);
+      }
     }, bgFail);
   }
   /** Shared info on a problem — staff write, both sides read. */
@@ -3028,53 +3128,12 @@
   }
 
   /** "📄 Got sticker, No Job" — top of the Postage page. A sticker arrived
-      with no job on the board: snap it, and the job is created ALREADY
-      flagged on the Problem page so the office prints the jobsheet. */
+      with no job on the board: opens the postage form with the sticker on
+      the Waybill side and a big red ? where the jobsheet should be. When
+      the office SOLVES it, their printed-jobsheet photo attaches as the
+      real jobsheet, and admin keys in customer / date via ✏️ Edit. */
   function startStickerNoJob() {
-    document.getElementById('sticker-file').click();
-  }
-  function stickerPicked(input) {
-    if (!input.files || !input.files[0]) return;
-    compressImage(input.files[0], function (img) {
-      // non-blocking, same as posting: card appears instantly, photo uploads behind
-      localSeq++;
-      var pk = 'localp-' + localSeq + '-0', tk = 'localt-' + localSeq + '-0';
-      imgCache[pk] = 'data:image/jpeg;base64,' + img.full;
-      imgCache[tk] = 'data:image/jpeg;base64,' + img.thumb;
-      var tempJob = {
-        id: 'local-' + localSeq, tab: 'postage', category: '', note: '',
-        photoIds: [pk], thumbIds: [tk], status: 'pending',
-        createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-        dueAt: '', jsCount: 0, customer: 'Unassigned',
-        problem: 'nojob', problemAt: Date.now(), uploading: true
-      };
-      state.jobs.postage.unshift(tempJob);
-      inflightJobs.push(tempJob);
-      renderAll(); updateBadgeLocal();
-      toast('📄 Office informed — they will print the jobsheet');
-      uploadsPending++; updatePill();
-      var clientKey = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      gsCall('reportStickerNoJob', [{ photo: img.full, thumb: img.thumb, clientId: clientKey }],
-        function (job) {
-          uploadsPending--; updatePill();
-          seedImage(job.photoIds[0], img.full);
-          seedImage(job.thumbIds[0], img.thumb);
-          tempJob.id = job.id; tempJob.createdAt = job.createdAt;
-          tempJob.photoIds[0] = job.photoIds[0]; tempJob.thumbIds[0] = job.thumbIds[0];
-          tempJob.problem = job.problem; tempJob.problemAt = job.problemAt;
-          delete tempJob.uploading;
-          inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
-          saveJobsCache('postage'); renderAll(); updateBadgeLocal();
-        },
-        function (e) {
-          uploadsPending--; updatePill();
-          inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
-          state.jobs.postage = state.jobs.postage.filter(function (x) { return x !== tempJob; });
-          renderAll(); updateBadgeLocal();
-          toast('⚠️ ' + errMsg_(e));
-        });
-    });
-    input.value = '';
+    openUpload(null, 'sticker');
   }
 
   /** Office: press ✅ Solved → snap the printing status (photo REQUIRED). */
@@ -3090,8 +3149,13 @@
       var tempKey = 'localprint-' + (++localSeq);
       imgCache[tempKey] = 'data:image/jpeg;base64,' + img.thumb;
       if (j) {
+        var wasNojob = j.problem === 'nojob';
         j.problem = 'printed'; j.printedAt = Date.now();
         j.printPhotoId = tempKey; j.printThumbId = tempKey;
+        // history: this solve joins the log with the info note ABOVE its photo
+        j.probLog = (j.probLog || []).concat([
+          { k: 'solve', at: j.printedAt, photoId: tempKey, thumbId: tempKey, note: j.problemNote || '' }]);
+        j.problemNote = '';
         saveJobsCache(j.tab);
       }
       renderProblems(); renderAll();
@@ -3105,6 +3169,12 @@
           if (j) {
             j.printedAt = res.printedAt;
             j.printPhotoId = res.printPhotoId; j.printThumbId = res.printThumbId;
+            if (res.probLog) j.probLog = res.probLog;
+            // "Got sticker, No Job": the printed jobsheet ATTACHED itself
+            if (res.attachedJobsheet) {
+              j.photoIds = res.photoIds; j.thumbIds = res.thumbIds; j.jsCount = res.jsCount;
+              if (isAdmin()) toast('📄 Jobsheet attached! Now ⋯ → ✏️ Edit to key in customer & date');
+            }
             saveJobsCache(j.tab); renderAll();
           }
         },
@@ -3163,11 +3233,12 @@
   });
 
   // ------------------------------------------------------------ upload & edit modal
-  function openUpload(editId) {
+  function openUpload(editId, mode) {
     var job = editId ? findJob(editId) : null;
     if (editId && !job) return;
     if (job && !isAdmin()) { toast('Admin only'); return; }
     if (job && job.uploading) { toast('📤 Still uploading — wait a moment'); return; }
+    state.stickerMode = (mode === 'sticker' && !job && state.tab === 'postage');
     state.editing = job;
     state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '', nextTab: '', nextCat: '' };
     // reset the pipeline chips to "Nothing"
@@ -3193,18 +3264,25 @@
       postage: '📦 Post Airway Bill + Jobsheet',
       defect: '🚨 Record Defect'
     };
-    document.getElementById('upload-title').textContent = job ? '✏️ Edit Job' : titles[state.tab];
+    document.getElementById('upload-title').textContent =
+      state.stickerMode ? '📄 Got sticker, No Job' : (job ? '✏️ Edit Job' : titles[state.tab]);
+    // sticker report: the jobsheet DOESN'T EXIST — show the red ? instead
+    document.getElementById('js-missing').style.display = state.stickerMode ? 'block' : 'none';
+    document.getElementById('js-add-btn').style.display = state.stickerMode ? 'none' : 'flex';
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
     // postage & defect: two separate photo groups (Jobsheet / Waybill-or-Defect)
     var isPair = state.tab === 'postage' || state.tab === 'defect';
     document.getElementById('generic-photos').style.display = isPair ? 'none' : 'block';
     document.getElementById('postage-groups').style.display = isPair ? 'block' : 'none';
     document.getElementById('wb-label').textContent =
-      state.tab === 'defect' ? '🚨 Defect photos' : '🏷️ Waybill photos (J&T)';
+      state.tab === 'defect' ? '🚨 Defect photos'
+        : state.stickerMode ? '🏷️ Waybill — snap the sticker 📸' : '🏷️ Waybill photos (J&T)';
     document.getElementById('wb-add-btn').textContent =
-      state.tab === 'defect' ? '📷 Add Defect Photo(s)' : '📷 Add Waybill Photo(s)';
+      state.tab === 'defect' ? '📷 Add Defect Photo(s)'
+        : state.stickerMode ? '📷 Snap the Sticker' : '📷 Add Waybill Photo(s)';
     document.getElementById('btn-submit').textContent =
-      job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
+      state.stickerMode ? '🚨 Report to Office'
+        : job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
@@ -3230,7 +3308,10 @@
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
-  function closeUpload() { document.getElementById('upload-overlay').classList.remove('show'); }
+  function closeUpload() {
+    state.stickerMode = false;
+    document.getElementById('upload-overlay').classList.remove('show');
+  }
 
   /** Optional details (Ready by + Instruction) fold behind one "More ▾" row. */
   function setMoreOpts(open) {
@@ -3339,6 +3420,63 @@
                                  document.getElementById('upload-due').value) : '';
     var needName = state.tab !== 'want' || nextTab;
     var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
+
+    // "Got sticker, No Job" report: waybill only, jobsheet is the red ? —
+    // one server call creates the job ALREADY flagged for the office
+    if (state.stickerMode) {
+      if (!state.upload.wb.length) { toast('📸 Snap the sticker first'); return; }
+      var sFulls = state.upload.wb.map(function (p) { return p.b64; });
+      var sThumbs = state.upload.wb.map(function (p) { return p.thumb; });
+      localSeq++;
+      var sPk = [], sTk = [];
+      for (var si = 0; si < sFulls.length; si++) {
+        var k1 = 'localp-' + localSeq + '-' + si, k2 = 'localt-' + localSeq + '-' + si;
+        imgCache[k1] = 'data:image/jpeg;base64,' + sFulls[si];
+        imgCache[k2] = 'data:image/jpeg;base64,' + (sThumbs[si] || sFulls[si]);
+        sPk.push(k1); sTk.push(k2);
+      }
+      var sTemp = {
+        id: 'local-' + localSeq, tab: 'postage', category: '', note: note,
+        photoIds: sPk, thumbIds: sTk, status: 'pending',
+        createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+        dueAt: dueMs || '', jsCount: 0, customer: customer || 'Unassigned',
+        problem: 'nojob', problemAt: Date.now(),
+        probLog: [{ k: 'report', kind: 'nojob', at: Date.now() }],
+        uploading: true
+      };
+      state.jobs.postage.unshift(sTemp);
+      inflightJobs.push(sTemp);
+      closeUpload(); renderAll(); updateBadgeLocal();
+      toast('📄 Office informed — they will print the jobsheet');
+      uploadsPending += sFulls.length; updatePill();
+      var sKey = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      gsCall('reportStickerNoJob', [{
+          note: note, customer: customer, clientId: sKey,
+          photos: sFulls, thumbs: sThumbs, dueAt: dueMs || ''
+        }],
+        function (job) {
+          uploadsPending -= sFulls.length; updatePill();
+          for (var x = 0; x < sFulls.length; x++) {
+            seedImage(job.photoIds[x], sFulls[x]);
+            seedImage(job.thumbIds[x], sThumbs[x]);
+          }
+          sTemp.id = job.id; sTemp.createdAt = job.createdAt;
+          sTemp.photoIds = job.photoIds; sTemp.thumbIds = job.thumbIds;
+          sTemp.problem = job.problem; sTemp.problemAt = job.problemAt;
+          sTemp.probLog = job.probLog || sTemp.probLog;
+          delete sTemp.uploading;
+          inflightJobs = inflightJobs.filter(function (x2) { return x2 !== sTemp; });
+          saveJobsCache('postage'); renderAll(); updateBadgeLocal();
+        },
+        function (e) {
+          uploadsPending -= sFulls.length; updatePill();
+          inflightJobs = inflightJobs.filter(function (x2) { return x2 !== sTemp; });
+          state.jobs.postage = state.jobs.postage.filter(function (x2) { return x2 !== sTemp; });
+          renderAll(); updateBadgeLocal();
+          toast('⚠️ ' + errMsg_(e));
+        });
+      return;
+    }
 
     var photos, jsCount = 0;
     if (state.tab === 'postage' || state.tab === 'defect') {
@@ -3574,6 +3712,12 @@
     };
     reader.readAsDataURL(file);
   }
+
+  // like iPhone: tap the top (header) → glide straight back to the top
+  document.querySelector('header').addEventListener('click', function (e) {
+    if (e.target.closest('button') || e.target.closest('.sync-chip')) return;
+    document.getElementById('scroller').scrollTo({ top: 0, behavior: 'smooth' });
+  });
 
   // ------------------------------------------------------------ boot
   renderRoleBtn();

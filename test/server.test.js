@@ -888,6 +888,46 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
     'office prints the jobsheet and solves the sticker job');
 }
 
+console.log('\n== 🚨 problem HISTORY — report → solve → report → solve (A A B B) ==');
+{
+  const { ctx } = makeEnv();
+  const p = ctx.addJob({ tab: 'postage', category: '', note: 'cycle test', photos: [B64, B64], jsCount: 1 });
+  ctx.reportProblem(p.id);
+  ctx.setProblemNote(p.id, 'first info');
+  const s1 = ctx.solveProblem(p.id, B64, B64);
+  check(s1.probLog.length === 2 && s1.probLog[0].k === 'report' && s1.probLog[1].k === 'solve',
+    'log holds report A then solve A');
+  check(s1.probLog[1].note === 'first info', 'solve A archives the info note (shown ABOVE its photo)');
+  check(ctx.getJobs('postage')[0].problemNote === '', 'live note cleared after solve — archived in the log');
+  const r2 = ctx.reportProblem(p.id);
+  check(r2.probLog.length === 3, 'reporting AGAIN after printed appends — cycles can repeat');
+  ctx.setProblemNote(p.id, 'second info');
+  const s2 = ctx.solveProblem(p.id, B64, B64);
+  check(s2.probLog.map(e => e.k).join(',') === 'report,solve,report,solve',
+    'A A B B — full history until both sides are satisfied');
+  check(s2.probLog[1].photoId !== s2.probLog[3].photoId, 'each solve keeps its OWN photo');
+  check(ctx.getJobs('postage')[0].probLog.length === 4, 'the whole history rides along with the job');
+}
+
+console.log('\n== 📄 solving a no-job report ATTACHES the printed jobsheet ==');
+{
+  const { ctx } = makeEnv();
+  const j = ctx.reportStickerNoJob({ photos: [B64], thumbs: [B64], note: 'orphan sticker', clientId: 'orp1' });
+  check(j.jsCount === 0 && j.probLog.length === 1 && j.probLog[0].kind === 'nojob',
+    'sticker job starts with NO jobsheet and a no-job report in its log');
+  const s = ctx.solveProblem(j.id, B64, B64);
+  check(s.attachedJobsheet === true, 'solving reports back: jobsheet attached');
+  const jj = ctx.getJobs('postage')[0];
+  check(jj.jsCount === 1 && jj.photoIds.length === 2 && jj.photoIds[0] === s.printPhotoId,
+    'printed photo becomes photo #1 (the Jobsheet side); the sticker stays as Waybill');
+  // an ordinary reported job does NOT get a jobsheet attached
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'ordinary', photos: [B64] });
+  ctx.reportProblem(d.id);
+  const sd = ctx.solveProblem(d.id, B64, B64);
+  check(!sd.attachedJobsheet && ctx.getJobs('delivery')[0].photoIds.length === 1,
+    'normal reports keep their photos untouched');
+}
+
 console.log('\n== 📦 Delivered? (how + by whom, no photo) ==');
 {
   const { ctx } = makeEnv();

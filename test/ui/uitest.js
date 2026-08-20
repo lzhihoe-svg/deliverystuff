@@ -1413,29 +1413,91 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 
-  console.log('\n-- 📄 the special TOP button on the Postage page --');
+  console.log('\n-- 📄 the special TOP button → red-? postage form --');
   check((await page.locator('#postage-list .sticker-bar').count()) === 1,
     'Postage page has the "Got sticker, No Job?" button at the top');
   check((await page.locator('#postage-list').textContent()).indexOf('Got sticker, No Job') >= 0,
     'button reads "Got sticker, No Job"');
   const preStick = await page.evaluate(() => window.__mockdb.jobs.length);
   await page.locator('#postage-list .sticker-bar').click();
-  await page.setInputFiles('#sticker-file', IMG2);
+  await sleep(400);
+  check(await page.locator('#upload-overlay').isVisible(), 'the button opens a special postage form');
+  check(await page.locator('#js-missing').isVisible(), 'the Jobsheet side shows the BIG RED ?');
+  check(!(await page.locator('#js-add-btn').isVisible()), 'no jobsheet photo button — it does not exist yet');
+  check((await page.locator('#upload-title').textContent()).indexOf('Got sticker') >= 0,
+    'form title says what this report is');
+  await page.setInputFiles('#wb-file', IMG2);
+  await sleep(700);
+  await page.click('#btn-submit');
   await sleep(900);
   check((await page.evaluate(() => window.__mockdb.jobs.length)) === preStick + 1,
-    'snapping the sticker creates the job — no Post form needed');
+    'submitting creates the job');
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
-    return j.tab === 'postage' && j.problem === 'nojob' && j.photoIds.length === 1;
-  }), 'created job: postage, flagged no-job, sticker photo attached');
+    return j.tab === 'postage' && j.problem === 'nojob' && j.jsCount === 0 && j.photoIds.length === 1;
+  }), 'created job: postage · flagged no-job · sticker on the Waybill side · NO jobsheet');
+  check((await page.locator('#postage-list .js-q').count()) >= 1,
+    "the job card shows the big red ? where the jobsheet should be");
   check((await page.locator('#postage-list .prob-line').filter({ hasText: 'Got sticker' }).count()) >= 1,
     'its card shows the "Got sticker, no jobsheet" flag');
   await page.click('#problem-btn');
   await sleep(400);
-  check((await page.locator('#problem-list .prob-card').filter({ hasText: 'Got sticker' }).count()) >= 1,
-    'and it waits on the Problem page for the office');
+  const spCard = page.locator('#problem-list .prob-card').filter({ hasText: 'Got sticker' }).first();
+  check((await spCard.count()) === 1, 'and it waits on the Problem page for the office');
+  await spCard.locator('.btn.green').click();
+  await page.setInputFiles('#print-file', IMG3);
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    return j.jsCount === 1 && j.photoIds.length === 2 && j.photoIds[0] === j.printPhotoId;
+  }), 'solving ATTACHES the printed photo as the Jobsheet (photo #1)');
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
-  await sleep(200);
+  await sleep(400);
+  check((await page.locator('#postage-list .js-q').count()) === 0,
+    'the red ? is GONE — the real jobsheet took its place');
+
+  console.log('\n-- 🚨 red urgency + problem history (A A B B) --');
+  const solvedBg = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('#postage-list .proof.printed')).backgroundColor);
+  check(solvedBg === 'rgb(220, 38, 38)', 'the SOLVED photo block is urgent RED (' + solvedBg + ')');
+  const cycCard = page.locator('#postage-list .card').filter({ has: page.locator('.proof.printed') }).first();
+  // report AGAIN — cycles must repeat until both sides are satisfied
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    window.__mockapi.reportProblem(j.id);
+    refresh();
+  });
+  await sleep(600);
+  check((await cycCard.locator('.prob-line').count()) === 2 && (await cycCard.locator('.proof.printed').count()) === 1,
+    'history shows report A · solved A · report B — all cycles stay visible');
+  const lineBg = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('#postage-list .prob-line')).backgroundColor);
+  check(lineBg === 'rgb(220, 38, 38)', 'the report line is BRIGHT RED (' + lineBg + ')');
+  // the info note sits ABOVE its solved photo
+  const orderOk = await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    return j.probLog.map(e => e.k).join(',') === 'report,solve,report';
+  });
+  check(orderOk, 'the server log reads report → solve → report');
+
+  console.log('\n-- 🕐 chronology fold on the card --');
+  check((await cycCard.locator('.chrono-btn').count()) === 1, 'the card has a 🕐 Chronology fold');
+  check((await cycCard.locator('.chrono').isVisible()) === false, 'folded by default — cards stay clean');
+  await cycCard.locator('.chrono-btn').click();
+  await sleep(250);
+  const chronoTxt = await cycCard.locator('.chrono').textContent();
+  check((await cycCard.locator('.chrono').isVisible()) &&
+    chronoTxt.indexOf('Posted') >= 0 && chronoTxt.indexOf('Problem solved') >= 0 &&
+    (await cycCard.locator('.chrono .ch-row').count()) === 4,
+    'chronology lists Posted + report + solved + report, each with its timestamp');
+
+  console.log('\n-- tap the header → glide back to the top --');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 600; });
+  await page.click('#hello');
+  await sleep(700);
+  check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) < 50,
+    'tapping the top of the screen scrolls back up — no dragging needed');
+
   await page.evaluate(() => { // archive the sticker job so later sections start clean
     const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
     j.status = 'archived';
