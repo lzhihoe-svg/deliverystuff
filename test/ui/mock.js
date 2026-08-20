@@ -351,6 +351,35 @@
       j.problemAt = '';
       return { id: id, problem: j.problem, probLog: JSON.parse(JSON.stringify(log)) };
     },
+    deleteSolve: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      var log = j.probLog || [];
+      if (j.problem !== 'printed' || !log.length || log[log.length - 1].k !== 'solve') {
+        throw new Error('No solved photo to delete');
+      }
+      var ev = log.pop();
+      var pi = ev.photoId ? j.photoIds.indexOf(ev.photoId) : -1;
+      if (pi >= 0 && pi < (Number(j.jsCount) || 0)) {
+        j.photoIds.splice(pi, 1);
+        if (j.thumbIds.length > pi) j.thumbIds.splice(pi, 1);
+        j.jsCount--;
+      }
+      var lastReport = null, prevSolve = null;
+      for (var i3 = log.length - 1; i3 >= 0; i3--) {
+        if (!lastReport && log[i3].k === 'report') lastReport = log[i3];
+        if (!prevSolve && log[i3].k === 'solve') prevSolve = log[i3];
+      }
+      j.problem = lastReport ? lastReport.kind : '';
+      j.problemAt = lastReport ? lastReport.at : '';
+      j.printedAt = prevSolve ? prevSolve.at : '';
+      j.printPhotoId = prevSolve ? (prevSolve.photoId || '') : '';
+      j.printThumbId = prevSolve ? (prevSolve.thumbId || '') : '';
+      if (ev.note) j.problemNote = ev.note;
+      return { id: id, problem: j.problem, problemAt: j.problemAt, printedAt: j.printedAt,
+               probLog: JSON.parse(JSON.stringify(log)), photoIds: j.photoIds.slice(),
+               thumbIds: j.thumbIds.slice(), jsCount: j.jsCount };
+    },
     setProblemNote: function (id, text) {
       text = String(text || '').slice(0, 300);
       var j = db.jobs.find(function (x) { return x.id === id; });

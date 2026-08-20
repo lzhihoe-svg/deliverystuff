@@ -1145,6 +1145,71 @@ function solveProblem(id, photoB64, thumbB64) {
 }
 
 /**
+ * 🗑️ on the SOLVED picture — delete the LATEST solve. The problem it
+ * answered automatically REOPENS on the Problem page as unsolved, and the
+ * archived info note comes back as the live note. Only the newest solve can
+ * be deleted (older ones are history), and only while no newer report is
+ * open. A jobsheet the solve attached (Got sticker, No Job) is detached.
+ */
+function deleteSolve(id) {
+  var toTrash = [];
+  var out;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
+    var log = [];
+    try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
+    if (vals[22] !== 'printed' || !log.length || log[log.length - 1].k !== 'solve') {
+      throw new Error('No solved photo to delete');
+    }
+    var ev = log.pop();
+    if (ev.photoId) toTrash.push(ev.photoId);
+    if (ev.thumbId) toTrash.push(ev.thumbId);
+    // detach a jobsheet this solve attached (Got sticker, No Job flow)
+    var photoIds = JSON.parse(vals[4] || '[]');
+    var thumbIds = JSON.parse(vals[11] || '[]');
+    var jsCount = Number(vals[15]) || 0;
+    var pi = ev.photoId ? photoIds.indexOf(ev.photoId) : -1;
+    if (pi >= 0 && pi < jsCount) {
+      photoIds.splice(pi, 1);
+      if (thumbIds.length > pi) thumbIds.splice(pi, 1);
+      jsCount--;
+      sh.getRange(row, 5).setValue(JSON.stringify(photoIds));
+      sh.getRange(row, 12).setValue(JSON.stringify(thumbIds));
+      sh.getRange(row, 16).setValue(jsCount);
+    }
+    // REOPEN the report this solve answered
+    var lastReport = null, prevSolve = null;
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (!lastReport && log[i].k === 'report') lastReport = log[i];
+      if (!prevSolve && log[i].k === 'solve') prevSolve = log[i];
+      if (lastReport && prevSolve) break;
+    }
+    sh.getRange(row, 23).setValue(lastReport ? lastReport.kind : '');
+    sh.getRange(row, 24).setValue(lastReport ? lastReport.at : '');
+    sh.getRange(row, 25).setValue(prevSolve ? prevSolve.at : '');
+    sh.getRange(row, 26).setValue(prevSolve ? (prevSolve.photoId || '') : '');
+    sh.getRange(row, 27).setValue(prevSolve ? (prevSolve.thumbId || '') : '');
+    if (ev.note) sh.getRange(row, 31).setValue(ev.note); // the note lives on
+    sh.getRange(row, 35).setValue(JSON.stringify(log));
+    out = { id: id, problem: lastReport ? lastReport.kind : '',
+      problemAt: lastReport ? lastReport.at : '',
+      printedAt: prevSolve ? prevSolve.at : '',
+      printPhotoId: prevSolve ? (prevSolve.photoId || '') : '',
+      printThumbId: prevSolve ? (prevSolve.thumbId || '') : '',
+      probLog: log, photoIds: photoIds, thumbIds: thumbIds, jsCount: jsCount };
+  } finally {
+    lock.releaseLock();
+  }
+  for (var t = 0; t < toTrash.length; t++) trashFile_(toTrash[t]);
+  return out;
+}
+
+/**
  * Shared info on a Problem-page job — STAFF or ADMIN can write it, both
  * sides read it (on the Problem page and on the job's own card).
  */

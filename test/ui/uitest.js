@@ -1541,6 +1541,29 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   check(orderOk, 'the server log reads report → solve → report');
 
+  console.log('\n-- 🗑️ delete a SOLVED picture → problem reopens --');
+  check((await cycCard.locator('.solve-x').count()) === 0,
+    'no delete on an old solve while a newer problem (P2) is open');
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    window.__mockapi.solveProblem(j.id, 'pp2', 'pt2');
+    refresh();
+  });
+  await sleep(600);
+  check((await cycCard.locator('.proof.printed').count()) === 2, 'P2 solved — two green blocks on the card');
+  check((await cycCard.locator('.solve-x').count()) === 1, 'the LATEST solved picture gets a 🗑️ button');
+  await cycCard.locator('.solve-x').click();
+  await sleep(250);
+  await page.click('#confirm-yes');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    return j.problem === 'reported' && j.probLog.length === 3;
+  }), 'solve deleted on the server — P2 is OPEN again, unsolved');
+  check((await cycCard.locator('.proof.printed').count()) === 1, 'back to one green block (P1 history kept)');
+  check((await page.locator('#problem-btn').textContent()).indexOf('(') >= 0,
+    'the Problem badge counts the reopened problem');
+
   console.log('\n-- 🕐 chronology lives in the ⋯ menu --');
   check((await cycCard.locator('.chrono').count()) === 0, 'no chronology clutter on the card face');
   const chronoInMenu = await moreCount(cycCard, '.jm-chrono');
@@ -1584,6 +1607,26 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     return im ? parseFloat(getComputedStyle(im).height) : 0;
   });
   check(pvImgH >= 100, 'the jobsheet picture leads each card (' + pvImgH + 'px tall)');
+  const pvImgPos = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('#pv-postage .pv-card2 > img')).objectPosition);
+  check(pvImgPos === '50% 0%', 'the TOP of the jobsheet shows, not the middle (' + pvImgPos + ')');
+  const pvBorder = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('#pv-postage .pv-card2:not(.prob)')).borderTopColor);
+  check(pvBorder === 'rgb(163, 230, 53)', 'cards have a contrasting green border (' + pvBorder + ')');
+  const pvProbBorder = await page.evaluate(() => {
+    const el = document.querySelector('#prodview .pv-card2.prob');
+    return el ? getComputedStyle(el).borderTopColor : 'none';
+  });
+  check(pvProbBorder === 'rgb(220, 38, 38)' || pvProbBorder === 'none',
+    'problem cards stay red-bordered (' + pvProbBorder + ')');
+  const pvCount = await page.locator('#pv-postage .pv-count').textContent();
+  check(pvCount.indexOf('To Do') >= 0 && pvCount.indexOf('J&T') >= 0 && pvCount.indexOf('Sent') >= 0,
+    'column header counts every status: ' + pvCount.trim());
+  const statsW = await page.evaluate(() => {
+    const cols = document.querySelectorAll('#prodview .pv-col');
+    return cols[4].getBoundingClientRect().width / cols[0].getBoundingClientRect().width;
+  });
+  check(statsW < 0.8, 'the Stats column is narrower than the job columns (' + statsW.toFixed(2) + 'x)');
   check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
     'auto-refresh indicator in the header');
   await page.evaluate(() => {

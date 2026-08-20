@@ -924,6 +924,39 @@ console.log('\n== 🚨 typed problems (raise / edit / delete by staff) ==');
   throws(() => ctx.editProblemReport(p3.id, 'x'), 'but one-tap reports are never text-editable');
 }
 
+console.log('\n== 🗑️ delete a SOLVED picture → the problem REOPENS ==');
+{
+  const { ctx, files } = makeEnv();
+  const p = ctx.addJob({ tab: 'postage', category: '', note: 'reopen test', photos: [B64, B64], jsCount: 1 });
+  throws(() => ctx.deleteSolve(p.id), 'nothing solved yet — nothing to delete');
+  ctx.reportProblem(p.id, 'sticker');
+  ctx.setProblemNote(p.id, 'sticker hilang');
+  const s1 = ctx.solveProblem(p.id, B64, B64);
+  const del = ctx.deleteSolve(p.id);
+  check(del.problem === 'nosticker' && del.probLog.length === 1,
+    'deleting the solve REOPENS the no-sticker report');
+  check(del.printedAt === '' && files[s1.printPhotoId].trashed, 'printed stamp cleared, photo trashed');
+  const jj = ctx.getJobs('postage')[0];
+  check(jj.problem === 'nosticker' && jj.problemNote === 'sticker hilang',
+    'back on the Problem page WITH its info note restored');
+
+  // two cycles: deleting S2 reopens P2 but keeps P1/S1 history intact
+  ctx.solveProblem(p.id, B64, B64);
+  ctx.reportProblem(p.id);
+  const s2 = ctx.solveProblem(p.id, B64, B64);
+  const del2 = ctx.deleteSolve(p.id);
+  check(del2.problem === 'reported' && del2.probLog.length === 3 &&
+        del2.printedAt > 0 && del2.printPhotoId !== s2.printPhotoId,
+    'deleting S2 reopens P2 — P1/S1 stay as history, printed stamp falls back to S1');
+
+  // Got sticker, No Job: deleting the solve DETACHES the jobsheet again
+  const nj = ctx.reportStickerNoJob({ photos: [B64], thumbs: [B64], clientId: 'rs1' });
+  ctx.solveProblem(nj.id, B64, B64);
+  const del3 = ctx.deleteSolve(nj.id);
+  check(del3.problem === 'nojob' && del3.jsCount === 0 && del3.photoIds.length === 1,
+    'no-job solve deleted — the attached jobsheet detaches, red ? returns');
+}
+
 console.log('\n== 🚨 problem HISTORY — report → solve → report → solve (A A B B) ==');
 {
   const { ctx } = makeEnv();
