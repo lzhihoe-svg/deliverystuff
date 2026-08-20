@@ -405,6 +405,14 @@
     font-size: 14.5px; font-weight: 800; cursor: pointer;
   }
   .jnt-bar b { font-size: 17px; }
+  /* 📄 "Got sticker, No Job" — the special report button at the top of Postage */
+  .sticker-bar {
+    display: block; width: 100%; text-align: left; font-family: inherit;
+    background: #fffbeb; border: 1.5px solid #fcd34d; color: #92400e;
+    border-radius: 999px; padding: 10px 16px; margin: 0 0 10px;
+    font-size: 14px; font-weight: 800; cursor: pointer;
+  }
+  .sticker-bar:active { background: #fef3c7; }
   /* short highlight ring when a jump lands on a card — "here it is!" */
   .card.flash { box-shadow: 0 0 0 4px var(--lime), 0 10px 26px rgba(101,163,13,.35); }
   .jnt-bar.zero { background: var(--soft); border-color: #e4e8d8; color: var(--muted); cursor: default; }
@@ -1019,6 +1027,8 @@
 <input type="file" id="proof-file" accept="image/*" capture="environment" onchange="proofPicked(this)">
 <!-- printing-status photo for the Problem page (no capture attr: screenshots come from the gallery) -->
 <input type="file" id="print-file" accept="image/*" onchange="printPicked(this)">
+<!-- "Got sticker, No Job" — snap the orphan sticker from the top of Postage -->
+<input type="file" id="sticker-file" accept="image/*" onchange="stickerPicked(this)">
 
 <div class="viewer" id="viewer">
   <button class="x-close viewer-x" onclick="closeViewer()">✕</button>
@@ -2119,22 +2129,25 @@
       if (da !== db2) return da - db2;
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    var html = '';
-
-    if (pending.length === 0 && done.length === 0) {
-      if (!state.loadedOnce) return loadingHtml_();
-      return '<div class="empty"><span class="big">📭</span>Nothing here yet.' +
-        '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
-    }
-
-    // POSTAGE: the J&T truck comes at 11am — this is the number to tell them.
-    // Ready = Done (waybill + proof) but NOT yet handed over; Sent jobs drop out.
+    // POSTAGE header: J&T ready count + the special "Got sticker, No Job"
+    // button — the button shows even on an EMPTY board (that's exactly when
+    // a sticker with no job turns up)
+    var head = '';
     if (tab === 'postage') {
       var ready = jobs.filter(function (j) { return j.status === 'done' && !j.sentAt; }).length;
-      html += '<div class="jnt-bar' + (ready ? '' : ' zero') + '"' +
+      head += '<div class="jnt-bar' + (ready ? '' : ' zero') + '"' +
         (ready ? ' onclick="jumpToReady()"' : '') +
         '>🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
         (ready ? ' parcel' + (ready > 1 ? 's' : '') + ' — tap to see them' : ' — none waiting') + '</div>';
+      head += '<button class="sticker-bar" onclick="startStickerNoJob()">' +
+        '📄 Got sticker, No Job? — tap to snap the sticker</button>';
+    }
+    var html = head;
+
+    if (pending.length === 0 && done.length === 0) {
+      if (!state.loadedOnce) return loadingHtml_();
+      return head + '<div class="empty"><span class="big">📭</span>Nothing here yet.' +
+        '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
     }
     // today at a glance: how many left vs finished — tap a number to jump there
     html += '<div class="stat-row">' +
@@ -2997,6 +3010,56 @@
     renderProblems(); renderAll();
     toast('📝 Info saved — both sides can see it');
     gsCall('setProblemNote', [id, text], function () {}, bgFail);
+  }
+
+  /** "📄 Got sticker, No Job" — top of the Postage page. A sticker arrived
+      with no job on the board: snap it, and the job is created ALREADY
+      flagged on the Problem page so the office prints the jobsheet. */
+  function startStickerNoJob() {
+    document.getElementById('sticker-file').click();
+  }
+  function stickerPicked(input) {
+    if (!input.files || !input.files[0]) return;
+    compressImage(input.files[0], function (img) {
+      // non-blocking, same as posting: card appears instantly, photo uploads behind
+      localSeq++;
+      var pk = 'localp-' + localSeq + '-0', tk = 'localt-' + localSeq + '-0';
+      imgCache[pk] = 'data:image/jpeg;base64,' + img.full;
+      imgCache[tk] = 'data:image/jpeg;base64,' + img.thumb;
+      var tempJob = {
+        id: 'local-' + localSeq, tab: 'postage', category: '', note: '',
+        photoIds: [pk], thumbIds: [tk], status: 'pending',
+        createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+        dueAt: '', jsCount: 0, customer: 'Unassigned',
+        problem: 'nojob', problemAt: Date.now(), uploading: true
+      };
+      state.jobs.postage.unshift(tempJob);
+      inflightJobs.push(tempJob);
+      renderAll(); updateBadgeLocal();
+      toast('📄 Office informed — they will print the jobsheet');
+      uploadsPending++; updatePill();
+      var clientKey = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      gsCall('reportStickerNoJob', [{ photo: img.full, thumb: img.thumb, clientId: clientKey }],
+        function (job) {
+          uploadsPending--; updatePill();
+          seedImage(job.photoIds[0], img.full);
+          seedImage(job.thumbIds[0], img.thumb);
+          tempJob.id = job.id; tempJob.createdAt = job.createdAt;
+          tempJob.photoIds[0] = job.photoIds[0]; tempJob.thumbIds[0] = job.thumbIds[0];
+          tempJob.problem = job.problem; tempJob.problemAt = job.problemAt;
+          delete tempJob.uploading;
+          inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
+          saveJobsCache('postage'); renderAll(); updateBadgeLocal();
+        },
+        function (e) {
+          uploadsPending--; updatePill();
+          inflightJobs = inflightJobs.filter(function (x) { return x !== tempJob; });
+          state.jobs.postage = state.jobs.postage.filter(function (x) { return x !== tempJob; });
+          renderAll(); updateBadgeLocal();
+          toast('⚠️ ' + errMsg_(e));
+        });
+    });
+    input.value = '';
   }
 
   /** Office: press ✅ Solved → snap the printing status (photo REQUIRED). */

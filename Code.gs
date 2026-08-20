@@ -977,6 +977,30 @@ function reportProblem(id, kind) {
 }
 
 /**
+ * "📄 GOT STICKER, NO JOB" — the special button at the TOP of the Postage
+ * page. A waybill sticker arrived at the factory but there is NO job on the
+ * board. Staff snap the sticker; this creates the postage job (sticker photo
+ * only) already flagged 'nojob' on the Problem page, so the office prints
+ * the jobsheet and solves it as usual. clientId makes retries safe.
+ */
+function reportStickerNoJob(payload) {
+  if (!payload || !payload.photo) throw new Error('Sticker photo required');
+  var job = addJob({
+    tab: 'postage', category: '',
+    note: String(payload.note || ''),
+    customer: '',
+    clientId: payload.clientId,
+    photos: [payload.photo],
+    thumbs: [payload.thumb],
+    jsCount: 0
+  });
+  var r = reportProblem(job.id, 'nojob');
+  job.problem = r.problem;
+  job.problemAt = r.problemAt;
+  return job;
+}
+
+/**
  * "✅ SOLVED" on the Problem page — the office printed the job. The photo of
  * the printing status is REQUIRED as evidence; it files into the job's own
  * Drive folder. Works on reported Delivery/Postage jobs AND on Checking jobs

@@ -274,6 +274,15 @@
       db.jobs.splice(i, 1);
       return { ok: true, id: id };
     },
+    reportStickerNoJob: function (payload) {
+      if (!payload || !payload.photo) throw new Error('Sticker photo required');
+      var job = api.addJob({ tab: 'postage', category: '', note: String(payload.note || ''),
+        customer: '', clientId: payload.clientId, photos: [payload.photo],
+        thumbs: [payload.thumb], jsCount: 0 });
+      var r = api.reportProblem(job.id, 'nojob');
+      job.problem = r.problem; job.problemAt = r.problemAt;
+      return job;
+    },
     reportProblem: function (id, kind) {
       var mark = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
       var j = db.jobs.find(function (x) { return x.id === id; });

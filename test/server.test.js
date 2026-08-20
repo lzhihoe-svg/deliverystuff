@@ -870,6 +870,22 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
     'a no-job report accepts info too');
   check(ctx.solveProblem(nj.id, B64, B64).problem === 'printed',
     'office solves it the same way — print the jobsheet, snap the photo');
+
+  // the TOP button: sticker arrives with NO job on the board at all
+  throws(() => ctx.reportStickerNoJob({}), 'sticker photo required');
+  const before = ctx.getJobs('postage').length;
+  const sj = ctx.reportStickerNoJob({ photo: B64, thumb: B64, clientId: 'stick1' });
+  check(sj.tab === 'postage' && sj.problem === 'nojob' && sj.problemAt > 0,
+    'one tap creates a postage job ALREADY flagged no-job');
+  check(ctx.getJobs('postage').length === before + 1 &&
+        ctx.getJobs('postage').filter(x => x.id === sj.id)[0].problem === 'nojob',
+    'the sticker job lands on the Postage board, flagged');
+  check(sj.photoIds.length === 1 && !!sj.photoIds[0], 'the sticker photo is saved');
+  const sj2 = ctx.reportStickerNoJob({ photo: B64, thumb: B64, clientId: 'stick1' });
+  check(sj2.id === sj.id && ctx.getJobs('postage').length === before + 1,
+    'retrying with the same clientId does not double-post');
+  check(ctx.solveProblem(sj.id, B64, B64).problem === 'printed',
+    'office prints the jobsheet and solves the sticker job');
 }
 
 console.log('\n== 📦 Delivered? (how + by whom, no photo) ==');

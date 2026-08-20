@@ -1413,6 +1413,34 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 
+  console.log('\n-- 📄 the special TOP button on the Postage page --');
+  check((await page.locator('#postage-list .sticker-bar').count()) === 1,
+    'Postage page has the "Got sticker, No Job?" button at the top');
+  check((await page.locator('#postage-list').textContent()).indexOf('Got sticker, No Job') >= 0,
+    'button reads "Got sticker, No Job"');
+  const preStick = await page.evaluate(() => window.__mockdb.jobs.length);
+  await page.locator('#postage-list .sticker-bar').click();
+  await page.setInputFiles('#sticker-file', IMG2);
+  await sleep(900);
+  check((await page.evaluate(() => window.__mockdb.jobs.length)) === preStick + 1,
+    'snapping the sticker creates the job — no Post form needed');
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    return j.tab === 'postage' && j.problem === 'nojob' && j.photoIds.length === 1;
+  }), 'created job: postage, flagged no-job, sticker photo attached');
+  check((await page.locator('#postage-list .prob-line').filter({ hasText: 'Got sticker' }).count()) >= 1,
+    'its card shows the "Got sticker, no jobsheet" flag');
+  await page.click('#problem-btn');
+  await sleep(400);
+  check((await page.locator('#problem-list .prob-card').filter({ hasText: 'Got sticker' }).count()) >= 1,
+    'and it waits on the Problem page for the office');
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(200);
+  await page.evaluate(() => { // archive the sticker job so later sections start clean
+    const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];
+    j.status = 'archived';
+  });
+
   await page.evaluate(() => { // cleanup
     ['Prob-deliv', 'Prob-check', 'NoStick-test', 'NoJob-test'].forEach(n => {
       const j = window.__mockdb.jobs.find(x => x.note === n);
