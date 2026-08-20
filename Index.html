@@ -1650,13 +1650,16 @@
   function jobMenuHtml_(j) {
     var busy = j.uploading || j.proofUploading;
     if (busy) return '';
-    var hasProb = j.problem === 'reported' || j.problem === 'nosticker';
+    var hasProb = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob';
     var out = '';
     if (j.status === 'pending') {
       if (j.tab === 'postage') out += jmItem_('jm-sentbus', 'sentbus', '🚌 Oops! Sent bus', 'take proof');
       if ((j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') && !hasProb) {
         out += jmItem_('jm-warn warn', 'noreceive', '❓ Haven\'t received', 'tell office');
-        if (j.tab === 'postage') out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
+        if (j.tab === 'postage') {
+          out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
+          out += jmItem_('jm-nojob warn', 'nojob', '📄 Got sticker, No Job', 'tell office');
+        }
       }
     }
     if (j.status === 'done') {
@@ -1697,6 +1700,7 @@
     if (what === 'sentbus') startSentBus(id);
     else if (what === 'noreceive') reportNoReceive(id);
     else if (what === 'nosticker') reportNoReceive(id, 'sticker');
+    else if (what === 'nojob') reportNoReceive(id, 'nojob');
     else if (what === 'reproof') startReProof(id);
     else if (what === 'delproof') removeProof(id);
     else if (what === 'deldeliv') removeDeliveredNow(id);
@@ -2262,9 +2266,11 @@
       (j.fromCheck ? ' · ✅ passed check' : '') + '</div>';
     // "haven't received" problem status — visible to everyone on the card
     if (!isDone && (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect')) {
-      if (j.problem === 'reported' || j.problem === 'nosticker') {
+      if (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob') {
         html += '<div class="prob-line">' +
-          (j.problem === 'nosticker' ? '🏷️ No sticker — reported at ' : '🚨 Reported at ') +
+          (j.problem === 'nosticker' ? '🏷️ No sticker — reported at '
+            : j.problem === 'nojob' ? '📄 Got sticker, no jobsheet — reported at '
+            : '🚨 Reported at ') +
           fmtTime(j.problemAt) + ' — office will print it</div>';
         if (j.problemNote) html += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
       } else if (j.printedAt) {
@@ -2892,7 +2898,8 @@
     });
     ['delivery', 'postage', 'defect'].forEach(function (t) {
       state.jobs[t].forEach(function (j) {
-        if (j.status === 'pending' && (j.problem === 'reported' || j.problem === 'nosticker')) out.push(j);
+        if (j.status === 'pending' &&
+          (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob')) out.push(j);
       });
     });
     out.sort(function (a, b) { return (b.problemAt || b.doneAt || 0) - (a.problemAt || a.doneAt || 0); });
@@ -2941,7 +2948,8 @@
         '<div class="t1">' + (PROB_TAB[j.tab] || j.tab) + (j.category ? ' · ' + esc(CAT_LABEL[j.category] || j.category) : '') + '</div>' +
         (who || j.note ? '<div class="t2">' + esc(who) + (who && j.note ? ' — ' : '') + esc(j.note || '') + '</div>' : '') +
         '<div class="t3">' + (j.tab === 'want' ? '❌ Not seen'
-          : j.problem === 'nosticker' ? '🏷️ No sticker' : '❓ Haven\'t received') +
+          : j.problem === 'nosticker' ? '🏷️ No sticker'
+          : j.problem === 'nojob' ? '📄 Got sticker, no jobsheet' : '❓ Haven\'t received') +
           ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
         '</div></div>' +
         noteHtml +
@@ -2961,11 +2969,12 @@
     var j = findJob(id);
     if (j && j.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     if (j) {
-      j.problem = kind === 'sticker' ? 'nosticker' : 'reported';
+      j.problem = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
       j.problemAt = Date.now();
       saveJobsCache(state.tab); renderAll();
     }
     toast(kind === 'sticker' ? '🏷️ Office informed — they will print the sticker'
+      : kind === 'nojob' ? '📄 Office informed — they will print the jobsheet'
       : '🚨 Office informed — they will print it');
     gsCall('reportProblem', [id, kind || ''], function (res) {
       if (j) { j.problemAt = res.problemAt; saveJobsCache(j.tab); }

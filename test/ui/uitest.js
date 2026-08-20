@@ -1376,8 +1376,45 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 
+  console.log('\n-- 📄 Got sticker, No Job: the third postage problem type --');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'NoJob-test', customer: 'SN',
+      photos: ['njt1', 'njt2'], thumbs: ['njt1', 'njt2'], jsCount: 1 });
+    refresh();
+  });
+  await sleep(600);
+  await page.click('#nav-postage');
+  await sleep(400);
+  const njCard = page.locator('#postage-list .card').filter({ hasText: 'NoJob-test' });
+  const njTools = await moreCount(njCard, '.jm-warn, .jm-sticker, .jm-nojob');
+  check(njTools.n === 3, "postage ⋯ menu has all three report actions");
+  check(njTools.txts.some(t => t.indexOf('Got sticker, No Job') >= 0), "one reads 'Got sticker, No Job'");
+  check(await page.evaluate(() => jobMenuHtml_({ id: 'x', tab: 'delivery', status: 'pending', problem: '', photoIds: [] }).indexOf('jm-nojob') < 0),
+    'delivery cards do NOT get the no-job action');
+  await viaMore(njCard, '.jm-nojob');
+  await sleep(600);
+  check((await njCard.locator('.prob-line').textContent()).indexOf('Got sticker, no jobsheet') >= 0,
+    "card shows '📄 Got sticker, no jobsheet — reported at <time>'");
+  check((await moreCount(njCard, '.jm-warn, .jm-sticker, .jm-nojob')).n === 0, 'all report actions gone once reported');
+  check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'NoJob-test').problem === 'nojob'),
+    'server flagged it as no-job');
+  await page.click('#problem-btn');
+  await sleep(400);
+  const njProb = page.locator('#problem-list .prob-card').filter({ hasText: 'NoJob-test' });
+  check((await njProb.count()) === 1 && (await njProb.textContent()).indexOf('Got sticker, no jobsheet') >= 0,
+    "listed on the Problem page as '📄 Got sticker, no jobsheet'");
+  await njProb.locator('.btn.green').click();
+  await page.setInputFiles('#print-file', IMG3);
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
+    return j.problem === 'printed' && !!j.printedAt;
+  }), 'office prints the jobsheet + snaps the photo, same flow as always');
+  await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
+  await sleep(200);
+
   await page.evaluate(() => { // cleanup
-    ['Prob-deliv', 'Prob-check', 'NoStick-test'].forEach(n => {
+    ['Prob-deliv', 'Prob-check', 'NoStick-test', 'NoJob-test'].forEach(n => {
       const j = window.__mockdb.jobs.find(x => x.note === n);
       if (j) j.status = 'archived';
     });

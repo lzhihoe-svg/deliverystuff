@@ -944,8 +944,9 @@ function sentBus(id, proofBase64, proofThumbBase64) {
  * (Checking's ❌ Not Seen jobs join the Problem page automatically.)
  */
 function reportProblem(id, kind) {
-  // kind '' → "haven't received" ('reported'); 'sticker' → "no sticker" ('nosticker')
-  var mark = kind === 'sticker' ? 'nosticker' : 'reported';
+  // kind '' → "haven't received" ('reported'); 'sticker' → "no sticker"
+  // ('nosticker'); 'nojob' → "got sticker, no jobsheet" ('nojob')
+  var mark = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -958,6 +959,9 @@ function reportProblem(id, kind) {
     }
     if (mark === 'nosticker' && vals[1] !== 'postage') {
       throw new Error('No-sticker reports are for Postage jobs');
+    }
+    if (mark === 'nojob' && vals[1] !== 'postage') {
+      throw new Error('Got-sticker-no-job reports are for Postage jobs');
     }
     if (vals[22] === mark) { // already reported the same thing — idempotent
       return { id: id, problem: mark, problemAt: vals[23] };
@@ -998,7 +1002,7 @@ function solveProblem(id, photoB64, thumbB64) {
       throw new Error('Job not found');
     }
     var vals = sh.getRange(row, 1, 1, 34).getValues()[0];
-    var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' ||
+    var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
       (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) {
       trashFile_(photoId); trashFile_(thumbId);
@@ -1030,7 +1034,7 @@ function setProblemNote(id, text) {
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
     var vals = sh.getRange(row, 1, 1, 34).getValues()[0];
-    var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' ||
+    var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
       (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) throw new Error('This job is not on the Problem page');
     sh.getRange(row, 31).setValue(text);

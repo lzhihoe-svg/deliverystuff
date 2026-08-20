@@ -275,11 +275,12 @@
       return { ok: true, id: id };
     },
     reportProblem: function (id, kind) {
-      var mark = kind === 'sticker' ? 'nosticker' : 'reported';
+      var mark = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       if (j.tab !== 'delivery' && j.tab !== 'postage' && j.tab !== 'defect') throw new Error('Only Delivery/Postage/Defect jobs can be reported');
       if (mark === 'nosticker' && j.tab !== 'postage') throw new Error('No-sticker reports are for Postage jobs');
+      if (mark === 'nojob' && j.tab !== 'postage') throw new Error('Got-sticker-no-job reports are for Postage jobs');
       if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt };
       j.problem = mark; j.problemAt = Date.now(); j.printedAt = '';
       return { id: id, problem: mark, problemAt: j.problemAt };
@@ -288,7 +289,7 @@
       if (!photo) throw new Error('Printing photo required');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' ||
+      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
         (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
       j.problem = 'printed'; j.printedAt = Date.now();
@@ -300,7 +301,7 @@
       text = String(text || '').slice(0, 300);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' ||
+      var isProblem = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
         (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
       j.problemNote = text;

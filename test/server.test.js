@@ -857,6 +857,19 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
   check(dr.problem === 'reported' && dr.problemAt > 0, "defect job can be reported as haven't-received");
   throws(() => ctx.reportProblem(df.id, 'sticker'), 'but no-sticker stays Postage-only for defects too');
   check(ctx.solveProblem(df.id, B64, B64).problem === 'printed', 'office solves a defect report the same way');
+
+  // "📄 Got sticker, No Job" — the third postage problem type
+  const nj = ctx.addJob({ tab: 'postage', category: '', note: 'sticker only', photos: [B64] });
+  const njr = ctx.reportProblem(nj.id, 'nojob');
+  check(njr.problem === 'nojob' && njr.problemAt > 0, 'got-sticker-no-job report flags the job');
+  check(ctx.getJobs('postage').filter(j => j.id === nj.id)[0].problem === 'nojob', 'flag persisted');
+  const njr2 = ctx.reportProblem(nj.id, 'nojob');
+  check(njr2.problemAt === njr.problemAt, 'reporting twice is idempotent');
+  throws(() => ctx.reportProblem(dd.id, 'nojob'), 'got-sticker-no-job is Postage-only');
+  check(ctx.setProblemNote(nj.id, 'jobsheet hilang').problemNote === 'jobsheet hilang',
+    'a no-job report accepts info too');
+  check(ctx.solveProblem(nj.id, B64, B64).problem === 'printed',
+    'office solves it the same way — print the jobsheet, snap the photo');
 }
 
 console.log('\n== 📦 Delivered? (how + by whom, no photo) ==');
