@@ -910,7 +910,18 @@ console.log('\n== 🚨 typed problems (raise / edit / delete by staff) ==');
     'deleting the raise removes it — the earlier solved cycle stays');
   const delw = ctx.deleteProblemReport(w.id);
   check(delw.problem === '' && delw.probLog.length === 0, 'deleting the only raise leaves no problem at all');
-  throws(() => ctx.deleteProblemReport(d.id), 'nothing typed left to delete');
+  throws(() => ctx.deleteProblemReport(d.id), 'nothing raised left to delete');
+
+  // the ONE-TAP reports are deletable by staff too — wrong taps happen
+  const p3 = ctx.addJob({ tab: 'postage', category: '', note: 'ns del', photos: [B64, B64] });
+  ctx.reportProblem(p3.id, 'sticker');
+  const dl3 = ctx.deleteProblemReport(p3.id);
+  check(dl3.problem === '' && dl3.probLog.length === 0, "a 'No sticker' report can be deleted");
+  ctx.reportProblem(p3.id);
+  check(ctx.deleteProblemReport(p3.id).problem === '', "a 'Haven't received' report can be deleted");
+  ctx.reportProblem(p3.id, 'nojob');
+  check(ctx.deleteProblemReport(p3.id).problem === '', "a 'Got sticker, no job' report can be deleted");
+  throws(() => ctx.editProblemReport(p3.id, 'x'), 'but one-tap reports are never text-editable');
 }
 
 console.log('\n== 🚨 problem HISTORY — report → solve → report → solve (A A B B) ==');

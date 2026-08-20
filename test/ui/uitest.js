@@ -1433,6 +1433,29 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), 'deleting the raise withdraws it completely');
   check((await page.locator('#problem-list .prob-card').filter({ hasText: 'NoJob-test' }).count()) === 0,
     'gone from the Problem page');
+
+  // one-tap reports (haven't received / no sticker) get 🗑️ Delete too
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
+    window.__mockapi.reportProblem(j.id, 'sticker');
+    refresh();
+  });
+  await sleep(600);
+  await page.evaluate(() => renderProblems());
+  await sleep(300);
+  const nsDel = page.locator('#problem-list .prob-card').filter({ hasText: 'NoJob-test' });
+  check((await nsDel.locator('button:has-text("Delete")').count()) === 1,
+    "a one-tap 'No sticker' report gets 🗑️ Delete too");
+  check((await nsDel.locator('button:has-text("Edit Problem")').count()) === 0,
+    '…but ✏️ Edit stays typed-problems-only');
+  await nsDel.locator('button:has-text("Delete")').click();
+  await sleep(250);
+  await page.click('#confirm-yes');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
+    return j.problem === '' && j.probLog.length === 0;
+  }), 'deleted — flag cleared on the server');
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 

@@ -3237,10 +3237,12 @@
           ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
         '</div></div>' +
         noteHtml +
-        // a TYPED problem belongs to the staff who raised it — they can fix or withdraw it
-        (j.problem === 'custom'
+        // any raised report can be WITHDRAWN by staff (wrong tap happens);
+        // typed problems can also be edited
+        (j.problem === 'custom' || j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob'
           ? '<div class="btn-row" style="margin-top:6px">' +
-            '<button class="btn gray small" onclick="openRaise(\'' + j.id + '\', true)">✏️ Edit Problem</button>' +
+            (j.problem === 'custom'
+              ? '<button class="btn gray small" onclick="openRaise(\'' + j.id + '\', true)">✏️ Edit Problem</button>' : '') +
             '<button class="btn red small" onclick="deleteRaise(\'' + j.id + '\')">🗑️ Delete</button></div>'
           : '') +
         '<button class="btn green small" onclick="startSolve(\'' + j.id + '\')">✅ Solved — snap printing status 📸</button>' +
@@ -3321,14 +3323,16 @@
     }
     if (document.getElementById('problem-overlay').classList.contains('show')) renderProblems();
   }
-  /** Withdraw a raised problem — it leaves the Problem page. */
+  /** Withdraw ANY raised report (typed / haven't received / no sticker /
+      no jobsheet) — it leaves the Problem page. */
   function deleteRaise(id) {
-    askConfirm('Delete this raised problem?', '🗑️ Yes, Delete', function () {
+    askConfirm('Delete this report? It leaves the Problem page.', '🗑️ Yes, Delete', function () {
       var j = findJobAll(id);
       if (j) {
+        var mark = j.problem;
         var log = j.probLog || [];
         for (var i = log.length - 1; i >= 0; i--) {
-          if (log[i].k === 'report' && log[i].kind === 'custom') { log.splice(i, 1); break; }
+          if (log[i].k === 'report' && log[i].kind === mark) { log.splice(i, 1); break; }
         }
         j.problem = log.some(function (e) { return e.k === 'solve'; }) ? 'printed' : '';
         j.problemAt = '';

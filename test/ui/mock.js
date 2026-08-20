@@ -339,10 +339,13 @@
     deleteProblemReport: function (id) {
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      if (j.problem !== 'custom') throw new Error('Only a typed problem can be deleted');
+      var mark = j.problem;
+      if (mark !== 'custom' && mark !== 'reported' && mark !== 'nosticker' && mark !== 'nojob') {
+        throw new Error('No active report to delete');
+      }
       var log = j.probLog || [];
       for (var i2 = log.length - 1; i2 >= 0; i2--) {
-        if (log[i2].k === 'report' && log[i2].kind === 'custom') { log.splice(i2, 1); break; }
+        if (log[i2].k === 'report' && log[i2].kind === mark) { log.splice(i2, 1); break; }
       }
       j.problem = log.some(function (e) { return e.k === 'solve'; }) ? 'printed' : '';
       j.problemAt = '';

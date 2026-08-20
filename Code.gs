@@ -1021,7 +1021,9 @@ function editProblemReport(id, text) {
   }
 }
 
-/** STAFF can DELETE a raised (typed) problem — it leaves the Problem page. */
+/** STAFF can DELETE any raised report — typed problems AND the one-tap
+    reports (haven't received / no sticker / got-sticker-no-job). A wrong
+    tap leaves the Problem page with one delete. */
 function deleteProblemReport(id) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -1030,11 +1032,14 @@ function deleteProblemReport(id) {
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
     var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
-    if (vals[22] !== 'custom') throw new Error('Only a typed problem can be deleted');
+    var mark = vals[22];
+    if (mark !== 'custom' && mark !== 'reported' && mark !== 'nosticker' && mark !== 'nojob') {
+      throw new Error('No active report to delete');
+    }
     var log = [];
     try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
     for (var i = log.length - 1; i >= 0; i--) {
-      if (log[i].k === 'report' && log[i].kind === 'custom') { log.splice(i, 1); break; }
+      if (log[i].k === 'report' && log[i].kind === mark) { log.splice(i, 1); break; }
     }
     sh.getRange(row, 35).setValue(JSON.stringify(log));
     // earlier solved cycles keep their 'printed' state; otherwise no problem
