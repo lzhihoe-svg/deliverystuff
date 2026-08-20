@@ -413,6 +413,13 @@
     font-size: 14px; font-weight: 800; cursor: pointer;
   }
   .sticker-bar:active { background: #fef3c7; }
+  /* postage: counter bar (~70%) + compact sticker button (~30%) on ONE row */
+  .stat-strip { display: flex; gap: 8px; align-items: stretch; margin: 4px 0 10px; }
+  .stat-strip .stat-row { flex: 0 0 70%; min-width: 0; margin: 0; padding: 10px 12px; }
+  .stat-strip .sticker-bar {
+    flex: 1; min-width: 0; margin: 0; border-radius: 20px;
+    text-align: center; font-size: 12px; line-height: 1.3; padding: 6px 8px;
+  }
   /* short highlight ring when a jump lands on a card — "here it is!" */
   .card.flash { box-shadow: 0 0 0 4px var(--lime), 0 10px 26px rgba(101,163,13,.35); }
   .jnt-bar.zero { background: var(--soft); border-color: #e4e8d8; color: var(--muted); cursor: default; }
@@ -2129,9 +2136,7 @@
       if (da !== db2) return da - db2;
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    // POSTAGE header: J&T ready count + the special "Got sticker, No Job"
-    // button — the button shows even on an EMPTY board (that's exactly when
-    // a sticker with no job turns up)
+    // POSTAGE header: J&T ready count on top
     var head = '';
     if (tab === 'postage') {
       var ready = jobs.filter(function (j) { return j.status === 'done' && !j.sentAt; }).length;
@@ -2139,22 +2144,32 @@
         (ready ? ' onclick="jumpToReady()"' : '') +
         '>🚚 Ready for J&T pickup: <b>' + ready + '</b>' +
         (ready ? ' parcel' + (ready > 1 ? 's' : '') + ' — tap to see them' : ' — none waiting') + '</div>';
-      head += '<button class="sticker-bar" onclick="startStickerNoJob()">' +
-        '📄 Got sticker, No Job? — tap to snap the sticker</button>';
     }
-    var html = head;
 
     if (pending.length === 0 && done.length === 0) {
       if (!state.loadedOnce) return loadingHtml_();
+      // empty board: full-width button — that's exactly when an orphan sticker turns up
+      if (tab === 'postage') {
+        head += '<button class="sticker-bar" onclick="startStickerNoJob()">' +
+          '📄 Got sticker, No Job? — tap to snap the sticker</button>';
+      }
       return head + '<div class="empty"><span class="big">📭</span>Nothing here yet.' +
         '<br><span class="hint">Tap ＋ Post below to add a job</span></div>';
     }
+    var html = head;
     // today at a glance: how many left vs finished — tap a number to jump there
-    html += '<div class="stat-row">' +
+    var statRow = '<div class="stat-row">' +
       '<span class="stat-box todo" onclick="jumpToSec(\'' + tab + '\',\'todo\')">⏳ <span class="num">' + pending.length + '</span> to do</span>' +
       '<span class="sep">·</span>' +
       '<span class="stat-box done" onclick="jumpToSec(\'' + tab + '\',\'done\')">✅ <span class="num">' + done.length + '</span> done</span>' +
       ringSvg_(done.length, pending.length) + '</div>';
+    if (tab === 'postage') {
+      // counter bar ~70% + the special sticker button ~30%, side by side
+      html += '<div class="stat-strip">' + statRow +
+        '<button class="sticker-bar" onclick="startStickerNoJob()">📄 Got sticker, <br>No Job?</button></div>';
+    } else {
+      html += statRow;
+    }
 
     if (pending.length) {
       html += '<div class="section-title" id="sec-todo-' + tab + '">⏳ To Do (' + pending.length + ')</div><div class="grid">';
