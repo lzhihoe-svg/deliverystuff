@@ -507,17 +507,26 @@
     padding: 10px 12px; color: #fff; background: linear-gradient(135deg, #3f6212, #65a30d);
   }
   .pv-list { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
-  .pv-count { font-size: 12px; font-weight: 800; color: #c2410c; padding: 2px 4px 8px; }
-  .pv-card {
-    display: flex; gap: 8px; align-items: center;
-    border: 1px solid var(--soft); border-radius: 12px; padding: 6px; margin-bottom: 8px;
+  .pv-count { font-size: 12px; font-weight: 800; color: #c2410c; padding: 2px 4px 6px; }
+  /* status group inside a column */
+  .pv-sec {
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 10px 2px 6px;
+    border-bottom: 1.5px solid var(--soft); padding-bottom: 4px;
   }
-  .pv-card > img { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; background: #e2e8f0; flex: 0 0 auto; }
-  .pv-info { min-width: 0; flex: 1; }
-  .pv-cust { font-size: 12.5px; font-weight: 800; color: #3730a3; }
-  .pv-note { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pv-st { font-size: 11px; font-weight: 700; color: var(--muted); }
-  .pv-st .chip { font-size: 10px; padding: 1px 7px; margin: 0 0 0 4px; }
+  .pv-sec:first-child { margin-top: 2px; }
+  .pv-sec.warn { color: #b91c1c; border-color: #fecaca; }
+  .pv-sec.good { color: var(--blue); border-color: var(--lime-soft); }
+  /* 2-up job grid — jobsheet picture on top, details under it */
+  .pv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .pv-card2 { border: 1px solid var(--soft); border-radius: 10px; overflow: hidden; background: #fff; }
+  .pv-card2.prob { border: 2px solid #dc2626; }
+  .pv-card2 > img { width: 100%; height: 110px; object-fit: cover; display: block; background: #e2e8f0; }
+  .pv-body2 { padding: 5px 7px 7px; }
+  .pv-cust { font-size: 12px; font-weight: 800; color: #3730a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pv-note { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pv-st { font-size: 10.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .pv-st .chip { font-size: 9.5px; padding: 1px 6px; margin: 0 0 0 3px; }
 
   /* ---------- modals (always centered) ---------- */
   .overlay {
@@ -2752,36 +2761,66 @@
     state.prodView = false;
     document.getElementById('prodview').classList.remove('show');
   }
+  function pvProb_(j) {
+    return j.problem === 'reported' || j.problem === 'nosticker' ||
+      j.problem === 'nojob' || j.problem === 'custom';
+  }
+  /** One TV job card — the JOBSHEET picture big on top, details under it. */
   function pvCard_(j) {
     var chips = '';
     if (j.status === 'pending' && j.dueAt && Number(j.dueAt) < Date.now()) chips += '<span class="chip late">🚨 LATE</span>';
-    if (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' || j.problem === 'custom') {
-      chips += '<span class="chip old">🚨 PROBLEM</span>';
-    }
-    var st = j.status === 'done'
-      ? (((j.tab === 'postage' && j.sentAt) || (j.tab === 'delivery' && j.deliveredAt)) ? '✔ OUT' : '✅ Done')
-      : j.status === 'got' ? '❤️ Got it'
-      : j.status === 'notseen' ? '❌ Not seen' : '⏳ To do';
-    return '<div class="pv-card">' + imgTag(thumbOf(j, 0)) +
-      '<div class="pv-info">' +
+    if (pvProb_(j)) chips += '<span class="chip old">🚨 PROBLEM</span>';
+    var when = j.status === 'pending' ? timeAgo(j.createdAt) : timeAgo(j.doneAt || j.createdAt);
+    return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : '') + '">' + imgTag(thumbOf(j, 0)) +
+      '<div class="pv-body2">' +
       ((j.customer && j.customer !== 'Unassigned') ? '<div class="pv-cust">👤 ' + esc(j.customer) + '</div>' : '') +
       (j.note ? '<div class="pv-note">' + esc(j.note) + '</div>' : '') +
-      '<div class="pv-st">' + st + chips + '</div></div></div>';
+      '<div class="pv-st">' + when + chips + '</div></div></div>';
+  }
+  /** The status groups for one TV column. */
+  function pvGroups_(tb, jobs) {
+    function g(lbl, cls, f) { return { lbl: lbl, cls: cls, jobs: jobs.filter(f) }; }
+    if (tb === 'want') return [
+      g('⏳ Waiting swipe', '', function (j) { return j.status === 'pending'; }),
+      g('❌ Not Seen', 'warn', function (j) { return j.status === 'notseen'; }),
+      g('❤️ Got It', 'good', function (j) { return j.status === 'got'; })
+    ];
+    if (tb === 'delivery') return [
+      g('⏳ To Do', '', function (j) { return j.status === 'pending'; }),
+      g('✅ Ready — not delivered', 'warn', function (j) { return j.status === 'done' && !j.deliveredAt; }),
+      g('✔ Delivered', 'good', function (j) { return j.status === 'done' && !!j.deliveredAt; })
+    ];
+    if (tb === 'postage') return [
+      g('⏳ To Do', '', function (j) { return j.status === 'pending'; }),
+      g('📦 Ready for J&T', 'warn', function (j) { return j.status === 'done' && !j.sentAt; }),
+      g('✔ Sent to J&T', 'good', function (j) { return j.status === 'done' && !!j.sentAt; })
+    ];
+    return [
+      g('⏳ Open', '', function (j) { return j.status === 'pending'; }),
+      g('✅ Fixed', 'good', function (j) { return j.status === 'done'; })
+    ];
   }
   function renderProdView() {
     ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
       var jobs = state.jobs[tb].slice();
-      // waiting work on top, then everything newest first
+      // problem jobs first inside each group, then newest first
       jobs.sort(function (a, b) {
-        var pa = a.status === 'pending' ? 0 : 1, pb = b.status === 'pending' ? 0 : 1;
-        if (pa !== pb) return pa - pb;
+        var qa = pvProb_(a) ? 0 : 1, qb = pvProb_(b) ? 0 : 1;
+        if (qa !== qb) return qa - qb;
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
       var pend = jobs.filter(function (j) { return j.status === 'pending'; }).length;
-      document.getElementById('pv-' + tb).innerHTML =
-        '<div class="pv-count">⏳ ' + pend + ' waiting</div>' +
-        (jobs.length ? jobs.map(pvCard_).join('')
-          : '<div class="empty" style="padding:18px 4px;font-size:14px">Nothing</div>');
+      var html = '<div class="pv-count">⏳ ' + pend + ' waiting</div>';
+      var any = false;
+      pvGroups_(tb, jobs).forEach(function (grp) {
+        if (!grp.jobs.length) return;
+        any = true;
+        html += '<div class="pv-sec' + (grp.cls ? ' ' + grp.cls : '') + '">' +
+          grp.lbl + ' (' + grp.jobs.length + ')</div>' +
+          '<div class="pv-grid2">' + grp.jobs.map(pvCard_).join('') + '</div>';
+      });
+      if (!any) html += '<div class="empty" style="padding:18px 4px;font-size:14px">Nothing</div>';
+      document.getElementById('pv-' + tb).innerHTML = html;
     });
     document.getElementById('pv-stats').innerHTML = statsHtml_();
     document.getElementById('pv-upd').textContent =

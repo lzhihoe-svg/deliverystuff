@@ -1572,7 +1572,18 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#prodview .pv-col').count()) === 5,
     '5 columns: Checking · Delivery · Postage · Defect · Stats');
   check((await page.locator('#pv-stats .st-card').count()) === 4, 'Stats column carries all 4 page summaries');
-  check((await page.locator('#pv-postage .pv-card').count()) >= 1, 'postage jobs listed in their column');
+  check((await page.locator('#pv-postage .pv-card2').count()) >= 1, 'postage jobs listed in their column');
+  check((await page.locator('#pv-postage .pv-sec').count()) >= 1, 'jobs are grouped by status inside the column');
+  const pvCols = await page.evaluate(() => {
+    const g = document.querySelector('#pv-postage .pv-grid2');
+    return g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0;
+  });
+  check(pvCols === 2, 'each group lays jobs out 2-up (' + pvCols + ' columns)');
+  const pvImgH = await page.evaluate(() => {
+    const im = document.querySelector('#pv-postage .pv-card2 > img');
+    return im ? parseFloat(getComputedStyle(im).height) : 0;
+  });
+  check(pvImgH >= 100, 'the jobsheet picture leads each card (' + pvImgH + 'px tall)');
   check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
     'auto-refresh indicator in the header');
   await page.evaluate(() => {
