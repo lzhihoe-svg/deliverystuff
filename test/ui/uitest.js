@@ -1376,7 +1376,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 
-  console.log('\n-- 📄 Got sticker, No Job: the third postage problem type --');
+  console.log('\n-- 🚨 typed problems: raise → edit → delete (and no more jm-nojob) --');
   await page.evaluate(() => {
     window.__mockapi.addJob({ tab: 'postage', category: '', note: 'NoJob-test', customer: 'SN',
       photos: ['njt1', 'njt2'], thumbs: ['njt1', 'njt2'], jsCount: 1 });
@@ -1386,30 +1386,53 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage');
   await sleep(400);
   const njCard = page.locator('#postage-list .card').filter({ hasText: 'NoJob-test' });
-  const njTools = await moreCount(njCard, '.jm-warn, .jm-sticker, .jm-nojob');
-  check(njTools.n === 3, "postage ⋯ menu has all three report actions");
-  check(njTools.txts.some(t => t.indexOf('Got sticker, No Job') >= 0), "one reads 'Got sticker, No Job'");
-  check(await page.evaluate(() => jobMenuHtml_({ id: 'x', tab: 'delivery', status: 'pending', problem: '', photoIds: [] }).indexOf('jm-nojob') < 0),
-    'delivery cards do NOT get the no-job action');
-  await viaMore(njCard, '.jm-nojob');
-  await sleep(600);
-  check((await njCard.locator('.prob-line').textContent()).indexOf('Got sticker, no jobsheet') >= 0,
-    "card shows '📄 Got sticker, no jobsheet — reported at <time>'");
-  check((await moreCount(njCard, '.jm-warn, .jm-sticker, .jm-nojob')).n === 0, 'all report actions gone once reported');
-  check(await page.evaluate(() => window.__mockdb.jobs.find(j => j.note === 'NoJob-test').problem === 'nojob'),
-    'server flagged it as no-job');
-  await page.click('#problem-btn');
-  await sleep(400);
-  const njProb = page.locator('#problem-list .prob-card').filter({ hasText: 'NoJob-test' });
-  check((await njProb.count()) === 1 && (await njProb.textContent()).indexOf('Got sticker, no jobsheet') >= 0,
-    "listed on the Problem page as '📄 Got sticker, no jobsheet'");
-  await njProb.locator('.btn.green').click();
-  await page.setInputFiles('#print-file', IMG3);
-  await sleep(900);
+  check((await moreCount(njCard, '.jm-nojob')).n === 0,
+    "'Got sticker, No Job' is GONE from the ⋯ menu — top button only");
+  const rTools = await moreCount(njCard, '.jm-problem');
+  check(rTools.n === 1 && rTools.txts.some(t => t.indexOf('Problem') >= 0),
+    '⋯ menu has the 🚨 Problem button instead');
+  check(await page.evaluate(() => jobMenuHtml_({ id: 'x', tab: 'want', status: 'pending', problem: '', photoIds: [] }).indexOf('jm-problem') >= 0),
+    'Checking jobsheets get the 🚨 Problem button too');
+  await viaMore(njCard, '.jm-problem');
+  await sleep(300);
+  check(await page.locator('#raise-overlay').isVisible(), 'a text box opens to type the problem');
+  await page.fill('#raise-text', 'Kain salah warna');
+  await page.click('#raise-save');
+  await sleep(700);
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
-    return j.problem === 'printed' && !!j.printedAt;
-  }), 'office prints the jobsheet + snaps the photo, same flow as always');
+    return j.problem === 'custom' && j.probLog[0].text === 'Kain salah warna';
+  }), 'typed problem saved on the server');
+  check((await njCard.locator('.prob-line').textContent()).indexOf('Kain salah warna') >= 0,
+    'the card shows the typed problem in red (P1: …)');
+  await page.click('#problem-btn');
+  await sleep(400);
+  const rProb = page.locator('#problem-list .prob-card').filter({ hasText: 'Kain salah warna' });
+  check((await rProb.count()) === 1, 'the typed problem waits on the Problem page');
+  check((await rProb.locator('button:has-text("Edit Problem")').count()) === 1 &&
+        (await rProb.locator('button:has-text("Delete")').count()) === 1,
+    'staff get ✏️ Edit + 🗑️ Delete on a raised problem');
+  await rProb.locator('button:has-text("Edit Problem")').click();
+  await sleep(300);
+  check((await page.inputValue('#raise-text')) === 'Kain salah warna', 'edit opens with the current text');
+  await page.fill('#raise-text', 'Kain salah warna — tukar biru');
+  await page.click('#raise-save');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
+    return j.probLog[0].text.indexOf('tukar biru') >= 0;
+  }), 'edited text saved on the server');
+  await page.locator('#problem-list .prob-card').filter({ hasText: 'tukar biru' })
+    .locator('button:has-text("Delete")').click();
+  await sleep(250);
+  await page.click('#confirm-yes');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'NoJob-test');
+    return j.problem === '' && j.probLog.length === 0;
+  }), 'deleting the raise withdraws it completely');
+  check((await page.locator('#problem-list .prob-card').filter({ hasText: 'NoJob-test' }).count()) === 0,
+    'gone from the Problem page');
   await page.evaluate(() => document.getElementById('problem-overlay').classList.remove('show'));
   await sleep(200);
 
@@ -1426,6 +1449,14 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(!(await page.locator('#js-add-btn').isVisible()), 'no jobsheet photo button — it does not exist yet');
   check((await page.locator('#upload-title').textContent()).indexOf('Got sticker') >= 0,
     'form title says what this report is');
+  check(await page.locator('#customer-wrap').isVisible(), 'ADMIN sees the agent/customer section');
+  await page.evaluate(() => closeUpload());
+  await page.evaluate(() => setRole('staff', ''));
+  await sleep(250);
+  await page.locator('#postage-list .sticker-bar').click();
+  await sleep(400);
+  check(!(await page.locator('#customer-wrap').isVisible()), 'STAFF sees photos ONLY — no agent/customer');
+  check(!(await page.locator('#more-row').isVisible()), '…and no Ready-by / Instruction row for staff');
   await page.setInputFiles('#wb-file', IMG2);
   await sleep(700);
   await page.click('#btn-submit');
@@ -1509,6 +1540,35 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(700);
   check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) < 50,
     'tapping the top of the screen scrolls back up — no dragging needed');
+
+  console.log('\n-- 📺 Production View: 5 columns for the factory TV --');
+  check(await menuItemVisible('#prodview-btn'), '☰ menu has 📺 Production View');
+  await viaMenu('#prodview-btn');
+  await sleep(500);
+  check(await page.locator('#prodview').isVisible(), 'production view opens full screen');
+  check((await page.locator('#prodview .pv-col').count()) === 5,
+    '5 columns: Checking · Delivery · Postage · Defect · Stats');
+  check((await page.locator('#pv-stats .st-card').count()) === 4, 'Stats column carries all 4 page summaries');
+  check((await page.locator('#pv-postage .pv-card').count()) >= 1, 'postage jobs listed in their column');
+  check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
+    'auto-refresh indicator in the header');
+  await page.evaluate(() => {
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'TV-live-test', customer: 'CG', photos: ['tv1'], thumbs: ['tv1'] });
+    refresh();
+  });
+  await sleep(600);
+  check((await page.locator('#pv-delivery').textContent()).indexOf('TV-live-test') >= 0,
+    'new jobs appear on the TV automatically after a refresh');
+  await page.click('#prodview .x-close');
+  await sleep(250);
+  check(!(await page.locator('#prodview').isVisible()), '✕ leaves production view');
+  await page.evaluate(() => {
+    const tv = window.__mockdb.jobs.find(x => x.note === 'TV-live-test');
+    if (tv) tv.status = 'archived';
+    setRole('admin', '1234'); // restore admin for the sections that follow
+    refresh();
+  });
+  await sleep(400);
 
   await page.evaluate(() => { // archive the sticker job so later sections start clean
     const j = window.__mockdb.jobs[window.__mockdb.jobs.length - 1];

@@ -956,10 +956,15 @@ function sentBus(id, proofBase64, proofThumbBase64) {
  * so the office team knows to print it. No PIN needed — any staff can report.
  * (Checking's ❌ Not Seen jobs join the Problem page automatically.)
  */
-function reportProblem(id, kind) {
+function reportProblem(id, kind, text) {
   // kind '' → "haven't received" ('reported'); 'sticker' → "no sticker"
-  // ('nosticker'); 'nojob' → "got sticker, no jobsheet" ('nojob')
-  var mark = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
+  // ('nosticker'); 'nojob' → "got sticker, no jobsheet" ('nojob');
+  // 'custom' → staff TYPED the problem themselves (any tab, incl. Checking)
+  var mark = kind === 'sticker' ? 'nosticker'
+    : kind === 'nojob' ? 'nojob'
+    : kind === 'custom' ? 'custom' : 'reported';
+  text = String(text || '').trim().slice(0, 300);
+  if (mark === 'custom' && !text) throw new Error('Type the problem first');
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -967,7 +972,8 @@ function reportProblem(id, kind) {
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
     var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
-    if (vals[1] !== 'delivery' && vals[1] !== 'postage' && vals[1] !== 'defect') {
+    if (mark !== 'custom' &&
+        vals[1] !== 'delivery' && vals[1] !== 'postage' && vals[1] !== 'defect') {
       throw new Error('Only Delivery/Postage/Defect jobs can be reported');
     }
     if (mark === 'nosticker' && vals[1] !== 'postage') {
@@ -984,8 +990,58 @@ function reportProblem(id, kind) {
     sh.getRange(row, 24).setValue(ts);
     sh.getRange(row, 25).setValue(''); // a fresh report clears an old "printed"
     // history: reports can repeat (report → solve → report again …)
-    var log = pushProbLog_(sh, row, { k: 'report', kind: mark, at: ts });
+    var log = pushProbLog_(sh, row, { k: 'report', kind: mark, at: ts, text: text });
     return { id: id, problem: mark, problemAt: ts, probLog: log };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** STAFF can EDIT the text of a raised (typed) problem. */
+function editProblemReport(id, text) {
+  text = String(text || '').trim().slice(0, 300);
+  if (!text) throw new Error('Type the problem first');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
+    if (vals[22] !== 'custom') throw new Error('Only a typed problem can be edited');
+    var log = [];
+    try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i].k === 'report' && log[i].kind === 'custom') { log[i].text = text; break; }
+    }
+    sh.getRange(row, 35).setValue(JSON.stringify(log));
+    return { id: id, text: text, probLog: log };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** STAFF can DELETE a raised (typed) problem — it leaves the Problem page. */
+function deleteProblemReport(id) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
+    if (vals[22] !== 'custom') throw new Error('Only a typed problem can be deleted');
+    var log = [];
+    try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i].k === 'report' && log[i].kind === 'custom') { log.splice(i, 1); break; }
+    }
+    sh.getRange(row, 35).setValue(JSON.stringify(log));
+    // earlier solved cycles keep their 'printed' state; otherwise no problem
+    var hasSolve = log.some(function (e) { return e.k === 'solve'; });
+    sh.getRange(row, 23).setValue(hasSolve ? 'printed' : '');
+    sh.getRange(row, 24).setValue('');
+    return { id: id, problem: hasSolve ? 'printed' : '', probLog: log };
   } finally {
     lock.releaseLock();
   }
@@ -1046,7 +1102,7 @@ function solveProblem(id, photoB64, thumbB64) {
     }
     var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
-      (vals[1] === 'want' && vals[5] === 'notseen');
+      vals[22] === 'custom' || (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) {
       trashFile_(photoId); trashFile_(thumbId);
       throw new Error('This job is not on the Problem page');
@@ -1097,7 +1153,7 @@ function setProblemNote(id, text) {
     if (row < 0) throw new Error('Job not found');
     var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
-      (vals[1] === 'want' && vals[5] === 'notseen');
+      vals[22] === 'custom' || (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) throw new Error('This job is not on the Problem page');
     sh.getRange(row, 31).setValue(text);
     return { id: id, problemNote: text };

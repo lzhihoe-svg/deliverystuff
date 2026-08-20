@@ -481,6 +481,44 @@
   .delivered-big b { font-size: 14.5px; letter-spacing: .05em; color: var(--blue); }
   .delivered-big span { display: block; font-size: 12.5px; color: #4b5142; font-weight: 600; margin-top: 2px; }
 
+  /* 📺 production view — 5 columns on the factory TV */
+  .pv { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: none; flex-direction: column; }
+  .pv.show { display: flex; }
+  .pv-head {
+    display: flex; align-items: center; gap: 14px; padding: 12px 18px;
+    background: linear-gradient(150deg, #ffffff, #f2f8e3);
+    box-shadow: 0 4px 14px rgba(23,27,16,.08);
+  }
+  .pv-title { font-size: 20px; font-weight: 800; letter-spacing: .06em; }
+  .pv-upd {
+    margin-left: auto; font-size: 13px; font-weight: 700; color: var(--blue);
+    background: var(--lime-soft); border-radius: 999px; padding: 6px 14px;
+  }
+  .pv-grid {
+    flex: 1; display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 10px; padding: 10px; min-height: 0;
+  }
+  .pv-col {
+    background: #fff; border-radius: 16px; display: flex; flex-direction: column;
+    min-height: 0; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .pv-col h3 {
+    font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
+    padding: 10px 12px; color: #fff; background: linear-gradient(135deg, #3f6212, #65a30d);
+  }
+  .pv-list { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
+  .pv-count { font-size: 12px; font-weight: 800; color: #c2410c; padding: 2px 4px 8px; }
+  .pv-card {
+    display: flex; gap: 8px; align-items: center;
+    border: 1px solid var(--soft); border-radius: 12px; padding: 6px; margin-bottom: 8px;
+  }
+  .pv-card > img { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; background: #e2e8f0; flex: 0 0 auto; }
+  .pv-info { min-width: 0; flex: 1; }
+  .pv-cust { font-size: 12.5px; font-weight: 800; color: #3730a3; }
+  .pv-note { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pv-st { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .pv-st .chip { font-size: 10px; padding: 1px 7px; margin: 0 0 0 4px; }
+
   /* ---------- modals (always centered) ---------- */
   .overlay {
     position: fixed; inset: 0; background: rgba(26,36,8,.55); z-index: 50;
@@ -490,6 +528,8 @@
   /* the confirm dialog can open ON TOP of another overlay (e.g. deleting an
      inventory entry) — it must always stack above them */
   #confirm-overlay { z-index: 70; }
+  /* the raise-a-problem box can open ON TOP of the Problem page */
+  #raise-overlay { z-index: 65; }
   .sheet {
     position: relative; background: #fdfdfb; width: 100%; max-width: 480px;
     border-radius: 26px; padding: 22px 18px; max-height: 92vh;
@@ -939,6 +979,7 @@
     <button class="menu-item" id="perf-btn" onclick="closeMenu();openPerf()">📈 Performance</button>
     <button class="menu-item" id="history-btn" onclick="closeMenu();openHistory()">🗂️ History &amp; evidence</button>
     <button class="menu-item" id="inventory-btn" onclick="closeMenu();openInventory()">📦 Inventory</button>
+    <button class="menu-item" id="prodview-btn" onclick="closeMenu();openProdView()">📺 Production View</button>
     <button class="menu-item warn" id="reset-btn" onclick="closeMenu();askReset()">🧹 Clear / Reset ▾</button>
     <button class="menu-item" id="role-btn" onclick="closeMenu();openRoleModal()">👷 Staff</button>
   </div>
@@ -1000,6 +1041,35 @@
     <h2 id="jobmenu-title" style="font-size:17px"></h2>
     <div id="jobmenu-sub" style="font-size:12.5px;color:var(--muted);font-weight:600;margin:-4px 0 4px"></div>
     <div id="jobmenu-list"></div>
+  </div>
+</div>
+
+<!-- ================= 🚨 RAISE A PROBLEM (typed by staff) ================= -->
+<div class="overlay" id="raise-overlay">
+  <div class="sheet" style="max-width:420px">
+    <button class="x-close" onclick="closeRaise()">✕</button>
+    <h2 id="raise-title">🚨 Report a Problem</h2>
+    <div id="raise-sub" style="font-size:12.5px;color:var(--muted);font-weight:600;margin:-6px 0 4px"></div>
+    <label>What is the problem?</label>
+    <textarea id="raise-text" rows="3" maxlength="300" placeholder="Type the problem here…"></textarea>
+    <button class="btn" id="raise-save" style="margin-top:14px;background:#dc2626;color:#fff"
+      onclick="submitRaise()">🚨 Raise Problem</button>
+  </div>
+</div>
+
+<!-- ================= 📺 PRODUCTION VIEW (big factory TV) ================= -->
+<div class="pv" id="prodview">
+  <div class="pv-head">
+    <div class="pv-title">🏭 ARA<span style="color:var(--green)">MEGA</span> — PRODUCTION</div>
+    <div class="pv-upd" id="pv-upd"></div>
+    <button class="x-close" style="position:static" onclick="closeProdView()">✕</button>
+  </div>
+  <div class="pv-grid">
+    <div class="pv-col"><h3>🔍 Checking</h3><div class="pv-list" id="pv-want"></div></div>
+    <div class="pv-col"><h3>🚚 Delivery</h3><div class="pv-list" id="pv-delivery"></div></div>
+    <div class="pv-col"><h3>📦 Postage</h3><div class="pv-list" id="pv-postage"></div></div>
+    <div class="pv-col"><h3>🚨 Defect</h3><div class="pv-list" id="pv-defect"></div></div>
+    <div class="pv-col"><h3>📊 Stats</h3><div class="pv-list" id="pv-stats"></div></div>
   </div>
 </div>
 
@@ -1406,17 +1476,30 @@
       if (ev.k === 'report') {
         pn++; // problems are numbered: P1, P2, …
         // ❔ (white ?) — the red ❓ vanishes against the red background
-        h += '<div class="prob-line">P' + pn + ': ' + (PROB_KIND[ev.kind] || '🚨 Reported').replace('❓', '❔') +
-          ' — Reported at ' + fmtTime(ev.at) + ' — office will print it</div>';
+        var lbl = ev.kind === 'custom'
+          ? '🚨 ' + esc(ev.text || 'Problem')
+          : (PROB_KIND[ev.kind] || '🚨 Reported').replace('❓', '❔');
+        h += '<div class="prob-line">P' + pn + ': ' + lbl +
+          ' — Reported at ' + fmtTime(ev.at) +
+          (ev.kind === 'custom' ? '' : ' — office will print it') + '</div>';
       } else {
         if (ev.note) h += '<div class="prob-note">📝 ' + esc(ev.note) + '</div>';
         h += solvedHtml_(ev, pn);
       }
     });
     var active = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
+      j.problem === 'custom' ||
       (j.tab === 'want' && j.status === 'notseen' && j.problem !== 'printed');
     if (active && j.problemNote) h += '<div class="prob-note">📝 ' + esc(j.problemNote) + '</div>';
     return h;
+  }
+  /** Text of the currently raised (typed) problem. */
+  function customText_(j) {
+    var log = j.probLog || [];
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i].k === 'report' && log[i].kind === 'custom') return log[i].text || '';
+    }
+    return '';
   }
 
   /** 🕐 Chronology — every timestamp of this job's life, folded away. */
@@ -1427,7 +1510,9 @@
     log.forEach(function (e) {
       if (e.k === 'report') {
         cn++;
-        ev.push({ at: e.at, txt: '🚨 P' + cn + ' Problem — ' + (PROB_KIND[e.kind] || 'reported').replace(/^\S+\s/, '') });
+        ev.push({ at: e.at, txt: '🚨 P' + cn + ' Problem — ' + (e.kind === 'custom'
+          ? esc(String(e.text || '').slice(0, 40))
+          : (PROB_KIND[e.kind] || 'reported').replace(/^\S+\s/, '')) });
       } else {
         ev.push({ at: e.at, txt: '✅ P' + Math.max(cn, 1) + ' Problem solved — printed' });
       }
@@ -1756,6 +1841,7 @@
   function renderAll() {
     renderWant(); renderDelivery(); renderPostage(); renderDefect();
     updateProblemBadge();
+    if (state.prodView) renderProdView(); // the factory TV stays live
     attachCarousels();
     observeImages();
     loadImages();
@@ -1772,7 +1858,8 @@
   function jobMenuHtml_(j) {
     var busy = j.uploading || j.proofUploading;
     if (busy) return '';
-    var hasProb = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob';
+    var hasProb = j.problem === 'reported' || j.problem === 'nosticker' ||
+      j.problem === 'nojob' || j.problem === 'custom';
     var out = '';
     if (j.status === 'pending') {
       if (j.tab === 'postage') out += jmItem_('jm-sentbus', 'sentbus', '🚌 Oops! Sent bus', 'take proof');
@@ -1780,10 +1867,11 @@
         out += jmItem_('jm-warn danger', 'noreceive', '❓ Haven\'t received', 'serious — tell office');
         if (j.tab === 'postage') {
           out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
-          out += jmItem_('jm-nojob warn', 'nojob', '📄 Got sticker, No Job', 'tell office');
         }
       }
     }
+    // 🚨 raise ANY problem in your own words — every tab, every status
+    if (!hasProb) out += jmItem_('jm-problem danger', 'problem', '🚨 Problem', 'type it out');
     if (j.status === 'done') {
       // proof tools are for EVERYONE — staff can fix a wrong proof photo
       out += jmItem_('jm-reproof', 'reproof', '📷 Retake Proof', '');
@@ -1825,7 +1913,7 @@
     if (what === 'sentbus') startSentBus(id);
     else if (what === 'noreceive') reportNoReceive(id);
     else if (what === 'nosticker') reportNoReceive(id, 'sticker');
-    else if (what === 'nojob') reportNoReceive(id, 'nojob');
+    else if (what === 'problem') openRaise(id);
     else if (what === 'chrono') openChrono(id);
     else if (what === 'reproof') startReProof(id);
     else if (what === 'delproof') removeProof(id);
@@ -2413,7 +2501,8 @@
       (j.category && statusChip.indexOf('chip ' + j.category) < 0 ? ' · ' + CAT_LABEL[j.category] : '') +
       (j.fromCheck ? ' · ✅ passed check' : '') + '</div>';
     // FULL problem history — every report + solved cycle, chronological
-    if (!isDone && (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect')) {
+    // (shown on done cards too: a typed problem can be raised any time)
+    if (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') {
       html += probHistoryHtml_(j);
     }
 
@@ -2618,7 +2707,7 @@
     return html + '</div>';
   }
   /** All 4 pages summarized from the live board (archived jobs excluded). */
-  function renderStats() {
+  function statsHtml_() {
     var now = Date.now();
     function split(tab) {
       var l = state.jobs[tab];
@@ -2633,7 +2722,7 @@
     }
     function pct(doneN, pendN) { return (doneN + pendN) === 0 ? 0 : Math.round(doneN * 100 / (doneN + pendN)); }
     var w = split('want'), d = split('delivery'), p = split('postage'), f = split('defect');
-    document.getElementById('stats-body').innerHTML =
+    return (
       statCard_('🔍 Checking',
         [[w.pend, 'Waiting swipe', 'neutral'], [w.got, '❤️ Got It', 'good'], [w.ns, '❌ Not Seen', 'bad']],
         'answered', pct(w.got + w.ns, w.pend)) +
@@ -2645,7 +2734,62 @@
         'completed', pct(p.done, p.pend)) +
       statCard_('🚨 Defect',
         [[f.pend, 'Open', 'bad'], [f.done, 'Fixed', 'good'], [f.pend + f.done, 'Total', 'neutral']],
-        'fixed', pct(f.done, f.pend));
+        'fixed', pct(f.done, f.pend)));
+  }
+  function renderStats() {
+    document.getElementById('stats-body').innerHTML = statsHtml_();
+  }
+
+  // ------------------------------------------------------------ 📺 production view
+  // The whole factory on one big TV: 5 columns, always fresh (the silent
+  // background refresh keeps re-rendering it — at least every minute).
+  function openProdView() {
+    state.prodView = true;
+    renderProdView();
+    document.getElementById('prodview').classList.add('show');
+  }
+  function closeProdView() {
+    state.prodView = false;
+    document.getElementById('prodview').classList.remove('show');
+  }
+  function pvCard_(j) {
+    var chips = '';
+    if (j.status === 'pending' && j.dueAt && Number(j.dueAt) < Date.now()) chips += '<span class="chip late">🚨 LATE</span>';
+    if (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' || j.problem === 'custom') {
+      chips += '<span class="chip old">🚨 PROBLEM</span>';
+    }
+    var st = j.status === 'done'
+      ? (((j.tab === 'postage' && j.sentAt) || (j.tab === 'delivery' && j.deliveredAt)) ? '✔ OUT' : '✅ Done')
+      : j.status === 'got' ? '❤️ Got it'
+      : j.status === 'notseen' ? '❌ Not seen' : '⏳ To do';
+    return '<div class="pv-card">' + imgTag(thumbOf(j, 0)) +
+      '<div class="pv-info">' +
+      ((j.customer && j.customer !== 'Unassigned') ? '<div class="pv-cust">👤 ' + esc(j.customer) + '</div>' : '') +
+      (j.note ? '<div class="pv-note">' + esc(j.note) + '</div>' : '') +
+      '<div class="pv-st">' + st + chips + '</div></div></div>';
+  }
+  function renderProdView() {
+    ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
+      var jobs = state.jobs[tb].slice();
+      // waiting work on top, then everything newest first
+      jobs.sort(function (a, b) {
+        var pa = a.status === 'pending' ? 0 : 1, pb = b.status === 'pending' ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+      var pend = jobs.filter(function (j) { return j.status === 'pending'; }).length;
+      document.getElementById('pv-' + tb).innerHTML =
+        '<div class="pv-count">⏳ ' + pend + ' waiting</div>' +
+        (jobs.length ? jobs.map(pvCard_).join('')
+          : '<div class="empty" style="padding:18px 4px;font-size:14px">Nothing</div>');
+    });
+    document.getElementById('pv-stats').innerHTML = statsHtml_();
+    document.getElementById('pv-upd').textContent =
+      '🔄 Auto-refresh' + (lastSyncAt ? ' · updated ' + fmtTime(lastSyncAt) : ' on');
+    // this view lives outside the scroller — mark its photos visible by hand
+    var imgs = document.querySelectorAll('#prodview img[data-img]');
+    for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');
+    loadImages();
   }
 
   // ------------------------------------------------------------ 📈 performance (daily KPI)
@@ -3032,12 +3176,13 @@
   function problemJobs() {
     var out = [];
     state.jobs.want.forEach(function (j) {
-      if (j.status === 'notseen' && j.problem !== 'printed') out.push(j);
+      if ((j.status === 'notseen' && j.problem !== 'printed') || j.problem === 'custom') out.push(j);
     });
     ['delivery', 'postage', 'defect'].forEach(function (t) {
       state.jobs[t].forEach(function (j) {
-        if (j.status === 'pending' &&
-          (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob')) out.push(j);
+        if ((j.status === 'pending' &&
+          (j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob')) ||
+          j.problem === 'custom') out.push(j);
       });
     });
     out.sort(function (a, b) { return (b.problemAt || b.doneAt || 0) - (a.problemAt || a.doneAt || 0); });
@@ -3085,12 +3230,19 @@
         '<div class="info">' +
         '<div class="t1">' + (PROB_TAB[j.tab] || j.tab) + (j.category ? ' · ' + esc(CAT_LABEL[j.category] || j.category) : '') + '</div>' +
         (who || j.note ? '<div class="t2">' + esc(who) + (who && j.note ? ' — ' : '') + esc(j.note || '') + '</div>' : '') +
-        '<div class="t3">' + (j.tab === 'want' ? '❌ Not seen'
+        '<div class="t3">' + (j.problem === 'custom' ? '🚨 ' + esc(customText_(j))
+          : j.tab === 'want' ? '❌ Not seen'
           : j.problem === 'nosticker' ? '🏷️ No sticker'
           : j.problem === 'nojob' ? '📄 Got sticker, no jobsheet' : '❓ Haven\'t received') +
           ' · ' + timeAgo(j.problemAt || j.doneAt) + '</div>' +
         '</div></div>' +
         noteHtml +
+        // a TYPED problem belongs to the staff who raised it — they can fix or withdraw it
+        (j.problem === 'custom'
+          ? '<div class="btn-row" style="margin-top:6px">' +
+            '<button class="btn gray small" onclick="openRaise(\'' + j.id + '\', true)">✏️ Edit Problem</button>' +
+            '<button class="btn red small" onclick="deleteRaise(\'' + j.id + '\')">🗑️ Delete</button></div>'
+          : '') +
         '<button class="btn green small" onclick="startSolve(\'' + j.id + '\')">✅ Solved — snap printing status 📸</button>' +
         '</div>';
     });
@@ -3123,6 +3275,71 @@
       }
     }, bgFail);
   }
+  // ---- 🚨 raise a problem in your OWN WORDS (any tab) ----
+  var raiseState = { id: '', editing: false };
+  function openRaise(id, editing) {
+    var j = findJobAll(id);
+    if (!j) return;
+    if (j.uploading || j.proofUploading) { toast('📤 Still uploading — wait a moment'); return; }
+    raiseState = { id: id, editing: !!editing };
+    document.getElementById('raise-title').textContent = editing ? '✏️ Edit Problem' : '🚨 Report a Problem';
+    document.getElementById('raise-save').textContent = editing ? '💾 Save Problem' : '🚨 Raise Problem';
+    document.getElementById('raise-sub').textContent =
+      ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + j.customer + ' · ' : '') +
+      (j.note || (PROB_TAB[j.tab] || ''));
+    document.getElementById('raise-text').value = editing ? customText_(j) : '';
+    document.getElementById('raise-overlay').classList.add('show');
+    setTimeout(function () { document.getElementById('raise-text').focus(); }, 120);
+  }
+  function closeRaise() { document.getElementById('raise-overlay').classList.remove('show'); }
+  function submitRaise() {
+    var text = document.getElementById('raise-text').value.trim().slice(0, 300);
+    if (!text) { toast('✍️ Type the problem first'); return; }
+    var id = raiseState.id, editing = raiseState.editing;
+    closeRaise();
+    var j = findJobAll(id);
+    if (!editing) {
+      if (j) {
+        j.problem = 'custom'; j.problemAt = Date.now();
+        j.probLog = (j.probLog || []).concat([{ k: 'report', kind: 'custom', at: j.problemAt, text: text }]);
+        saveJobsCache(j.tab); renderAll();
+      }
+      toast('🚨 Problem raised — office can see it');
+      gsCall('reportProblem', [id, 'custom', text], function (res) {
+        if (j) { j.problemAt = res.problemAt; if (res.probLog) j.probLog = res.probLog; saveJobsCache(j.tab); }
+      }, bgFail);
+    } else {
+      if (j) {
+        var log = j.probLog || [];
+        for (var i = log.length - 1; i >= 0; i--) {
+          if (log[i].k === 'report' && log[i].kind === 'custom') { log[i].text = text; break; }
+        }
+        saveJobsCache(j.tab); renderAll();
+      }
+      toast('✏️ Problem updated');
+      gsCall('editProblemReport', [id, text], function () {}, bgFail);
+    }
+    if (document.getElementById('problem-overlay').classList.contains('show')) renderProblems();
+  }
+  /** Withdraw a raised problem — it leaves the Problem page. */
+  function deleteRaise(id) {
+    askConfirm('Delete this raised problem?', '🗑️ Yes, Delete', function () {
+      var j = findJobAll(id);
+      if (j) {
+        var log = j.probLog || [];
+        for (var i = log.length - 1; i >= 0; i--) {
+          if (log[i].k === 'report' && log[i].kind === 'custom') { log.splice(i, 1); break; }
+        }
+        j.problem = log.some(function (e) { return e.k === 'solve'; }) ? 'printed' : '';
+        j.problemAt = '';
+        saveJobsCache(j.tab); renderAll();
+      }
+      toast('🗑️ Problem deleted');
+      if (document.getElementById('problem-overlay').classList.contains('show')) renderProblems();
+      gsCall('deleteProblemReport', [id], function () {}, bgFail);
+    });
+  }
+
   /** Shared info on a problem — staff write, both sides read. */
   function editProbNote(id) {
     state.probEditId = id;
@@ -3320,6 +3537,15 @@
     renderAllThumbs();
     // optional fields start folded on a fresh post; editing opens them
     setMoreOpts(!!job);
+    // sticker report: STAFF sees ONLY the photos (red ? + waybill). Agent /
+    // customer and Ready-by are office matters — ADMIN sees them here, or
+    // keys them in later via ✏️ Edit after the office solves it.
+    if (state.stickerMode && !isAdmin()) {
+      document.getElementById('customer-wrap').style.display = 'none';
+      document.getElementById('more-row').style.display = 'none';
+    } else {
+      document.getElementById('more-row').style.display = '';
+    }
     document.getElementById('upload-overlay').classList.add('show');
     loadImages();
   }
@@ -3682,7 +3908,7 @@
   })();
 
   // close any modal by clicking/tapping the dark backdrop
-  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay', 'perf-overlay', 'chrono-overlay'].forEach(function (id) {
+  ['upload-overlay', 'role-overlay', 'confirm-overlay', 'reset-overlay', 'history-overlay', 'stats-overlay', 'problem-overlay', 'menu-overlay', 'jobmenu-overlay', 'inventory-overlay', 'deliv-overlay', 'perf-overlay', 'chrono-overlay', 'raise-overlay'].forEach(function (id) {
     document.getElementById(id).addEventListener('click', function (e) {
       if (e.target !== this) return;
       if (id === 'role-overlay') closeRoleModal();
@@ -3697,6 +3923,7 @@
       else if (id === 'deliv-overlay') closeDeliv();
       else if (id === 'perf-overlay') closePerf();
       else if (id === 'chrono-overlay') closeChrono();
+      else if (id === 'raise-overlay') closeRaise();
       else closeUpload();
     });
   });

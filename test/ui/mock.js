@@ -285,16 +285,18 @@
       job.problem = r.problem; job.problemAt = r.problemAt; job.probLog = r.probLog;
       return job;
     },
-    reportProblem: function (id, kind) {
-      var mark = kind === 'sticker' ? 'nosticker' : (kind === 'nojob' ? 'nojob' : 'reported');
+    reportProblem: function (id, kind, text) {
+      var mark = kind === 'sticker' ? 'nosticker' : kind === 'nojob' ? 'nojob' : kind === 'custom' ? 'custom' : 'reported';
+      text = String(text || '').trim().slice(0, 300);
+      if (mark === 'custom' && !text) throw new Error('Type the problem first');
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
-      if (j.tab !== 'delivery' && j.tab !== 'postage' && j.tab !== 'defect') throw new Error('Only Delivery/Postage/Defect jobs can be reported');
+      if (mark !== 'custom' && j.tab !== 'delivery' && j.tab !== 'postage' && j.tab !== 'defect') throw new Error('Only Delivery/Postage/Defect jobs can be reported');
       if (mark === 'nosticker' && j.tab !== 'postage') throw new Error('No-sticker reports are for Postage jobs');
       if (mark === 'nojob' && j.tab !== 'postage') throw new Error('Got-sticker-no-job reports are for Postage jobs');
       if (j.problem === mark) return { id: id, problem: mark, problemAt: j.problemAt, probLog: j.probLog || [] };
       j.problem = mark; j.problemAt = Date.now(); j.printedAt = '';
-      j.probLog = (j.probLog || []).concat([{ k: 'report', kind: mark, at: j.problemAt }]);
+      j.probLog = (j.probLog || []).concat([{ k: 'report', kind: mark, at: j.problemAt, text: text }]);
       return { id: id, problem: mark, problemAt: j.problemAt, probLog: JSON.parse(JSON.stringify(j.probLog)) };
     },
     solveProblem: function (id, photo, thumb) {
@@ -302,7 +304,7 @@
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       var isProblem = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
-        (j.tab === 'want' && j.status === 'notseen');
+        j.problem === 'custom' || (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
       var wasNojob = j.problem === 'nojob';
       j.problem = 'printed'; j.printedAt = Date.now();
@@ -322,12 +324,36 @@
                probLog: JSON.parse(JSON.stringify(j.probLog)), attachedJobsheet: attached,
                photoIds: j.photoIds.slice(), thumbIds: j.thumbIds.slice(), jsCount: j.jsCount };
     },
+    editProblemReport: function (id, text) {
+      text = String(text || '').trim().slice(0, 300);
+      if (!text) throw new Error('Type the problem first');
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.problem !== 'custom') throw new Error('Only a typed problem can be edited');
+      var log = j.probLog || [];
+      for (var i = log.length - 1; i >= 0; i--) {
+        if (log[i].k === 'report' && log[i].kind === 'custom') { log[i].text = text; break; }
+      }
+      return { id: id, text: text, probLog: JSON.parse(JSON.stringify(log)) };
+    },
+    deleteProblemReport: function (id) {
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.problem !== 'custom') throw new Error('Only a typed problem can be deleted');
+      var log = j.probLog || [];
+      for (var i2 = log.length - 1; i2 >= 0; i2--) {
+        if (log[i2].k === 'report' && log[i2].kind === 'custom') { log.splice(i2, 1); break; }
+      }
+      j.problem = log.some(function (e) { return e.k === 'solve'; }) ? 'printed' : '';
+      j.problemAt = '';
+      return { id: id, problem: j.problem, probLog: JSON.parse(JSON.stringify(log)) };
+    },
     setProblemNote: function (id, text) {
       text = String(text || '').slice(0, 300);
       var j = db.jobs.find(function (x) { return x.id === id; });
       if (!j) throw new Error('Job not found');
       var isProblem = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
-        (j.tab === 'want' && j.status === 'notseen');
+        j.problem === 'custom' || (j.tab === 'want' && j.status === 'notseen');
       if (!isProblem) throw new Error('This job is not on the Problem page');
       j.problemNote = text;
       return { id: id, problemNote: text };

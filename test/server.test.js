@@ -888,6 +888,31 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
     'office prints the jobsheet and solves the sticker job');
 }
 
+console.log('\n== 🚨 typed problems (raise / edit / delete by staff) ==');
+{
+  const { ctx } = makeEnv();
+  const w = ctx.addJob({ tab: 'want', category: '', note: 'check js', photos: [B64] });
+  const d = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'jersey', photos: [B64] });
+  throws(() => ctx.reportProblem(d.id, 'custom', '   '), 'typed problem requires text');
+  const r = ctx.reportProblem(d.id, 'custom', 'Wrong size printed');
+  check(r.problem === 'custom' && r.probLog[0].text === 'Wrong size printed', 'staff can raise a typed problem');
+  const rw = ctx.reportProblem(w.id, 'custom', 'Jobsheet blur, cannot read');
+  check(rw.problem === 'custom', 'CHECKING jobsheets can be reported too');
+  const e1 = ctx.editProblemReport(d.id, 'Wrong size — need XL');
+  check(e1.probLog[0].text === 'Wrong size — need XL', 'staff can edit the typed text');
+  throws(() => ctx.editProblemReport(w.id, ''), 'edit requires text');
+  const s = ctx.solveProblem(d.id, B64, B64);
+  check(s.problem === 'printed' && s.probLog.length === 2, 'office solves a typed problem the same way');
+  throws(() => ctx.editProblemReport(d.id, 'x'), 'solved problems can no longer be edited');
+  ctx.reportProblem(d.id, 'custom', 'second issue');
+  const del = ctx.deleteProblemReport(d.id);
+  check(del.problem === 'printed' && del.probLog.length === 2,
+    'deleting the raise removes it — the earlier solved cycle stays');
+  const delw = ctx.deleteProblemReport(w.id);
+  check(delw.problem === '' && delw.probLog.length === 0, 'deleting the only raise leaves no problem at all');
+  throws(() => ctx.deleteProblemReport(d.id), 'nothing typed left to delete');
+}
+
 console.log('\n== 🚨 problem HISTORY — report → solve → report → solve (A A B B) ==');
 {
   const { ctx } = makeEnv();
