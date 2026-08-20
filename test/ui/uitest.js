@@ -1588,14 +1588,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'tapping the top of the screen scrolls back up — no dragging needed');
 
   console.log('\n-- 📺 Production View: 5 columns for the factory TV --');
+  await page.evaluate(() => { // seed content: a defect job + a postage job for the detail-card test
+    window.__mockapi.addJob({ tab: 'defect', category: '', note: 'TV-defect', customer: 'CG', photos: ['tvd1', 'tvd2'], thumbs: ['tvd1', 'tvd2'], jsCount: 1 });
+    window.__mockapi.addJob({ tab: 'postage', category: '', note: 'TV-detail', customer: 'WAN', photos: ['tvp1', 'tvp2'], thumbs: ['tvp1', 'tvp2'], jsCount: 1 });
+    refresh();
+  });
+  await sleep(500);
   check(await menuItemVisible('#prodview-btn'), '☰ menu has 📺 Production View');
   await viaMenu('#prodview-btn');
   await sleep(500);
   check(await page.locator('#prodview').isVisible(), 'production view opens full screen');
-  check((await page.locator('#prodview .pv-col').count()) === 5,
-    '5 columns: Checking · Delivery · Postage · Defect · Problems');
-  check((await page.locator('#pv-statsbar .pv-sb').count()) === 5,
-    'the 📊 stats bar sits ON TOP as a horizontal strip (5 groups)');
+  check((await page.locator('#prodview .pv-col').count()) === 4,
+    '4 columns: Delivery · Postage · Defect · Problems (Checking removed)');
+  check((await page.locator('#pv-statsbar .pv-sb').count()) === 4,
+    'the 📊 stats bar has one tile per column, aligned above it');
   const sbTxt = await page.locator('#pv-statsbar').textContent();
   check(sbTxt.indexOf('Raised') >= 0 && sbTxt.indexOf('Solved') >= 0 && sbTxt.indexOf('Balance') >= 0,
     'the Problems tile counts Raised · Solved · Balance');
@@ -1628,20 +1634,27 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'column header counts every status: ' + pvCount.trim());
   const colW = await page.evaluate(() => {
     const cols = document.querySelectorAll('#prodview .pv-col');
-    const wd = cols[1].getBoundingClientRect().width; // Delivery = full width
-    return { want: cols[0].getBoundingClientRect().width / wd,
-             defect: cols[3].getBoundingClientRect().width / wd,
-             probs: cols[4].getBoundingClientRect().width / wd };
+    const wd = cols[0].getBoundingClientRect().width; // Delivery = 2-card width
+    return { postage: cols[1].getBoundingClientRect().width / wd,
+             defect: cols[2].getBoundingClientRect().width / wd,
+             probs: cols[3].getBoundingClientRect().width / wd };
   });
-  check(colW.want < 0.7, 'Checking column is HALF width (' + colW.want.toFixed(2) + 'x)');
-  check(colW.defect < 0.7, 'Defect column is HALF width (' + colW.defect.toFixed(2) + 'x)');
-  check(colW.probs < 0.7, '…and the freed space is the 🚨 Problems column');
-  const oneUp = await page.evaluate(() =>
-    ['pv-want', 'pv-defect', 'pv-problems'].every(id => {
-      const g = document.querySelector('#' + id + ' .pv-grid2');
-      return !g || getComputedStyle(g).gridTemplateColumns.split(' ').length === 1;
-    }));
-  check(oneUp, 'half-width columns fit ONE card per row');
+  check(colW.postage > 0.95 && colW.defect > 0.95,
+    'Delivery · Postage · Defect share the same 2-card width');
+  check(colW.probs < 0.7, 'Problems is the slim 1-card column (' + colW.probs.toFixed(2) + 'x)');
+  const gridCols = await page.evaluate(() => ({
+    defect: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-defect .pv-grid2')),
+    probs: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-problems .pv-grid2'))
+  }));
+  check(gridCols.defect === 2 && gridCols.probs === 1,
+    'Defect lays out 2-up; Problems 1-up');
+  const barAligned = await page.evaluate(() => {
+    const tiles = document.querySelectorAll('#pv-statsbar .pv-sb');
+    const cols = document.querySelectorAll('#prodview .pv-col');
+    return Array.from(tiles).every((t, i) =>
+      Math.abs(t.getBoundingClientRect().left - cols[i].getBoundingClientRect().left) < 2);
+  });
+  check(barAligned, 'each stats tile sits exactly above its own column');
   check((await page.locator('#pv-problems .pv-card2').count()) >= 1,
     'the Problems column lists every open problem');
   check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('open') >= 0,
@@ -1651,13 +1664,30 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     Array.from(document.querySelectorAll('#prodview .pv-card2')).map(e => e.getBoundingClientRect().height));
   check(cardHs.length >= 3 && cardHs.every(h => Math.abs(h - cardHs[0]) < 1),
     'every TV card is EXACTLY the same height (' + Math.round(cardHs[0]) + 'px)');
-  // double-click a card → fullscreen viewer with ‹ › through its photos
-  await page.locator('#pv-postage .pv-card2').first().dblclick();
+  // the count bars too — one fixed line, never taller or shorter
+  const barHs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#prodview .pv-count')).map(e => e.getBoundingClientRect().height));
+  check(barHs.length >= 4 && barHs.every(h => Math.abs(h - barHs[0]) < 1) && barHs[0] <= 30,
+    'every column count bar is one fixed line (' + Math.round(barHs[0]) + 'px) — perfectly aligned');
+  // click a card → its DETAIL CARD: fullsize image + customer + info
+  await page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' }).first().click();
+  await sleep(500);
+  check(await page.locator('#pvd-overlay').isVisible(), 'clicking a card opens its detail card');
+  check((await page.locator('#pvd-body .pvd-img-wrap img').count()) === 1, 'with the fullsize picture on top');
+  check((await page.locator('#pvd-body .chip.cust').count()) >= 1, 'customer shown on the detail card');
+  check((await page.locator('#pvd-body').textContent()).indexOf('Posted') >= 0, 'posting info shown too');
+  check((await page.locator('#pvd-body .car-btn').count()) === 2, '‹ › to go next / backward through the photos');
+  await page.locator('#pvd-body .car-btn.next').click();
+  await sleep(300);
+  check((await page.locator('#pvd-body .car-count').textContent()).indexOf('2 /') >= 0, '› moves to photo 2');
+  await page.locator('#pvd-body .pvd-img-wrap img').click();
   await sleep(400);
-  check(await page.locator('#viewer').isVisible(), 'double-click opens the fullscreen photo viewer');
-  check(await page.locator('#viewer-next').isVisible(), '‹ › arrows ready for next / backward');
+  check(await page.locator('#viewer').isVisible(), 'tapping the picture zooms to fullscreen');
   await page.locator('.viewer-x').click();
+  await sleep(200);
+  await page.click('#pvd-overlay .x-close');
   await sleep(250);
+  check(!(await page.locator('#pvd-overlay').isVisible()), '✕ closes the detail card');
   check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
   check((await page.locator('#prodview').textContent()).indexOf('Auto-refresh') >= 0,
     'auto-refresh indicator in the header');
@@ -1672,8 +1702,10 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(250);
   check(!(await page.locator('#prodview').isVisible()), '✕ leaves production view');
   await page.evaluate(() => {
-    const tv = window.__mockdb.jobs.find(x => x.note === 'TV-live-test');
-    if (tv) tv.status = 'archived';
+    ['TV-live-test', 'TV-defect', 'TV-detail'].forEach(n => {
+      const j = window.__mockdb.jobs.find(x => x.note === n);
+      if (j) j.status = 'archived';
+    });
     setRole('admin', '1234'); // restore admin for the sections that follow
     refresh();
   });
