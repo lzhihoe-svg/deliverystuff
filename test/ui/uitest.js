@@ -1456,10 +1456,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#postage-list .js-q').count()) === 0,
     'the red ? is GONE — the real jobsheet took its place');
 
-  console.log('\n-- 🚨 red urgency + problem history (A A B B) --');
+  console.log('\n-- 🚨 red problems, green SOLVED, P-numbers --');
   const solvedBg = await page.evaluate(() =>
     getComputedStyle(document.querySelector('#postage-list .proof.printed')).backgroundColor);
-  check(solvedBg === 'rgb(220, 38, 38)', 'the SOLVED photo block is urgent RED (' + solvedBg + ')');
+  check(solvedBg === 'rgb(101, 163, 13)', 'the SOLVED photo block is GREEN — fixed (' + solvedBg + ')');
+  check((await page.locator('#postage-list .proof.printed .txt').first().textContent()).indexOf('P1 SOLVED') >= 0,
+    'the solved block names its problem — "P1 SOLVED"');
   const cycCard = page.locator('#postage-list .card').filter({ has: page.locator('.proof.printed') }).first();
   // report AGAIN — cycles must repeat until both sides are satisfied
   await page.evaluate(() => {
@@ -1470,6 +1472,11 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(600);
   check((await cycCard.locator('.prob-line').count()) === 2 && (await cycCard.locator('.proof.printed').count()) === 1,
     'history shows report A · solved A · report B — all cycles stay visible');
+  const plTexts = await cycCard.locator('.prob-line').allTextContents();
+  check(plTexts.some(t => t.indexOf('P1:') >= 0) && plTexts.some(t => t.indexOf('P2:') >= 0),
+    'problems are NUMBERED — P1:, P2: …');
+  check(plTexts.some(t => t.indexOf('❔') >= 0),
+    "the ? on the red line is the WHITE ❔ — visible against red");
   const lineBg = await page.evaluate(() =>
     getComputedStyle(document.querySelector('#postage-list .prob-line')).backgroundColor);
   check(lineBg === 'rgb(220, 38, 38)', 'the report line is BRIGHT RED (' + lineBg + ')');

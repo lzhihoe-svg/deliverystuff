@@ -289,9 +289,9 @@
     box-shadow: 0 3px 10px rgba(220,38,38,.3);
   }
   .prob-line.ok { background: var(--lime-soft); color: var(--blue); cursor: pointer; box-shadow: none; }
-  /* solved printing photo — RED background: urgent evidence, take notice */
+  /* solved printing photo — GREEN: the problem is fixed */
   .proof.printed {
-    background: #dc2626;
+    background: #65a30d;
   }
   .proof.printed .txt { color: #fff; }
   .proof.printed img { box-shadow: 0 0 0 2.5px #fff; }
@@ -1377,12 +1377,12 @@
     return s + '</div>';
   }
 
-  /** One SOLVED cycle: the office's printing photo on an URGENT red block. */
-  function solvedHtml_(ev) {
+  /** One SOLVED cycle (numbered): the office's printing photo on GREEN. */
+  function solvedHtml_(ev, n) {
     var t = ev.thumbId || ev.photoId;
     return '<div class="proof printed">' +
       (ev.photoId ? imgTag(t, '', 'onclick="viewPhoto(\'' + ev.photoId + '\', \'' + t + '\')"') : '') +
-      '<div class="txt">🖨️ SOLVED — Printed at ' + fmtTime(ev.at) + '</div></div>';
+      '<div class="txt">✅ P' + Math.max(n || 1, 1) + ' SOLVED — Printed at ' + fmtTime(ev.at) + '</div></div>';
   }
   var PROB_KIND = {
     reported: '❓ Haven\'t received',
@@ -1401,14 +1401,16 @@
         log.push({ k: 'report', kind: j.problem, at: j.problemAt });
       }
     }
-    var h = '';
+    var h = '', pn = 0;
     log.forEach(function (ev) {
       if (ev.k === 'report') {
-        h += '<div class="prob-line">' + (PROB_KIND[ev.kind] || '🚨 Reported') +
+        pn++; // problems are numbered: P1, P2, …
+        // ❔ (white ?) — the red ❓ vanishes against the red background
+        h += '<div class="prob-line">P' + pn + ': ' + (PROB_KIND[ev.kind] || '🚨 Reported').replace('❓', '❔') +
           ' — Reported at ' + fmtTime(ev.at) + ' — office will print it</div>';
       } else {
         if (ev.note) h += '<div class="prob-note">📝 ' + esc(ev.note) + '</div>';
-        h += solvedHtml_(ev);
+        h += solvedHtml_(ev, pn);
       }
     });
     var active = j.problem === 'reported' || j.problem === 'nosticker' || j.problem === 'nojob' ||
@@ -1421,10 +1423,14 @@
   function chronoHtml_(j) {
     var ev = [];
     if (j.createdAt) ev.push({ at: j.createdAt, txt: '📌 Posted' });
-    var log = (j.probLog || []);
+    var log = (j.probLog || []), cn = 0;
     log.forEach(function (e) {
-      if (e.k === 'report') ev.push({ at: e.at, txt: '🚨 Problem — ' + (PROB_KIND[e.kind] || 'reported').replace(/^\S+\s/, '') });
-      else ev.push({ at: e.at, txt: '🖨️ Problem solved — printed' });
+      if (e.k === 'report') {
+        cn++;
+        ev.push({ at: e.at, txt: '🚨 P' + cn + ' Problem — ' + (PROB_KIND[e.kind] || 'reported').replace(/^\S+\s/, '') });
+      } else {
+        ev.push({ at: e.at, txt: '✅ P' + Math.max(cn, 1) + ' Problem solved — printed' });
+      }
     });
     if (!log.length && j.printedAt) ev.push({ at: j.printedAt, txt: '🖨️ Problem solved — printed' });
     if (j.doneAt && j.proofPhotoId) ev.push({ at: j.doneAt, txt: '✅ Done — proof taken' });
