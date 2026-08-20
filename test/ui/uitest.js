@@ -1606,8 +1606,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#pv-statsbar .pv-sb').count()) === 4,
     'the 📊 stats bar has one tile per column, aligned above it');
   const sbTxt = await page.locator('#pv-statsbar').textContent();
-  check(sbTxt.indexOf('Raised') >= 0 && sbTxt.indexOf('Solved') >= 0 && sbTxt.indexOf('Balance') >= 0,
-    'the Problems tile counts Raised · Solved · Balance');
+  check(sbTxt.indexOf('Raised') < 0 && sbTxt.indexOf('Solved') >= 0 && sbTxt.indexOf('Balance') >= 0,
+    'the Problems tile counts Balance · Solved (no more Raised)');
   check((await page.locator('#pv-postage .pv-card2').count()) >= 1, 'postage jobs listed in their column');
   check((await page.locator('#pv-postage .pv-sec').count()) >= 1, 'jobs are grouped by status inside the column');
   const pvCols = await page.evaluate(() => {
@@ -1643,8 +1643,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
              probs: cols[3].getBoundingClientRect().width / wd };
   });
   check(colW.postage > 0.9, 'Delivery & Postage share 2.5 width each (' + colW.postage.toFixed(2) + 'x)');
-  check(colW.defect < 0.5 && colW.probs < 0.5,
+  check(colW.defect < 0.55 && colW.probs < 0.55,
     'Defect & Problems are slim 1-width columns (' + colW.defect.toFixed(2) + ' / ' + colW.probs.toFixed(2) + ')');
+  check(Math.abs(colW.defect - colW.probs) < 0.03, 'Defect and Problems columns are the SAME width');
   const gridCols = await page.evaluate(() => ({
     defect: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-defect .pv-grid2')),
     probs: (g => g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 0)(document.querySelector('#pv-problems .pv-grid2'))
@@ -1660,8 +1661,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(barAligned, 'each stats tile sits exactly above its own column');
   check((await page.locator('#pv-problems .pv-card2').count()) >= 1,
     'the Problems column lists every open problem');
-  check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('open') >= 0,
-    'with an open-problems count on top');
+  check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('Balance') >= 0,
+    'with the Balance / Solved tally on top');
   // every card identical — symmetrical heights across ALL columns
   const cardHs = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#prodview .pv-card2')).map(e => e.getBoundingClientRect().height));
@@ -1717,6 +1718,17 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'and the earlier SOLVED picture too — full history');
   await page.click('#pvd-overlay .x-close');
   await sleep(250);
+  // Balance & Solved: open ones red and waiting, solved ones stay but turn GREEN
+  check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('Balance') >= 0,
+    'Problems tally reads Balance / Solved — no more confusing Raised');
+  check((await page.locator('#pv-problems .pv-card2.prob').count()) >= 1, 'Balance problems show as RED cards, waiting');
+  check((await page.locator('#pv-problems .pv-card2.solved').count()) >= 1, 'solved problems stay listed — card turned GREEN');
+  await page.locator('#pv-problems .pv-card2.solved').first().click();
+  await sleep(500);
+  check((await page.locator('#pvd-body .proof.printed img').count()) >= 1,
+    'clicking the green card shows the solved picture');
+  await page.click('#pvd-overlay .x-close');
+  await sleep(250);
   check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
   // refresh shows % progress — manual AND auto
   await page.evaluate(() => refresh());
@@ -1738,7 +1750,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(250);
   check(!(await page.locator('#prodview').isVisible()), '✕ leaves production view');
   await page.evaluate(() => {
-    ['TV-live-test', 'TV-defect', 'TV-detail', 'TV-sealed'].forEach(n => {
+    ['TV-live-test', 'TV-defect', 'TV-detail', 'TV-sealed', 'TV-solved'].forEach(n => {
       const j = window.__mockdb.jobs.find(x => x.note === n);
       if (j) j.status = 'archived';
     });

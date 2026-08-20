@@ -502,12 +502,13 @@
   /* 📊 horizontal stats bar on top — SAME grid as the columns below, so
      each tile sits exactly above its own column */
   .pv-statsbar {
-    display: grid; grid-template-columns: 2.5fr 2.5fr 1fr 1fr;
+    display: grid; grid-template-columns: 2.4fr 2.4fr 1.1fr 1.1fr;
     gap: 10px; padding: 10px 12px 0;
   }
   .pv-sb {
-    background: #fff; border-radius: 14px; padding: 8px 12px;
-    box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px; min-width: 0;
+    background: #fff; border-radius: 14px; padding: 8px 10px;
+    box-shadow: var(--shadow); display: flex; align-items: center; gap: 6px;
+    min-width: 0; overflow: hidden;
   }
   .pv-sb h4 { font-size: 12px; font-weight: 800; letter-spacing: .03em; margin-right: 2px; white-space: nowrap; }
   .pv-nb {
@@ -520,7 +521,7 @@
   .pv-sb.prob { border: 1.5px solid #fecaca; }
   /* Delivery 2.5 · Postage 2.5 · Defect 1 · Problems 1 */
   .pv-grid {
-    flex: 1; display: grid; grid-template-columns: 2.5fr 2.5fr 1fr 1fr;
+    flex: 1; display: grid; grid-template-columns: 2.4fr 2.4fr 1.1fr 1.1fr;
     gap: 10px; padding: 10px 12px 12px; min-height: 0;
   }
   /* the slim Defect + Problems columns fit ONE card per row */
@@ -534,7 +535,7 @@
   .pvd-img-wrap .car-btn { display: block; }
   .pv-col {
     background: #fff; border-radius: 16px; display: flex; flex-direction: column;
-    min-height: 0; box-shadow: var(--shadow); overflow: hidden;
+    min-height: 0; min-width: 0; box-shadow: var(--shadow); overflow: hidden;
   }
   .pv-col h3 {
     font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
@@ -567,6 +568,8 @@
     background: #f7fee7; box-shadow: 0 2px 7px rgba(101,163,13,.22);
   }
   .pv-card2.prob { border-color: #dc2626; background: #fef2f2; box-shadow: 0 2px 7px rgba(220,38,38,.25); }
+  /* solved problem — same card, turned GREEN; click shows the solved picture */
+  .pv-card2.solved { border-color: #16a34a; background: #dcfce7; box-shadow: 0 2px 7px rgba(22,163,74,.3); }
   /* the WHOLE jobsheet visible — contained, never cropped, top-anchored */
   .pv-img-wrap { position: relative; background: #fff; border-bottom: 1.5px solid #d9f99d; }
   .pv-img-wrap img {
@@ -2861,12 +2864,13 @@
     var chips = '';
     if (j.status === 'pending' && j.dueAt && Number(j.dueAt) < Date.now()) chips += '<span class="chip late">🚨 LATE</span>';
     if (pvProb_(j)) chips += '<span class="chip old">🚨 PROBLEM</span>';
+    if (j.problem === 'printed') chips += '<span class="chip passed">✅ SOLVED</span>';
     var when = j.status === 'pending' ? timeAgo(j.createdAt) : timeAgo(j.doneAt || j.createdAt);
     var live = [], liveT = [];
     for (var k = 0; k < j.photoIds.length; k++) {
       if (j.photoIds[k]) { live.push(j.photoIds[k]); liveT.push(thumbOf(j, k)); }
     }
-    return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : '') + '" ' +
+    return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
       '<div class="pv-img-wrap" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
       imgTag(liveT[0] || '') +
@@ -3043,24 +3047,31 @@
       if (!any) html += '<div class="empty" style="padding:18px 4px;font-size:14px">Nothing</div>';
       document.getElementById('pv-' + tb).innerHTML = html;
     });
-    // 🚨 the Problems column — every open problem from all four boards
+    // 🚨 the Problems column — BALANCE (open, red, waiting) on top,
+    // then SOLVED (green — click to see the solved picture)
     var probs = problemJobs();
-    document.getElementById('pv-problems').innerHTML =
-      '<div class="pv-count">🚨 <b>' + probs.length + '</b> open</div>' +
-      (probs.length
-        ? '<div class="pv-grid2">' + probs.map(function (j) { return pvCard_(j, true); }).join('') + '</div>'
-        : '<div class="empty" style="padding:18px 4px;font-size:14px">😌 No problems</div>');
+    var solvedJobs = [];
+    ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
+      state.jobs[tb].forEach(function (j) { if (j.problem === 'printed') solvedJobs.push(j); });
+    });
+    var ph = '<div class="pv-count">🚨 Balance <b>' + probs.length + '</b> · ✅ Solved <b>' + solvedJobs.length + '</b></div>';
+    if (probs.length) {
+      ph += '<div class="pv-sec warn">🚨 Balance — waiting (' + probs.length + ')</div>' +
+        '<div class="pv-grid2">' + probs.map(function (j) { return pvCard_(j, true); }).join('') + '</div>';
+    }
+    if (solvedJobs.length) {
+      ph += '<div class="pv-sec good">✅ Solved (' + solvedJobs.length + ')</div>' +
+        '<div class="pv-grid2">' + solvedJobs.map(function (j) { return pvCard_(j, true); }).join('') + '</div>';
+    }
+    if (!probs.length && !solvedJobs.length) {
+      ph += '<div class="empty" style="padding:18px 4px;font-size:14px">😌 No problems</div>';
+    }
+    document.getElementById('pv-problems').innerHTML = ph;
     // 📊 the horizontal stats bar — every board at a glance + problem tally
     function nb(v, lbl, cls) {
       return '<span class="pv-nb' + (cls && v ? ' ' + cls : '') + '">' + lbl + ' <b>' + v + '</b></span>';
     }
     function c(tab, f) { return state.jobs[tab].filter(f).length; }
-    var raised = 0, solved = 0;
-    ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
-      state.jobs[tb].forEach(function (j) {
-        (j.probLog || []).forEach(function (e) { if (e.k === 'report') raised++; else solved++; });
-      });
-    });
     document.getElementById('pv-statsbar').innerHTML =
       '<div class="pv-sb"><h4>🚚 Delivery</h4>' +
         nb(c('delivery', function (j) { return j.status === 'pending'; }), '⏳') +
@@ -3074,9 +3085,8 @@
         nb(c('defect', function (j) { return j.status === 'pending'; }), '⏳', 'bad') +
         nb(c('defect', function (j) { return j.status === 'done'; }), '✅', 'good') + '</div>' +
       '<div class="pv-sb prob"><h4>🚨</h4>' +
-        nb(raised, 'Raised') +
-        nb(solved, 'Solved', 'good') +
-        nb(probs.length, 'Balance', 'bad') + '</div>';
+        nb(probs.length, 'Balance', 'bad') +
+        nb(solvedJobs.length, 'Solved', 'good') + '</div>';
     if (!pvProg.active) {
       document.getElementById('pv-upd').textContent =
         '🔄 Auto-refresh' + (lastSyncAt ? ' · updated ' + fmtTime(lastSyncAt) : ' on');
