@@ -1663,11 +1663,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'the Problems column lists every open problem');
   check((await page.locator('#pv-problems .pv-count').textContent()).indexOf('Balance') >= 0,
     'with the Balance / Solved tally on top');
-  // every card identical — symmetrical heights across ALL columns
-  const cardHs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('#prodview .pv-card2')).map(e => e.getBoundingClientRect().height));
-  check(cardHs.length >= 3 && cardHs.every(h => Math.abs(h - cardHs[0]) < 1),
-    'every TV card is EXACTLY the same height (' + Math.round(cardHs[0]) + 'px)');
+  // every card identical — symmetrical heights WITHIN each column
+  const colCardHs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#prodview .pv-list')).map(col =>
+      Array.from(col.querySelectorAll('.pv-card2')).map(e => e.getBoundingClientRect().height)));
+  check(colCardHs.some(c => c.length) &&
+    colCardHs.every(col => col.every(h => Math.abs(h - col[0]) < 1)),
+    'every TV card is EXACTLY the same height within its column');
   // the count bars too — one fixed line, never taller or shorter
   const barHs = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#prodview .pv-count')).map(e => e.getBoundingClientRect().height));
@@ -1701,6 +1703,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#pvd-body').textContent()).indexOf('Delivered') >= 0, 'delivered status written out');
   await page.click('#pvd-overlay .x-close');
   await sleep(250);
+  // the tick shows on the TV CARD itself too, not just the detail
+  check((await page.locator('#pv-delivery .pv-card2 .media-sealed .seal-tick').count()) >= 1,
+    'delivered / sent TV cards carry the green ✔ stamp on their picture');
   // hover ‹ › on the card flips its photos WITHOUT opening the detail
   const flipWrap = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' }).locator('.pv-img-wrap');
   await flipWrap.hover();
@@ -1729,6 +1734,12 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'clicking the green card shows the solved picture');
   await page.click('#pvd-overlay .x-close');
   await sleep(250);
+  // the TV says the problem and shows the solved picture right on the cards
+  check((await page.locator('#pv-problems .pv-probline').count()) >= 1 &&
+    (await page.locator('#pv-problems .pv-probline').first().textContent()).trim().length > 3,
+    'balance cards SAY the problem on a red strip');
+  check((await page.locator('#pv-problems .pv-solvedline img').count()) >= 1,
+    'solved cards SHOW the attached solved picture on a green strip');
   check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
   // refresh shows % progress — manual AND auto
   await page.evaluate(() => refresh());

@@ -591,6 +591,21 @@
     background: rgba(31,43,19,.7); color: #fff; font-size: 11px; font-weight: 800;
     border-radius: 999px; padding: 2px 8px;
   }
+  /* delivered / sent tick, sized for the TV cards */
+  .pv-img-wrap .seal-tick { width: 64px; height: 64px; font-size: 38px; }
+  /* problems column: SAY the problem in red / SHOW the solved picture in green
+     (both strips fixed 44px so the column stays perfectly symmetrical) */
+  .pv-probline {
+    height: 44px; overflow: hidden; display: flex; align-items: center;
+    background: #dc2626; color: #fff; font-size: 11.5px; font-weight: 800;
+    padding: 4px 9px; line-height: 1.25;
+  }
+  .pv-solvedline {
+    height: 44px; overflow: hidden; display: flex; align-items: center; gap: 8px;
+    background: #16a34a; color: #fff; font-size: 11.5px; font-weight: 800;
+    padding: 4px 8px;
+  }
+  .pv-solvedline img { width: 34px; height: 34px; object-fit: cover; border-radius: 7px; box-shadow: 0 0 0 2px #fff; flex: 0 0 auto; }
   /* fixed body height → EVERY card is exactly the same size */
   .pv-body2 { padding: 5px 7px 7px; height: 58px; overflow: hidden; }
   .pv-cust { font-size: 12px; font-weight: 800; color: #3730a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2870,10 +2885,13 @@
     for (var k = 0; k < j.photoIds.length; k++) {
       if (j.photoIds[k]) { live.push(j.photoIds[k]); liveT.push(thumbOf(j, k)); }
     }
+    // out the door → the same big green ✔ stamp as normal cards
+    var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
     return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
-      '<div class="pv-img-wrap" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
+      '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
       imgTag(liveT[0] || '') +
+      (sealed ? '<div class="seal-tick">✔</div>' : '') +
       (liveT.length > 1
         ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
           '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +
@@ -2884,7 +2902,19 @@
       // every row always renders (blank if empty) so all cards match in height
       '<div class="pv-cust">' + ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) : '&nbsp;') + '</div>' +
       '<div class="pv-note">' + (j.note ? esc(j.note) : '&nbsp;') + '</div>' +
-      '<div class="pv-st">' + (showTab ? (PROB_TAB[j.tab] || j.tab) + ' · ' : '') + when + chips + '</div></div></div>';
+      '<div class="pv-st">' + (showTab ? (PROB_TAB[j.tab] || j.tab) + ' · ' : '') + when + chips + '</div></div>' +
+      // problems column: SAY the problem / SHOW the solved picture
+      (showTab && pvProb_(j)
+        ? '<div class="pv-probline">🚨 ' +
+          esc(j.problem === 'custom' ? (customText_(j) || 'Problem')
+            : (PROB_KIND[j.problem] || 'Problem').replace('❓', '❔')) + '</div>'
+        : '') +
+      (showTab && j.problem === 'printed'
+        ? '<div class="pv-solvedline">' +
+          ((j.printThumbId || j.printPhotoId) ? imgTag(j.printThumbId || j.printPhotoId) : '') +
+          '<span>✅ SOLVED — picture attached</span></div>'
+        : '') +
+      '</div>';
   }
   /** Hover ‹ › on a TV card — flip its photos without opening the detail. */
   function pvFlip(e, btn, dir) {
@@ -3042,7 +3072,8 @@
         any = true;
         html += '<div class="pv-sec' + (grp.cls ? ' ' + grp.cls : '') + '">' +
           grp.lbl + ' (' + grp.jobs.length + ')</div>' +
-          '<div class="pv-grid2">' + grp.jobs.map(pvCard_).join('') + '</div>';
+          '<div class="pv-grid2">' +
+          grp.jobs.map(function (jj) { return pvCard_(jj); }).join('') + '</div>';
       });
       if (!any) html += '<div class="empty" style="padding:18px 4px;font-size:14px">Nothing</div>';
       document.getElementById('pv-' + tb).innerHTML = html;
