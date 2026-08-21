@@ -1735,6 +1735,14 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // the tick shows on the TV CARD itself too, not just the detail
   check((await page.locator('#pv-delivery .pv-card2 .media-sealed .seal-tick').count()) >= 1,
     'delivered / sent TV cards carry the green ✔ stamp on their picture');
+  // ⚡ overlay on READY jobs — Production View only
+  check((await page.locator('#prodview .ready-flash').count()) >= 1,
+    'READY jobs (waiting their final ✔) carry the ⚡ overlay');
+  check((await page.evaluate(() => document.querySelectorAll('#prodview .ready-flash').length ===
+    document.querySelectorAll('#prodview .pv-card2 .ready-flash').length)),
+    '⚡ only sits on cards, never on sealed ones');
+  check((await page.locator('#delivery-list .ready-flash, #postage-list .ready-flash').count()) === 0,
+    '…and only in Production View, not on the normal boards');
   // hover ‹ › on the card flips its photos WITHOUT opening the detail
   const flipWrap = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' }).locator('.pv-img-wrap');
   await flipWrap.hover();

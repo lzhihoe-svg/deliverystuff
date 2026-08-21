@@ -611,6 +611,15 @@
   }
   /* delivered / sent tick, sized for the TV cards */
   .pv-img-wrap .seal-tick { width: 64px; height: 64px; font-size: 38px; }
+  /* ⚡ READY — waiting only for its final ✔ (Production View only) */
+  .pv-img-wrap .ready-flash {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg);
+    width: 64px; height: 64px; border-radius: 50%; z-index: 2;
+    background: rgba(251, 191, 36, .95); font-size: 34px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(23, 27, 16, .3), 0 0 0 5px rgba(255, 255, 255, .6);
+    pointer-events: none;
+  }
   /* problems column: SAY the problem in red / SHOW the solved picture in green
      (both strips fixed 44px so the column stays perfectly symmetrical) */
   .pv-probline {
@@ -2940,11 +2949,15 @@
     }
     // out the door → the same big green ✔ stamp as normal cards
     var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
+    // ⚡ READY — done but still waiting for its final ✔ (TV only)
+    var readyFlash = !sealed && j.status === 'done' &&
+      (j.tab === 'delivery' || j.tab === 'postage');
     return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
       '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
       imgTag(liveT[0] || '') +
       (sealed ? '<div class="seal-tick">✔</div>' : '') +
+      (readyFlash ? '<div class="ready-flash">⚡</div>' : '') +
       (liveT.length > 1
         ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
           '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +
