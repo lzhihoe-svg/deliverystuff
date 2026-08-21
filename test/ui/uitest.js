@@ -1752,6 +1752,36 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(300);
   check((await flipWrap.locator('.pv-cnt').textContent()) === '2/2', '› flips to the next photo on the card');
   check(!(await page.locator('#pvd-overlay').isVisible()), '…without opening the detail card');
+  // 🏷️ STICKER — one tap shows the waybill sticker, tap again → jobsheet
+  check(await flipWrap.locator('.pv-sticker').isVisible(), 'postage TV cards carry a small 🏷️ STICKER button');
+  check((await page.locator('#pv-delivery .pv-sticker').count()) === 0, '…postage only — delivery cards have none');
+  const tvThumbs = await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'TV-detail');
+    return j.thumbIds;
+  });
+  // the ‹ › flip above already landed on the waybill — the button synced itself
+  check((await flipWrap.locator('.pv-sticker').textContent()).indexOf('JOB') >= 0,
+    'the button stays in sync with ‹ › flips — it now offers 📄 JOB');
+  await flipWrap.locator('.pv-sticker').click();
+  await sleep(250);
+  check((await flipWrap.locator('img').getAttribute('data-img')) === tvThumbs[0],
+    '📄 JOB tap → back to the jobsheet');
+  check((await flipWrap.locator('.pv-sticker').textContent()).indexOf('STICKER') >= 0,
+    'button reads 🏷️ STICKER again');
+  await flipWrap.locator('.pv-sticker').click();
+  await sleep(250);
+  check((await flipWrap.locator('img').getAttribute('data-img')) === tvThumbs[1],
+    'one tap → the card jumps straight to the WAYBILL sticker');
+  check(!(await page.locator('#pvd-overlay').isVisible()), 'sticker tap does NOT open the detail card');
+  await flipWrap.locator('.pv-sticker').click();
+  await sleep(250);
+  check((await flipWrap.locator('img').getAttribute('data-img')) === tvThumbs[0],
+    'tap again → back to the jobsheet for the next person');
+  // the TV preloads every card's hidden photos — flipping never shows Loading…
+  check((await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'TV-defect');
+    return j && window.__imgRequests.indexOf(j.thumbIds[1]) >= 0;
+  })), 'TV cards preload their hidden photos in the background');
   // a PROBLEM job's detail: the unsolved report AND earlier solved pictures
   await page.locator('#pv-problems .pv-card2').first().click();
   await sleep(500);
@@ -2008,6 +2038,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   const vsCard = page.locator('#delivery-list .card').filter({ hasText: 'Viewer speed' });
   await vsCard.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));
   await sleep(900); // card thumbnails finish downloading
+  check((await page.evaluate(ids => ids.every(id => window.__imgRequests.indexOf(id) >= 0),
+    [vjob.thumbIds[1], vjob.thumbIds[2]])),
+    'a card\'s hidden ‹ › photos preload as soon as the card is on screen');
   await page.evaluate(() => { window.__mocklat = { getImagesData: 1200 }; }); // slow network for the full photos
   await vsCard.locator('.car-slide img').first().click();
   await sleep(250); // far less than the 1200ms the full photo needs
@@ -2023,6 +2056,27 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { window.__mocklat = {}; });
   await page.locator('.viewer-x').click();
   await sleep(250);
+  // EVERY photo of the set preloads when the viewer opens — not just neighbours
+  const vjob5 = await page.evaluate(() =>
+    window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Preload five', photos: ['q1', 'q2', 'q3', 'q4', 'q5'], thumbs: ['q1', 'q2', 'q3', 'q4', 'q5'] }));
+  await page.evaluate(() => refresh());
+  await sleep(600);
+  const p5Card = page.locator('#delivery-list .card').filter({ hasText: 'Preload five' });
+  await p5Card.locator('.car-slide img').first().evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await sleep(400);
+  await p5Card.locator('.car-slide img').first().click();
+  await sleep(900);
+  check((await page.evaluate(ids => ids.every(id => window.__imgRequests.indexOf(id) >= 0),
+    vjob5.photoIds)),
+    'opening the viewer preloads ALL its full-size photos, front to back');
+  await page.locator('.viewer-x').click();
+  await sleep(250);
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Preload five');
+    if (j) j.status = 'archived';
+    refresh();
+  });
+  await sleep(400);
   // postage: tapping a jobsheet photo swipes ONLY jobsheet pages
   await page.click('#nav-postage');
   await sleep(500);

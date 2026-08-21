@@ -609,6 +609,14 @@
     background: rgba(31,43,19,.7); color: #fff; font-size: 11px; font-weight: 800;
     border-radius: 999px; padding: 2px 8px;
   }
+  /* 🏷️ STICKER — one tap flips a postage TV card straight to its waybill */
+  .pv-sticker {
+    position: absolute; top: 6px; right: 8px; z-index: 3;
+    border: 0; border-radius: 999px; padding: 4px 10px;
+    background: #f59e0b; color: #1f2b13; font-size: 11px; font-weight: 900;
+    cursor: pointer; box-shadow: 0 2px 6px rgba(23,27,16,.35);
+  }
+  .pv-sticker.on { background: #365314; color: #fff; }
   /* delivered / sent tick, sized for the TV cards */
   .pv-img-wrap .seal-tick { width: 64px; height: 64px; font-size: 38px; }
   /* ⚡ READY — waiting only for its final ✔ (Production View only) */
@@ -1398,8 +1406,34 @@
     if (id && !cachedImg(id) && String(id).indexOf('local') !== 0) prefetchWant[id] = 1;
   }
 
+  /** A card's OTHER photos hide behind ‹ › / swipe, so they never intersect
+      the screen and the lazy loader would skip them — the user would meet a
+      "Loading…" tile mid-flip. Queue them as soon as their card is visible. */
+  function prefetchCardSets_() {
+    var cars = document.querySelectorAll('.carousel');
+    for (var i = 0; i < cars.length; i++) {
+      var imgs = cars[i].querySelectorAll('img[data-img]');
+      if (imgs.length < 2) continue;
+      var vis = false;
+      for (var k = 0; k < imgs.length; k++) {
+        if (imgs[k].getAttribute('data-vis')) { vis = true; break; }
+      }
+      if (!vis) continue;                    // whole card offscreen: leave it lazy
+      for (var m = 0; m < imgs.length; m++) prefetchImg(imgs[m].getAttribute('data-img'));
+    }
+    // TV cards keep ONE <img>; the rest of the set only lives in data-thumbs
+    if (typeof state !== 'undefined' && state.prodView) {
+      var wraps = document.querySelectorAll('#prodview .pv-img-wrap[data-thumbs]');
+      for (var w = 0; w < wraps.length; w++) {
+        var ids = (wraps[w].getAttribute('data-thumbs') || '').split(',');
+        for (var t = 1; t < ids.length; t++) prefetchImg(ids[t]);
+      }
+    }
+  }
+
   function loadImages() {
     if (holdImages()) return;               // pause behind PIN checks / uploads
+    prefetchCardSets_();                    // hidden ‹ › photos ride along
     if (activeLoads >= MAX_PARALLEL) return;
     var want = [];
     var els = document.querySelectorAll('img[data-img]');
@@ -1453,6 +1487,9 @@
     viewerState.ids = String(idsCsv).split(',').filter(function (x) { return x; });
     viewerState.thumbs = String(thumbsCsv || '').split(',');
     viewerState.idx = Math.max(0, Math.min(Number(idx) || 0, viewerState.ids.length - 1));
+    // preload EVERY full-size photo of the set right away — swiping through
+    // them never has to stop and wait for the network
+    for (var i = 0; i < viewerState.ids.length; i++) prefetchImg(viewerState.ids[i]);
     showViewerImg();
     document.getElementById('viewer').classList.add('show');
   }
@@ -2952,12 +2989,25 @@
     // ⚡ READY — done but still waiting for its final ✔ (TV only)
     var readyFlash = !sealed && j.status === 'done' &&
       (j.tab === 'delivery' || j.tab === 'postage');
+    // postage: where in the LIVE set does the first waybill sticker sit?
+    var wbLive = -1;
+    if (j.tab === 'postage') {
+      var liveBefore = 0;
+      for (var q = 0; q < j.photoIds.length; q++) {
+        if (!j.photoIds[q]) continue;
+        if (q >= (j.jsCount || 0)) { wbLive = liveBefore; break; }
+        liveBefore++;
+      }
+    }
     return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
-      '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0">' +
+      '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0" data-wb="' + wbLive + '">' +
       imgTag(liveT[0] || '') +
       (sealed ? '<div class="seal-tick">✔</div>' : '') +
       (readyFlash ? '<div class="ready-flash">⚡</div>' : '') +
+      (wbLive > 0
+        ? '<button class="pv-sticker" onclick="pvSticker(event, this)">🏷️ STICKER</button>'
+        : '') +
       (liveT.length > 1
         ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
           '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +
@@ -2982,13 +3032,8 @@
         : '') +
       '</div>';
   }
-  /** Hover ‹ › on a TV card — flip its photos without opening the detail. */
-  function pvFlip(e, btn, dir) {
-    e.stopPropagation();
-    var wrap = btn.parentNode;
-    var ids = (wrap.getAttribute('data-thumbs') || '').split(',').filter(function (x) { return x; });
-    if (ids.length < 2) return;
-    var idx = (parseInt(wrap.getAttribute('data-idx') || '0', 10) + dir + ids.length) % ids.length;
+  /** Swap a TV card's picture to photo #idx and keep counter + 🏷️ in sync. */
+  function pvShow_(wrap, ids, idx) {
     wrap.setAttribute('data-idx', idx);
     var img = wrap.querySelector('img[data-img]');
     img.setAttribute('data-img', ids[idx]);
@@ -2996,7 +3041,33 @@
     img.src = cachedImg(ids[idx]) || PLACEHOLDER;
     var cnt = wrap.querySelector('.pv-cnt');
     if (cnt) cnt.textContent = (idx + 1) + '/' + ids.length;
+    var sb = wrap.querySelector('.pv-sticker');
+    if (sb) {
+      var wb = parseInt(wrap.getAttribute('data-wb') || '-1', 10);
+      sb.classList.toggle('on', idx === wb);
+      sb.innerHTML = idx === wb ? '📄 JOB' : '🏷️ STICKER';
+    }
     loadImages();
+  }
+  /** Hover ‹ › on a TV card — flip its photos without opening the detail. */
+  function pvFlip(e, btn, dir) {
+    e.stopPropagation();
+    var wrap = btn.parentNode;
+    var ids = (wrap.getAttribute('data-thumbs') || '').split(',').filter(function (x) { return x; });
+    if (ids.length < 2) return;
+    var idx = (parseInt(wrap.getAttribute('data-idx') || '0', 10) + dir + ids.length) % ids.length;
+    pvShow_(wrap, ids, idx);
+  }
+  /** 🏷️ STICKER on a postage TV card — jump straight to the waybill
+      sticker; tap again (📄 JOB) to go back to the jobsheet. */
+  function pvSticker(e, btn) {
+    e.stopPropagation();
+    var wrap = btn.parentNode;
+    var ids = (wrap.getAttribute('data-thumbs') || '').split(',').filter(function (x) { return x; });
+    var wb = parseInt(wrap.getAttribute('data-wb') || '-1', 10);
+    if (wb < 0 || wb >= ids.length) return;
+    var cur = parseInt(wrap.getAttribute('data-idx') || '0', 10);
+    pvShow_(wrap, ids, cur === wb ? 0 : wb);
   }
 
   /** The status groups for one TV column (sh = short label for the counter). */
@@ -3076,6 +3147,8 @@
     }
     var n = live.length || 1;
     pvd.idx = ((pvd.idx % n) + n) % n;
+    // preload the whole set (sharp + thumbs) — ‹ › here is instant
+    for (var p = 0; p < live.length; p++) { prefetchImg(live[p]); prefetchImg(liveT[p]); }
     var csv = live.join(','), tcsv = liveT.join(',');
     // out the door → the same big green ✔ stamp as on normal cards
     var sealed = (j.tab === 'delivery' && j.deliveredAt) || (j.tab === 'postage' && j.sentAt);
