@@ -1083,6 +1083,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     tickTxt.indexOf('Bos (ZH)') >= 0,
     'card shows the BIG ✔ with method, person and time');
   check((await dcCard.locator('.btn.green').count()) === 0, 'the Delivered button is gone — nothing left to think about');
+  // the job moved into its OWN "Done & Delivered" section
+  check((await page.locator('#sec-delivered-delivery').count()) === 1 &&
+    (await page.locator('#sec-delivered-delivery').textContent()).indexOf('Done & Delivered') >= 0,
+    "delivery has a separate '✔ Done & Delivered' section");
+  check(await page.evaluate(() => {
+    const sec = document.getElementById('sec-delivered-delivery');
+    const grid = sec && sec.nextElementSibling;
+    return !!grid && grid.textContent.indexOf('Deliv-confirm') >= 0;
+  }), 'the confirmed job sits inside it, not in plain Done');
   const dcTools = await moreCount(dcCard, '.jm-deldeliv');
   check(dcTools.n === 1, '⋯ offers ↩️ Undo Delivered for wrong taps');
   await viaMore(dcCard, '.jm-deldeliv');
@@ -1095,6 +1104,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), 'Undo clears the record');
   check((await dcCard.locator('.btn.green').count()) === 1, "the 'Delivered?' button returns");
   check((await dcCard.locator('.seal-tick').count()) === 0, 'the photo tick disappears after Undo');
+  check((await page.locator('#sec-delivered-delivery').count()) === 0,
+    'the Done & Delivered section empties out after Undo');
   check((await page.locator('#postage-list .delivered-big').count()) === 0, 'postage cards have no Delivered stage');
   await page.evaluate(() => {
     setRole('admin', '1234');

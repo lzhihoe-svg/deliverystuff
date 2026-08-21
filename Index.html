@@ -2490,9 +2490,25 @@
       html += '</div>';
     }
     if (done.length) {
-      html += '<div class="section-title" id="sec-done-' + tab + '">✅ Done (' + done.length + ')</div><div class="grid">';
-      done.forEach(function (j) { html += jobCard(j, true); });
-      html += '</div>';
+      if (tab === 'delivery') {
+        // DELIVERY: ready jobs and confirmed-delivered jobs get their OWN sections
+        var readyD = done.filter(function (j) { return !j.deliveredAt; });
+        var delvD = done.filter(function (j) { return !!j.deliveredAt; });
+        if (readyD.length) {
+          html += '<div class="section-title" id="sec-done-' + tab + '">✅ Done (' + readyD.length + ')</div><div class="grid">';
+          readyD.forEach(function (j) { html += jobCard(j, true); });
+          html += '</div>';
+        }
+        if (delvD.length) {
+          html += '<div class="section-title" id="sec-delivered-' + tab + '">✔ Done &amp; Delivered (' + delvD.length + ')</div><div class="grid">';
+          delvD.forEach(function (j) { html += jobCard(j, true); });
+          html += '</div>';
+        }
+      } else {
+        html += '<div class="section-title" id="sec-done-' + tab + '">✅ Done (' + done.length + ')</div><div class="grid">';
+        done.forEach(function (j) { html += jobCard(j, true); });
+        html += '</div>';
+      }
     }
     return html;
   }
