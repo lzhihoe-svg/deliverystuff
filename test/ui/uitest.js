@@ -1625,6 +1625,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     '4 columns: Delivery · Postage · Defect · Problems (Checking removed)');
   check((await page.locator('#pv-statsbar .pv-sb').count()) === 4,
     'the 📊 stats bar has one tile per column, aligned above it');
+  check(/\d{1,2}:\d{2}\s(AM|PM)/.test(await page.locator('#pv-time').textContent()),
+    'a BIG live clock ticks in the header');
+  check(/\d{4}/.test(await page.locator('#pv-date').textContent()), 'with the full date under it');
+  const kpiTxt = await page.locator('#pv-statsbar').textContent();
+  check(kpiTxt.indexOf('To Do') >= 0 && kpiTxt.indexOf('Ready') >= 0 && kpiTxt.indexOf('Out') >= 0,
+    'KPI tiles label every status in words');
+  const kpiSize = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.querySelector('#pv-statsbar .pv-nb b')).fontSize));
+  check(kpiSize >= 22, 'KPI numbers are BIG and colour-coded (' + kpiSize + 'px)');
   const sbTxt = await page.locator('#pv-statsbar').textContent();
   check(sbTxt.indexOf('Raised') < 0 && sbTxt.indexOf('Solved') >= 0 && sbTxt.indexOf('Balance') >= 0,
     'the Problems tile counts Balance · Solved (no more Raised)');

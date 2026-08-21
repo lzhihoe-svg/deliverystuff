@@ -495,9 +495,21 @@
     box-shadow: 0 4px 14px rgba(23,27,16,.08);
   }
   .pv-title { font-size: 20px; font-weight: 800; letter-spacing: .06em; }
+  /* big LIVE clock + date on the TV */
+  .pv-clock { margin-left: auto; text-align: right; }
+  .pv-clock .t { font-size: 32px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .pv-clock .d { font-size: 12.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
   .pv-upd {
-    margin-left: auto; font-size: 13px; font-weight: 700; color: var(--blue);
+    font-size: 13px; font-weight: 700; color: var(--blue);
     background: var(--lime-soft); border-radius: 999px; padding: 6px 14px;
+  }
+  /* phones: compact header so ✕ always stays reachable */
+  @media (max-width: 700px) {
+    .pv-head { gap: 8px; padding: 10px 12px; }
+    .pv-title { font-size: 15px; }
+    .pv-clock .t { font-size: 20px; }
+    .pv-clock .d { display: none; }
+    .pv-upd { display: none; }
   }
   /* 📊 horizontal stats bar on top — SAME grid as the columns below, so
      each tile sits exactly above its own column */
@@ -506,18 +518,24 @@
     gap: 10px; padding: 10px 12px 0;
   }
   .pv-sb {
-    background: #fff; border-radius: 14px; padding: 8px 10px;
-    box-shadow: var(--shadow); display: flex; align-items: center; gap: 6px;
+    background: #fff; border-radius: 14px; padding: 7px 14px;
+    box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px;
     min-width: 0; overflow: hidden;
   }
-  .pv-sb h4 { font-size: 12px; font-weight: 800; letter-spacing: .03em; margin-right: 2px; white-space: nowrap; }
-  .pv-nb {
-    font-size: 12px; font-weight: 800; border-radius: 999px; padding: 3px 9px;
-    background: #f1f5f9; color: #475569; white-space: nowrap;
+  .pv-sb h4 { font-size: 13.5px; font-weight: 800; letter-spacing: .03em; margin-right: auto; white-space: nowrap; }
+  /* KPI: BIG colour-coded number with a small label under it */
+  .pv-nb { text-align: center; min-width: 48px; white-space: nowrap; }
+  .pv-nb b {
+    display: block; font-size: 25px; line-height: 1.05; font-weight: 800;
+    font-variant-numeric: tabular-nums; color: #334155;
   }
-  .pv-nb b { font-size: 14px; }
-  .pv-nb.good { background: var(--lime-soft); color: var(--blue); }
-  .pv-nb.bad { background: #fee2e2; color: #b91c1c; }
+  .pv-nb .l {
+    display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted); margin-top: 1px;
+  }
+  .pv-nb.good b { color: #4d7c0f; }
+  .pv-nb.amber b { color: #b45309; }
+  .pv-nb.bad b { color: #dc2626; }
   .pv-sb.prob { border: 1.5px solid #fecaca; }
   /* Delivery 2.5 · Postage 2.5 · Defect 1 · Problems 1 */
   .pv-grid {
@@ -1155,6 +1173,7 @@
 <div class="pv" id="prodview">
   <div class="pv-head">
     <div class="pv-title">🏭 ARA<span style="color:var(--green)">MEGA</span> — PRODUCTION</div>
+    <div class="pv-clock"><div class="t" id="pv-time"></div><div class="d" id="pv-date"></div></div>
     <div class="pv-upd" id="pv-upd"></div>
     <button class="role-btn" id="pv-refresh" onclick="refresh()">🔄 Refresh</button>
     <button class="x-close" style="position:static" onclick="closeProdView()">✕</button>
@@ -2879,9 +2898,24 @@
   // ------------------------------------------------------------ 📺 production view
   // The whole factory on one big TV: 5 columns, always fresh (the silent
   // background refresh keeps re-rendering it — at least every minute).
+  /** Big LIVE clock + date on the TV — ticks every second while open. */
+  function pvClockTick_() {
+    if (!state.prodView) return;
+    var tEl = document.getElementById('pv-time');
+    if (!tEl) return;
+    var now = new Date();
+    var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    tEl.textContent = fmtTime(now.getTime());
+    document.getElementById('pv-date').textContent =
+      DAYS[now.getDay()] + ' · ' + now.getDate() + ' ' + MONS[now.getMonth()] + ' ' + now.getFullYear();
+  }
+  setInterval(pvClockTick_, 1000);
+
   function openProdView() {
     state.prodView = true;
     renderProdView();
+    pvClockTick_();
     document.getElementById('prodview').classList.add('show');
   }
   function closeProdView() {
@@ -3119,22 +3153,22 @@
     document.getElementById('pv-problems').innerHTML = ph;
     // 📊 the horizontal stats bar — every board at a glance + problem tally
     function nb(v, lbl, cls) {
-      return '<span class="pv-nb' + (cls && v ? ' ' + cls : '') + '">' + lbl + ' <b>' + v + '</b></span>';
+      return '<span class="pv-nb' + (cls ? ' ' + cls : '') + '"><b>' + v + '</b><span class="l">' + lbl + '</span></span>';
     }
     function c(tab, f) { return state.jobs[tab].filter(f).length; }
     document.getElementById('pv-statsbar').innerHTML =
       '<div class="pv-sb"><h4>🚚 Delivery</h4>' +
-        nb(c('delivery', function (j) { return j.status === 'pending'; }), '⏳') +
-        nb(c('delivery', function (j) { return j.status === 'done' && !j.deliveredAt; }), '✅', 'good') +
-        nb(c('delivery', function (j) { return j.status === 'done' && !!j.deliveredAt; }), '✔', 'good') + '</div>' +
+        nb(c('delivery', function (j) { return j.status === 'pending'; }), 'To Do') +
+        nb(c('delivery', function (j) { return j.status === 'done' && !j.deliveredAt; }), 'Ready', 'amber') +
+        nb(c('delivery', function (j) { return j.status === 'done' && !!j.deliveredAt; }), 'Out', 'good') + '</div>' +
       '<div class="pv-sb"><h4>📦 Postage</h4>' +
-        nb(c('postage', function (j) { return j.status === 'pending'; }), '⏳') +
-        nb(c('postage', function (j) { return j.status === 'done' && !j.sentAt; }), '📦', 'good') +
-        nb(c('postage', function (j) { return j.status === 'done' && !!j.sentAt; }), '✔', 'good') + '</div>' +
+        nb(c('postage', function (j) { return j.status === 'pending'; }), 'To Do') +
+        nb(c('postage', function (j) { return j.status === 'done' && !j.sentAt; }), 'J&T', 'amber') +
+        nb(c('postage', function (j) { return j.status === 'done' && !!j.sentAt; }), 'Sent', 'good') + '</div>' +
       '<div class="pv-sb"><h4>🚨 Defect</h4>' +
-        nb(c('defect', function (j) { return j.status === 'pending'; }), '⏳', 'bad') +
-        nb(c('defect', function (j) { return j.status === 'done'; }), '✅', 'good') + '</div>' +
-      '<div class="pv-sb prob"><h4>🚨</h4>' +
+        nb(c('defect', function (j) { return j.status === 'pending'; }), 'Open', 'bad') +
+        nb(c('defect', function (j) { return j.status === 'done'; }), 'Fixed', 'good') + '</div>' +
+      '<div class="pv-sb prob"><h4>🚨 Problems</h4>' +
         nb(probs.length, 'Balance', 'bad') +
         nb(solvedJobs.length, 'Solved', 'good') + '</div>';
     if (!pvProg.active) {
