@@ -2490,17 +2490,20 @@
       html += '</div>';
     }
     if (done.length) {
-      if (tab === 'delivery') {
-        // DELIVERY: ready jobs and confirmed-delivered jobs get their OWN sections
-        var readyD = done.filter(function (j) { return !j.deliveredAt; });
-        var delvD = done.filter(function (j) { return !!j.deliveredAt; });
+      if (tab === 'delivery' || tab === 'postage') {
+        // THREE clear sections: To Do → Done (waiting its ✔) → Done & OUT
+        var isOut = function (j) { return tab === 'delivery' ? !!j.deliveredAt : !!j.sentAt; };
+        var readyD = done.filter(function (j) { return !isOut(j); });
+        var delvD = done.filter(isOut);
         if (readyD.length) {
           html += '<div class="section-title" id="sec-done-' + tab + '">✅ Done (' + readyD.length + ')</div><div class="grid">';
           readyD.forEach(function (j) { html += jobCard(j, true); });
           html += '</div>';
         }
         if (delvD.length) {
-          html += '<div class="section-title" id="sec-delivered-' + tab + '">✔ Done &amp; Delivered (' + delvD.length + ')</div><div class="grid">';
+          html += '<div class="section-title" id="sec-delivered-' + tab + '">' +
+            (tab === 'delivery' ? '✔ Done &amp; Delivered' : '✔ Done &amp; Sent to J&amp;T') +
+            ' (' + delvD.length + ')</div><div class="grid">';
           delvD.forEach(function (j) { html += jobCard(j, true); });
           html += '</div>';
         }

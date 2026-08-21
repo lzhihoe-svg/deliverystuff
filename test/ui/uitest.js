@@ -1144,6 +1144,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'big ✔ SENT TO J&T appears on the job');
   check((await jaCard.locator('.media-sealed .seal-tick').count()) === 1,
     'the jobsheet + waybill photos get the green tick stamp too');
+  // postage also splits into THREE sections: To Do · Done · Done & Sent
+  check((await page.locator('#sec-delivered-postage').count()) === 1 &&
+    (await page.locator('#sec-delivered-postage').textContent()).indexOf('Done & Sent to J&T') >= 0,
+    "postage has its own '✔ Done & Sent to J&T' section");
+  check(await page.evaluate(() => {
+    const sec = document.getElementById('sec-delivered-postage');
+    const grid = sec && sec.nextElementSibling;
+    return !!grid && grid.querySelectorAll('.delivered-big').length >= 1;
+  }), 'sent parcels sit inside it, clearly separated from plain Done');
   check((await page.locator('#postage-list .jnt-bar b').textContent()) === String(jntReady0 - 1),
     'the ready count drops — sent parcels are OUT of the next count');
   const jaTools = await moreCount(jaCard, '.jm-delsent');
