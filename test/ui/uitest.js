@@ -1807,6 +1807,40 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'balance cards SAY the problem on a red strip');
   check((await page.locator('#pv-problems .pv-solvedline img').count()) >= 1,
     'solved cards SHOW the attached solved picture on a green strip');
+  // ⋯ on every TV card — report straight from the TV
+  const tvMoreCard = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' });
+  check(await tvMoreCard.locator('.pv-more').isVisible(), 'every TV card has a ⋯ button on its picture');
+  await tvMoreCard.locator('.pv-more').click();
+  await sleep(300);
+  check(await page.locator('#jobmenu-overlay').isVisible(), '⋯ opens the job menu ABOVE the TV');
+  check(!(await page.locator('#pvd-overlay').isVisible()), '…without opening the detail card');
+  check((await page.locator('#jobmenu-list .jm-problem').count()) === 1, 'the TV menu offers 🚨 Problem');
+  check((await page.locator('#jobmenu-list .jm-warn').count()) === 1, 'and ❓ Haven\'t received');
+  check((await page.locator('#jobmenu-list .jm-sticker').count()) === 1, 'and 🏷️ No sticker (postage job)');
+  check((await page.locator('#jobmenu-list .jm-chrono').count()) === 1, 'and 🕐 Chronology');
+  check((await page.locator('#jobmenu-list .jm-edit, #jobmenu-list .jm-del, #jobmenu-list .jm-reproof').count()) === 0,
+    'TV menu is REPORT-only — no admin / proof actions');
+  // chronology reads fine over the TV
+  await page.click('#jobmenu-list .jm-chrono');
+  await sleep(400);
+  check(await page.locator('#chrono-overlay').isVisible(), '🕐 Chronology opens on top of the TV');
+  await page.click('#chrono-overlay .x-close');
+  await sleep(250);
+  // raise a typed problem right from the TV
+  await tvMoreCard.locator('.pv-more').click();
+  await sleep(300);
+  await page.click('#jobmenu-list .jm-problem');
+  await sleep(300);
+  check(await page.locator('#raise-overlay').isVisible(), '🚨 Problem opens the text box over the TV');
+  await page.fill('#raise-text', 'Salah alamat customer');
+  await page.click('#raise-save');
+  await sleep(800);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'TV-detail');
+    return j.problem === 'custom' && j.probLog.some(ev => ev.text === 'Salah alamat customer');
+  }), 'the typed problem reaches the server');
+  check((await page.locator('#pv-problems').textContent()).indexOf('Salah alamat customer') >= 0,
+    'and shows up in the Problems column on the TV');
   check(await page.locator('#pv-refresh').isVisible(), 'the TV header has a manual 🔄 Refresh button');
   // refresh shows % progress — manual AND auto
   await page.evaluate(() => refresh());

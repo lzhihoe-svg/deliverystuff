@@ -617,6 +617,16 @@
     cursor: pointer; box-shadow: 0 2px 6px rgba(23,27,16,.35);
   }
   .pv-sticker.on { background: #365314; color: #fff; }
+  /* ⋯ on a TV card — report a problem right from the TV.
+     Bottom-LEFT corner: top-right belongs to 🏷️ STICKER and the two must
+     never overlap, even on slim phone-width cards. */
+  .pv-more {
+    position: absolute; bottom: 6px; left: 8px; z-index: 3;
+    width: 30px; height: 30px; border-radius: 50%; border: 0; padding: 0;
+    background: rgba(31,43,19,.55); color: #fff; font-size: 17px; font-weight: 800;
+    cursor: pointer; line-height: 30px;
+  }
+  .pv-more:active { transform: scale(.94); }
   /* delivered / sent tick, sized for the TV cards */
   .pv-img-wrap .seal-tick { width: 64px; height: 64px; font-size: 38px; }
   /* ⚡ READY — waiting only for its final ✔ (Production View only) */
@@ -657,6 +667,9 @@
   /* the confirm dialog can open ON TOP of another overlay (e.g. deleting an
      inventory entry) — it must always stack above them */
   #confirm-overlay { z-index: 70; }
+  /* the ⋯ menu + chronology must paint ABOVE the TV (z-60) too */
+  #jobmenu-overlay { z-index: 63; }
+  #chrono-overlay { z-index: 65; }
   /* the raise-a-problem box can open ON TOP of the Problem page */
   #raise-overlay { z-index: 65; }
   .sheet {
@@ -2078,14 +2091,36 @@
   function moreBtn_(j) {
     return '<button class="more-btn" onclick="openJobMenu(\'' + j.id + '\')">⋯</button>';
   }
-  function openJobMenu(id) {
+  /** TV version of the ⋯ menu: just the REPORT tools (+ chronology) — the
+      proof / admin actions stay on the phone boards. */
+  function jobMenuTvHtml_(j) {
+    var out = '';
+    if (!pvProb_(j)) {
+      if (j.status === 'pending' &&
+          (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect')) {
+        out += jmItem_('jm-warn danger', 'noreceive', '❓ Haven\'t received', 'serious — tell office');
+        if (j.tab === 'postage') out += jmItem_('jm-sticker warn', 'nosticker', '🏷️ No sticker', 'tell office');
+      }
+      out += jmItem_('jm-problem danger', 'problem', '🚨 Problem', 'type it out');
+    }
+    if (j.tab === 'delivery' || j.tab === 'postage' || j.tab === 'defect') {
+      out += jmItem_('jm-chrono', 'chrono', '🕐 Chronology', 'full timeline');
+    }
+    return out;
+  }
+  /** ⋯ on a TV card — open the report menu without opening the detail. */
+  function pvMore(e, id) {
+    e.stopPropagation();
+    openJobMenu(id, true);
+  }
+  function openJobMenu(id, tv) {
     var j = findJobAll(id);
     if (!j) return;
     state.jobMenuId = id;
     document.getElementById('jobmenu-title').textContent = j.note || (PROB_TAB[j.tab] || 'Job');
     document.getElementById('jobmenu-sub').textContent =
       ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + j.customer + ' · ' : '') + (PROB_TAB[j.tab] || j.tab);
-    document.getElementById('jobmenu-list').innerHTML = jobMenuHtml_(j);
+    document.getElementById('jobmenu-list').innerHTML = tv ? jobMenuTvHtml_(j) : jobMenuHtml_(j);
     document.getElementById('jobmenu-overlay').classList.add('show');
   }
   function closeJobMenu() { document.getElementById('jobmenu-overlay').classList.remove('show'); }
@@ -3008,6 +3043,7 @@
       (wbLive > 0
         ? '<button class="pv-sticker" onclick="pvSticker(event, this)">🏷️ STICKER</button>'
         : '') +
+      '<button class="pv-more" onclick="pvMore(event, \'' + j.id + '\')">⋯</button>' +
       (liveT.length > 1
         ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
           '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +
