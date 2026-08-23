@@ -10,11 +10,18 @@
     --bg: #f1f3ea;           /* warm porcelain background */
     --card: #ffffff;
     --ink: #171b10;
-    --muted: #8b937d;
+    --muted: #6f7663;         /* ≥4.5:1 on white — small text stays readable */
     --soft: #eef1e4;         /* quiet fills (tool pills, chips) */
     --shadow: 0 1px 2px rgba(23,27,16,.05), 0 10px 26px rgba(23,27,16,.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  /* browser surfaces carry the brand too */
+  ::selection { background: var(--lime); color: var(--ink); }
+  ::placeholder { color: var(--muted); opacity: 1; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 3px solid var(--green); outline-offset: 2px;
+  }
 
   /* Scrolling happens inside #scroller, NOT on the page itself.
      Apps Script serves this page inside an iframe, and iPhones/iPads
@@ -753,13 +760,13 @@
   .perf-sum .cell .n { font-size: 20px; font-weight: 800; color: var(--blue); line-height: 1.15; }
   .perf-sum .cell .l { font-size: 10px; font-weight: 700; color: #4b5142; text-transform: uppercase; letter-spacing: .04em; }
   .perf-sum .cell .l .sub { display: block; font-size: 8.5px; font-weight: 700; color: var(--muted); text-transform: none; letter-spacing: 0; }
-  .perf-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; }
+  .perf-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; font-variant-numeric: tabular-nums; }
   .perf-table th, .perf-table td {
     border-bottom: 1px solid var(--soft); padding: 8px 5px;
     font-size: 12.5px; font-weight: 700; text-align: center;
     font-variant-numeric: tabular-nums;
   }
-  .perf-table th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 7px 5px; }
+  .perf-table th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 7px 5px; white-space: nowrap; }
   .perf-table td.d { text-align: left; white-space: nowrap; font-size: 12px; }
   .perf-table tr.today td { background: #f7fee7; }
   .perf-table .good { color: var(--green); }
@@ -1237,11 +1244,12 @@
 <div class="overlay" id="problem-overlay">
   <div class="sheet">
     <button class="x-close" onclick="closeProblems()">✕</button>
-    <h2>🚨 Problem — not received</h2>
+    <h2>🚨 Problems</h2>
     <p style="font-size:13px;color:var(--muted);margin:-6px 0 4px">
-      Jobs the factory <b>hasn't received</b>: ❌ Not Seen checks and
-      "Haven't received" reports. Office team — print the job, then press
-      <b>✅ Solved</b> and snap the printing status.
+      Every problem the factory flagged: ❌ Not Seen checks, ❓ Haven't
+      received, 🏷️ No sticker, and 🚨 typed problems. Office team — settle
+      it (print the job if needed), then press <b>✅ Solved</b> and snap
+      the printing status.
     </p>
     <div id="problem-list"></div>
   </div>
