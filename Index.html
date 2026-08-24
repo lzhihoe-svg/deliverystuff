@@ -624,6 +624,16 @@
     cursor: pointer; box-shadow: 0 2px 6px rgba(23,27,16,.35);
   }
   .pv-sticker.on { background: #365314; color: #fff; }
+  /* how this job goes out — 🛵 / 🚌 / 🤝 readable from across the factory */
+  .pv-cat {
+    position: absolute; top: 6px; left: 8px; z-index: 3;
+    border-radius: 999px; padding: 5px 12px;
+    font-size: 13px; font-weight: 900; white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(23,27,16,.3), 0 0 0 2px rgba(255,255,255,.75);
+  }
+  .pv-cat.lalamove { background: #fb923c; color: #431407; }
+  .pv-cat.bus      { background: #60a5fa; color: #172554; }
+  .pv-cat.pickup   { background: #4ade80; color: #052e16; }
   /* ⋯ on a TV card — report a problem right from the TV.
      Bottom-LEFT corner: top-right belongs to 🏷️ STICKER and the two must
      never overlap, even on slim phone-width cards. */
@@ -3052,6 +3062,9 @@
         ? '<button class="pv-sticker" onclick="pvSticker(event, this)">🏷️ STICKER</button>'
         : '') +
       '<button class="pv-more" onclick="pvMore(event, \'' + j.id + '\')">⋯</button>' +
+      (CAT_LABEL[j.category]
+        ? '<span class="pv-cat ' + j.category + '">' + CAT_LABEL[j.category] + '</span>'
+        : '') +
       (liveT.length > 1
         ? '<button class="pv-nav prev" onclick="pvFlip(event, this, -1)">‹</button>' +
           '<button class="pv-nav next" onclick="pvFlip(event, this, 1)">›</button>' +

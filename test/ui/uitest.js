@@ -1807,6 +1807,16 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'balance cards SAY the problem on a red strip');
   check((await page.locator('#pv-problems .pv-solvedline img').count()) >= 1,
     'solved cards SHOW the attached solved picture on a green strip');
+  // 🚌 / 🛵 / 🤝 — how a delivery job goes out, right on the TV card
+  const tvSealedCard = page.locator('#pv-delivery .pv-card2').filter({ hasText: 'TV-sealed' });
+  check((await tvSealedCard.locator('.pv-cat').count()) === 1,
+    'delivery TV cards carry their way-out badge (🛵 / 🚌 / 🤝)');
+  check((await tvSealedCard.locator('.pv-cat').textContent()).indexOf('Bus') >= 0,
+    '…naming the actual way out (🚌 Bus)');
+  check((await tvSealedCard.locator('.pv-cat.bus').count()) === 1,
+    '…colour-coded per way out, same colours as the phone boards');
+  check((await page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' })
+    .locator('.pv-cat').count()) === 0, 'postage cards have no way-out badge — postage has no category');
   // ⋯ on every TV card — report straight from the TV
   const tvMoreCard = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' });
   check(await tvMoreCard.locator('.pv-more').isVisible(), 'every TV card has a ⋯ button on its picture');
