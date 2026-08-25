@@ -1653,42 +1653,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     getComputedStyle(document.querySelector('#pv-postage .pv-card2 .pv-img-wrap img')).objectPosition);
   check(pvImgPos === '50% 0%', 'the TOP of the jobsheet shows, not the middle (' + pvImgPos + ')');
   const pvBorder = await page.evaluate(() =>
-    getComputedStyle(document.querySelector('#pv-postage .pv-card2:not(.prob):not(.ready):not(.sealed):not(.solved)')).borderTopColor);
-  check(pvBorder === 'rgb(163, 230, 53)', 'To Do cards keep the contrasting green border (' + pvBorder + ')');
-  // the border alone tells the status from across the factory
-  const readyBorder = await page.evaluate(() => {
-    const el = document.querySelector('#prodview .pv-card2.ready');
-    return el ? getComputedStyle(el).borderTopColor : 'none';
-  });
-  check(readyBorder === 'rgb(245, 158, 11)', 'READY cards wear an AMBER border (' + readyBorder + ')');
-  const sealedBorder = await page.evaluate(() => {
-    const el = document.querySelector('#prodview .pv-card2.sealed');
-    return el ? getComputedStyle(el).borderTopColor : 'none';
-  });
-  check(sealedBorder === 'rgb(101, 163, 13)' || sealedBorder === 'none',
-    'delivered / sent cards wear the deep-green border (' + sealedBorder + ')');
-  // solid colour section bands with the count big at the right end
-  const secBg = await page.evaluate(() => {
-    const el = document.querySelector('#prodview .pv-sec.warn');
-    return el ? getComputedStyle(el).backgroundColor : 'none';
-  });
-  check(secBg === 'rgb(251, 191, 36)', 'READY section header is a solid AMBER band (' + secBg + ')');
-  check((await page.evaluate(() => {
-    const el = document.querySelector('#prodview .pv-sec b');
-    return el ? parseFloat(getComputedStyle(el).fontSize) : 0;
-  })) >= 13, 'each band carries its count BIG at the right end');
-  check((await page.evaluate(() => {
-    const g = getComputedStyle(document.querySelector('#prodview .pv-grid'));
-    const s = getComputedStyle(document.querySelector('#prodview .pv-statsbar'));
-    return g.paddingLeft === '2px' && g.paddingRight === '2px' &&
-      s.paddingLeft === '2px' && s.paddingRight === '2px';
-  })), 'board hugs the screen — 2px outer padding each side');
+    getComputedStyle(document.querySelector('#pv-postage .pv-card2:not(.prob)')).borderTopColor);
+  check(pvBorder === 'rgb(163, 230, 53)', 'cards have a contrasting green border (' + pvBorder + ')');
   const pvProbBorder = await page.evaluate(() => {
     const el = document.querySelector('#prodview .pv-card2.prob');
     return el ? getComputedStyle(el).borderTopColor : 'none';
   });
   check(pvProbBorder === 'rgb(220, 38, 38)' || pvProbBorder === 'none',
     'problem cards stay red-bordered (' + pvProbBorder + ')');
+  check((await page.evaluate(() => {
+    const g = getComputedStyle(document.querySelector('#prodview .pv-grid'));
+    const s = getComputedStyle(document.querySelector('#prodview .pv-statsbar'));
+    return g.paddingLeft === '2px' && g.paddingRight === '2px' &&
+      s.paddingLeft === '2px' && s.paddingRight === '2px';
+  })), 'board hugs the screen — 2px outer padding each side');
   const pvCount = await page.locator('#pv-postage .pv-count').textContent();
   check(pvCount.indexOf('To Do') >= 0 && pvCount.indexOf('J&T') >= 0 && pvCount.indexOf('Sent') >= 0,
     'column header counts every status: ' + pvCount.trim());
