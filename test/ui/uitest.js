@@ -2514,9 +2514,18 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await dpage.evaluate(() => {
     const g = getComputedStyle(document.querySelector('#prodview .pv-grid'));
     const s = getComputedStyle(document.querySelector('#prodview .pv-statsbar'));
-    return g.paddingLeft === '24px' && g.paddingRight === '24px' &&
-      s.paddingLeft === '24px' && s.paddingRight === '24px';
-  })), 'big screens get the 24px TV-safe gap each side (TVs crop the picture edges)');
+    return g.paddingLeft === '10px' && g.paddingRight === '10px' &&
+      s.paddingLeft === '10px' && s.paddingRight === '10px';
+  })), 'big screens get the 10px TV-safe gap each side (TVs crop the picture edges)');
+  // the Problems tile is the slimmest — its numbers must never clip
+  check((await dpage.evaluate(() => {
+    const tiles = document.querySelectorAll('#pv-statsbar .pv-sb');
+    const tile = tiles[tiles.length - 1];
+    if (!tile) return false;
+    const cells = tile.querySelectorAll('.pv-nb');
+    const last = cells[cells.length - 1];
+    return !!last && last.getBoundingClientRect().right <= tile.getBoundingClientRect().right - 1;
+  })), 'Problems tile shows BOTH numbers fully — nothing cut off');
   await dpage.click('#prodview .x-close');
   await sleep(250);
 
