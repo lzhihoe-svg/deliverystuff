@@ -595,6 +595,13 @@
   .pv-card2.prob { border-color: #dc2626; background: #fef2f2; box-shadow: 0 2px 7px rgba(220,38,38,.25); }
   /* solved problem — same card, turned GREEN; click shows the solved picture */
   .pv-card2.solved { border-color: #16a34a; background: #dcfce7; box-shadow: 0 2px 7px rgba(22,163,74,.3); }
+  /* READY — the whole card washed light green (30%) so "siap, waiting to
+     go out" reads from across the factory; ⚡ and buttons stay on top */
+  .pv-card2.ready { position: relative; }
+  .pv-card2.ready::after {
+    content: ''; position: absolute; inset: 0; z-index: 4;
+    background: rgba(134, 239, 172, .3); pointer-events: none;
+  }
   /* the WHOLE jobsheet visible — contained, never cropped, top-anchored */
   .pv-img-wrap { position: relative; background: #fff; border-bottom: 1.5px solid #d9f99d; }
   .pv-img-wrap img {
@@ -3052,7 +3059,8 @@
         liveBefore++;
       }
     }
-    return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
+    return '<div class="pv-card2' + (pvProb_(j) ? ' prob'
+      : j.problem === 'printed' ? ' solved' : readyFlash ? ' ready' : '') + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
       '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0" data-wb="' + wbLive + '">' +
       imgTag(liveT[0] || '') +

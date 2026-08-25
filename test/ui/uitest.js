@@ -1749,6 +1749,18 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     '⚡ only sits on cards, never on sealed ones');
   check((await page.locator('#delivery-list .ready-flash, #postage-list .ready-flash').count()) === 0,
     '…and only in Production View, not on the normal boards');
+  // 30% light-green wash over the WHOLE ready card
+  check((await page.evaluate(() => {
+    const el = document.querySelector('#prodview .pv-card2.ready');
+    return !!el && getComputedStyle(el, '::after').backgroundColor === 'rgba(134, 239, 172, 0.3)';
+  })), 'READY cards wear a 30% light-green wash over the whole card');
+  check((await page.evaluate(() => document.querySelectorAll('#prodview .pv-card2.ready').length ===
+    document.querySelectorAll('#prodview .ready-flash').length)),
+    'the wash and the ⚡ mark exactly the same cards');
+  check((await page.evaluate(() => {
+    const el = document.querySelector('#prodview .pv-card2:not(.ready):not(.prob):not(.solved)');
+    return !!el && getComputedStyle(el, '::after').backgroundColor !== 'rgba(134, 239, 172, 0.3)';
+  })), 'To Do / delivered cards stay clean — no wash');
   // hover ‹ › on the card flips its photos WITHOUT opening the detail
   const flipWrap = page.locator('#pv-postage .pv-card2').filter({ hasText: 'TV-detail' }).locator('.pv-img-wrap');
   await flipWrap.hover();
