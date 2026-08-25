@@ -1754,9 +1754,34 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const el = document.querySelector('#prodview .pv-card2.ready');
     return !!el && getComputedStyle(el, '::after').backgroundColor === 'rgba(134, 239, 172, 0.3)';
   })), 'READY cards wear a 30% light-green wash over the whole card');
-  check((await page.evaluate(() => document.querySelectorAll('#prodview .pv-card2.ready').length ===
-    document.querySelectorAll('#prodview .ready-flash').length)),
-    'the wash and the ⚡ mark exactly the same cards');
+  check((await page.evaluate(() => document.querySelectorAll('#prodview .pv-card2.ready .ready-flash').length ===
+    document.querySelectorAll('#prodview .pv-card2.ready').length)),
+    'every washed card carries the ⚡ too');
+  // a SOLVED-problem job that is ready still gets the wash (solved ≠ blocked)
+  check((await page.evaluate(() => {
+    const api = window.__mockapi, db = window.__mockdb;
+    const j = api.addJob({ tab: 'postage', category: '', note: 'TV-solved-ready', customer: 'SR',
+      photos: ['sr1'], thumbs: ['sr1'], jsCount: 1 });
+    const dbj = db.jobs.find(x => x.id === j.id);
+    dbj.status = 'done'; dbj.doneAt = Date.now(); dbj.problem = 'printed';
+    dbj.printThumbId = 'sr-print'; dbj.probLog = [
+      { k: 'report', kind: 'reported', at: Date.now() - 1000 },
+      { k: 'solve', at: Date.now(), photoId: 'sr-print', thumbId: 'sr-print' }];
+    refresh();
+    return true;
+  })), 'seeded a ready job whose problem was already solved');
+  await sleep(600);
+  check((await page.evaluate(() => {
+    const cards = document.querySelectorAll('#pv-postage .pv-card2.solved.ready');
+    return cards.length >= 1 &&
+      getComputedStyle(cards[0], '::after').backgroundColor === 'rgba(134, 239, 172, 0.3)';
+  })), 'a SOLVED job that is ready is washed green too — solved never hides ready');
+  await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'TV-solved-ready');
+    if (j) j.status = 'archived';
+    refresh();
+  });
+  await sleep(500);
   check((await page.evaluate(() => {
     const el = document.querySelector('#prodview .pv-card2:not(.ready):not(.prob):not(.solved)');
     return !!el && getComputedStyle(el, '::after').backgroundColor !== 'rgba(134, 239, 172, 0.3)';

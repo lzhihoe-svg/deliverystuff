@@ -3060,7 +3060,7 @@
       }
     }
     return '<div class="pv-card2' + (pvProb_(j) ? ' prob'
-      : j.problem === 'printed' ? ' solved' : readyFlash ? ' ready' : '') + '" ' +
+      : (j.problem === 'printed' ? ' solved' : '') + (readyFlash ? ' ready' : '')) + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
       '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0" data-wb="' + wbLive + '">' +
       imgTag(liveT[0] || '') +
