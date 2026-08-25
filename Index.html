@@ -522,7 +522,7 @@
      each tile sits exactly above its own column */
   .pv-statsbar {
     display: grid; grid-template-columns: 35fr 35fr 15fr 15fr;
-    gap: 10px; padding: 10px 2px 0;   /* 2px outer edge each side */
+    gap: 10px; padding: 10px 12px 0;
   }
   .pv-sb {
     background: #fff; border-radius: 14px; padding: 7px 14px;
@@ -547,7 +547,14 @@
   /* Delivery 2.5 · Postage 2.5 · Defect 1 · Problems 1 */
   .pv-grid {
     flex: 1; display: grid; grid-template-columns: 35fr 35fr 15fr 15fr;
-    gap: 10px; padding: 10px 2px 12px;   /* 2px outer edge each side */ min-height: 0;
+    gap: 10px; padding: 10px 12px 12px; min-height: 0;
+  }
+  /* TV-safe gap: real TVs crop the picture edges (overscan), so on big
+     screens the board keeps a wider margin left and right */
+  @media (min-width: 701px) {
+    .pv-head { padding: 12px 24px; }
+    .pv-statsbar { padding: 10px 24px 0; }
+    .pv-grid { padding: 10px 24px 12px; }
   }
   /* the slim Defect + Problems columns fit ONE card per row */
   #pv-defect .pv-grid2, #pv-problems .pv-grid2 { grid-template-columns: 1fr; }

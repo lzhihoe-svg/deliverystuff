@@ -1663,10 +1663,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'problem cards stay red-bordered (' + pvProbBorder + ')');
   check((await page.evaluate(() => {
     const g = getComputedStyle(document.querySelector('#prodview .pv-grid'));
-    const s = getComputedStyle(document.querySelector('#prodview .pv-statsbar'));
-    return g.paddingLeft === '2px' && g.paddingRight === '2px' &&
-      s.paddingLeft === '2px' && s.paddingRight === '2px';
-  })), 'board hugs the screen — 2px outer padding each side');
+    return g.paddingLeft === '12px' && g.paddingRight === '12px';
+  })), 'phones keep the tight 12px board padding (TV-safe gap is big screens only)');
   const pvCount = await page.locator('#pv-postage .pv-count').textContent();
   check(pvCount.indexOf('To Do') >= 0 && pvCount.indexOf('J&T') >= 0 && pvCount.indexOf('Sent') >= 0,
     'column header counts every status: ' + pvCount.trim());
@@ -2507,6 +2505,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await dpage.mouse.up();
   await sleep(700);
   check((await dpage.locator('#want-responded').textContent()).indexOf('Got it') >= 0, 'decision swipe works on desktop');
+
+  console.log('\n-- desktop / TV: overscan-safe board gap --');
+  await dpage.click('#menu-btn');
+  await sleep(250);
+  await dpage.click('#prodview-btn');
+  await sleep(600);
+  check((await dpage.evaluate(() => {
+    const g = getComputedStyle(document.querySelector('#prodview .pv-grid'));
+    const s = getComputedStyle(document.querySelector('#prodview .pv-statsbar'));
+    return g.paddingLeft === '24px' && g.paddingRight === '24px' &&
+      s.paddingLeft === '24px' && s.paddingRight === '24px';
+  })), 'big screens get the 24px TV-safe gap each side (TVs crop the picture edges)');
+  await dpage.click('#prodview .x-close');
+  await sleep(250);
 
   console.log('\n-- desktop viewer: arrows + keyboard --');
   await dpage.click('#nav-delivery');
