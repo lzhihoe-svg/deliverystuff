@@ -504,41 +504,49 @@
   .pv-title { font-size: 20px; font-weight: 800; letter-spacing: .06em; }
   /* big LIVE clock + date on the TV */
   .pv-clock { margin-left: auto; text-align: right; }
-  .pv-clock .t { font-size: 32px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
-  .pv-clock .d { font-size: 12.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .pv-clock .t { font-size: 54px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .01em; color: var(--blue); }
+  .pv-clock .d { font-size: 14px; font-weight: 800; color: var(--muted); margin-top: 3px; letter-spacing: .06em; text-transform: uppercase; }
   .pv-upd {
     font-size: 13px; font-weight: 700; color: var(--blue);
     background: var(--lime-soft); border-radius: 999px; padding: 6px 14px;
   }
-  /* phones: compact header so ✕ always stays reachable */
+  /* phones: compact header so ✕ always stays reachable; TV-size type scales down */
   @media (max-width: 700px) {
     .pv-head { gap: 8px; padding: 10px 12px; }
     .pv-title { font-size: 15px; }
     .pv-clock .t { font-size: 20px; }
     .pv-clock .d { display: none; }
     .pv-upd { display: none; }
+    .pv-nb b { font-size: 24px; }
+    .pv-sb { gap: 10px; padding: 6px 10px; }
+    .pv-sb h4 { font-size: 12px; }
+    .pv-sec { font-size: 11px; padding: 5px 9px; }
+    .pv-sec b { font-size: 14px; }
+    .pv-cust { font-size: 14px; }
+    .pv-note { font-size: 11.5px; }
+    .pv-body2 { height: 62px; }
   }
   /* 📊 horizontal stats bar on top — SAME grid as the columns below, so
      each tile sits exactly above its own column */
   .pv-statsbar {
     display: grid; grid-template-columns: 35fr 35fr 15fr 15fr;
-    gap: 10px; padding: 10px 12px 0;
+    gap: 10px; padding: 10px 2px 0;   /* 2px outer edge each side */
   }
   .pv-sb {
-    background: #fff; border-radius: 14px; padding: 7px 14px;
-    box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px;
+    background: #fff; border-radius: 14px; padding: 8px 16px;
+    box-shadow: var(--shadow); display: flex; align-items: center; gap: 18px;
     min-width: 0; overflow: hidden;
   }
-  .pv-sb h4 { font-size: 13.5px; font-weight: 800; letter-spacing: .03em; margin-right: auto; white-space: nowrap; }
+  .pv-sb h4 { font-size: 15px; font-weight: 900; letter-spacing: .04em; margin-right: auto; white-space: nowrap; }
   /* KPI: BIG colour-coded number with a small label under it */
-  .pv-nb { text-align: center; min-width: 48px; white-space: nowrap; }
+  .pv-nb { text-align: center; min-width: 52px; white-space: nowrap; }
   .pv-nb b {
-    display: block; font-size: 25px; line-height: 1.05; font-weight: 800;
+    display: block; font-size: 42px; line-height: 1.02; font-weight: 900;
     font-variant-numeric: tabular-nums; color: #334155;
   }
   .pv-nb .l {
-    display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
-    text-transform: uppercase; color: var(--muted); margin-top: 1px;
+    display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin-top: 2px;
   }
   .pv-nb.good b { color: #4d7c0f; }
   .pv-nb.amber b { color: #b45309; }
@@ -547,7 +555,7 @@
   /* Delivery 2.5 · Postage 2.5 · Defect 1 · Problems 1 */
   .pv-grid {
     flex: 1; display: grid; grid-template-columns: 35fr 35fr 15fr 15fr;
-    gap: 10px; padding: 10px 12px 12px; min-height: 0;
+    gap: 10px; padding: 10px 2px 12px; min-height: 0;   /* 2px outer edge each side */
   }
   /* the slim Defect + Problems columns fit ONE card per row */
   #pv-defect .pv-grid2, #pv-problems .pv-grid2 { grid-template-columns: 1fr; }
@@ -576,15 +584,20 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .pv-count b { color: var(--blue); font-size: 12px; }
-  /* status group inside a column */
+  /* status group inside a column — SOLID colour band with a big count,
+     countable from across the factory without reading a word */
   .pv-sec {
-    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--muted); margin: 10px 2px 6px;
-    border-bottom: 1.5px solid var(--soft); padding-bottom: 4px;
+    font-size: 13.5px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+    color: #4b5142; margin: 10px 0 8px; padding: 6px 13px;
+    background: var(--soft); border-radius: 10px;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap; overflow: hidden;
   }
+  .pv-sec b { margin-left: auto; font-size: 19px; font-variant-numeric: tabular-nums; }
   .pv-sec:first-child { margin-top: 2px; }
-  .pv-sec.warn { color: #b91c1c; border-color: #fecaca; }
-  .pv-sec.good { color: var(--blue); border-color: var(--lime-soft); }
+  .pv-sec.warn { background: #fbbf24; color: #201302; }
+  .pv-sec.good { background: var(--green); color: #fff; }
+  .pv-sec.bal { background: #ef4444; color: #fff; }
   /* 2-up job grid — jobsheet picture on top, details under it */
   .pv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
   /* contrasting green cards — clearly separated from each other */
@@ -595,6 +608,9 @@
   .pv-card2.prob { border-color: #dc2626; background: #fef2f2; box-shadow: 0 2px 7px rgba(220,38,38,.25); }
   /* solved problem — same card, turned GREEN; click shows the solved picture */
   .pv-card2.solved { border-color: #16a34a; background: #dcfce7; box-shadow: 0 2px 7px rgba(22,163,74,.3); }
+  /* the border tells the status from a distance: amber = waiting its ✔, deep green = out the door */
+  .pv-card2.ready { border-color: #f59e0b; box-shadow: 0 2px 7px rgba(245,158,11,.3); }
+  .pv-card2.sealed { border-color: var(--green); background: #f0fdf4; box-shadow: 0 2px 7px rgba(101,163,13,.3); }
   /* the WHOLE jobsheet visible — contained, never cropped, top-anchored */
   .pv-img-wrap { position: relative; background: #fff; border-bottom: 1.5px solid #d9f99d; }
   .pv-img-wrap img {
@@ -669,10 +685,11 @@
   }
   .pv-solvedline img { width: 34px; height: 34px; object-fit: cover; border-radius: 7px; box-shadow: 0 0 0 2px #fff; flex: 0 0 auto; }
   /* fixed body height → EVERY card is exactly the same size */
-  .pv-body2 { padding: 5px 7px 7px; height: 58px; overflow: hidden; }
-  .pv-cust { font-size: 12px; font-weight: 800; color: #3730a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pv-note { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pv-st { font-size: 10.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  /* names readable from metres away */
+  .pv-body2 { padding: 6px 9px 8px; height: 74px; overflow: hidden; }
+  .pv-cust { font-size: 20px; font-weight: 900; color: #1c2410; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pv-note { font-size: 13.5px; font-weight: 600; color: #4b5142; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pv-st { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
   .pv-st .chip { font-size: 9.5px; padding: 1px 6px; margin: 0 0 0 3px; }
 
   /* ---------- modals (always centered) ---------- */
@@ -3052,7 +3069,9 @@
         liveBefore++;
       }
     }
-    return '<div class="pv-card2' + (pvProb_(j) ? ' prob' : (j.problem === 'printed' ? ' solved' : '')) + '" ' +
+    var cardCls = pvProb_(j) ? ' prob' : j.problem === 'printed' ? ' solved'
+      : readyFlash ? ' ready' : sealed ? ' sealed' : '';
+    return '<div class="pv-card2' + cardCls + '" ' +
       'onclick="openPvDetail(\'' + j.id + '\')">' +
       '<div class="pv-img-wrap' + (sealed ? ' media-sealed' : '') + '" data-thumbs="' + liveT.join(',') + '" data-idx="0" data-wb="' + wbLive + '">' +
       imgTag(liveT[0] || '') +
@@ -3267,7 +3286,7 @@
         if (!grp.jobs.length) return;
         any = true;
         html += '<div class="pv-sec' + (grp.cls ? ' ' + grp.cls : '') + '">' +
-          grp.lbl + ' (' + grp.jobs.length + ')</div>' +
+          grp.lbl + '<b>' + grp.jobs.length + '</b></div>' +
           '<div class="pv-grid2">' +
           grp.jobs.map(function (jj) { return pvCard_(jj); }).join('') + '</div>';
       });
@@ -3283,11 +3302,11 @@
     });
     var ph = '<div class="pv-count">🚨 Balance <b>' + probs.length + '</b> · ✅ Solved <b>' + solvedJobs.length + '</b></div>';
     if (probs.length) {
-      ph += '<div class="pv-sec warn">🚨 Balance — waiting (' + probs.length + ')</div>' +
+      ph += '<div class="pv-sec bal">🚨 Balance — waiting<b>' + probs.length + '</b></div>' +
         '<div class="pv-grid2">' + probs.map(function (j) { return pvCard_(j, true); }).join('') + '</div>';
     }
     if (solvedJobs.length) {
-      ph += '<div class="pv-sec good">✅ Solved (' + solvedJobs.length + ')</div>' +
+      ph += '<div class="pv-sec good">✅ Solved<b>' + solvedJobs.length + '</b></div>' +
         '<div class="pv-grid2">' + solvedJobs.map(function (j) { return pvCard_(j, true); }).join('') + '</div>';
     }
     if (!probs.length && !solvedJobs.length) {
