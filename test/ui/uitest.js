@@ -1747,6 +1747,30 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     '⚡ only sits on cards, never on sealed ones');
   check((await page.locator('#delivery-list .ready-flash, #postage-list .ready-flash').count()) === 0,
     '…and only in Production View, not on the normal boards');
+  // 🕒 Ready by … — the due chip shows on TV cards like on the phone boards
+  await page.evaluate(() => {
+    const api = window.__mockapi, db = window.__mockdb;
+    const j = api.addJob({ tab: 'delivery', category: 'bus', note: 'TV-due', customer: 'DUE CO',
+      photos: ['dd1'], thumbs: ['dd1'], jsCount: 1, dueAt: Date.now() + 26 * 3600 * 1000 });
+    const l = api.addJob({ tab: 'delivery', category: '', note: 'TV-late', customer: 'LATE CO',
+      photos: ['dl1'], thumbs: ['dl1'], jsCount: 1, dueAt: Date.now() - 3600 * 1000 });
+    refresh();
+  });
+  await sleep(600);
+  check((await page.locator('#pv-delivery .pv-card2').filter({ hasText: 'DUE CO' })
+    .locator('.chip.due').textContent()).indexOf('Ready by') >= 0,
+    'TV cards show the 🕒 Ready by chip, same as the phone boards');
+  check((await page.locator('#pv-delivery .pv-card2').filter({ hasText: 'LATE CO' })
+    .locator('.chip.late').textContent()).indexOf('LATE') >= 0,
+    'overdue TV cards still show the red LATE chip (now with when it was due)');
+  await page.evaluate(() => {
+    ['TV-due', 'TV-late'].forEach(n => {
+      const j = window.__mockdb.jobs.find(x => x.note === n);
+      if (j) j.status = 'archived';
+    });
+    refresh();
+  });
+  await sleep(500);
   // 30% light-green wash over the WHOLE ready card
   check((await page.evaluate(() => {
     const el = document.querySelector('#prodview .pv-card2.ready');

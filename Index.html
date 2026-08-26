@@ -695,7 +695,7 @@
   .pv-body2 { padding: 5px 7px 7px; height: 58px; overflow: hidden; }
   .pv-cust { font-size: 12px; font-weight: 800; color: #3730a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pv-note { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pv-st { font-size: 10.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .pv-st { font-size: 10.5px; font-weight: 700; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pv-st .chip { font-size: 9.5px; padding: 1px 6px; margin: 0 0 0 3px; }
 
   /* ---------- modals (always centered) ---------- */
@@ -3052,7 +3052,8 @@
       DOUBLE-CLICK opens the fullscreen viewer (‹ › through all its photos). */
   function pvCard_(j, showTab) {
     var chips = '';
-    if (j.status === 'pending' && j.dueAt && Number(j.dueAt) < Date.now()) chips += '<span class="chip late">🚨 LATE</span>';
+    // the same "🕒 Ready by …" / "⏰ … min left" / "🚨 LATE" chip as the phone boards
+    if (j.status === 'pending') chips += ' ' + dueChip(j);
     if (pvProb_(j)) chips += '<span class="chip old">🚨 PROBLEM</span>';
     if (j.problem === 'printed') chips += '<span class="chip passed">✅ SOLVED</span>';
     var when = j.status === 'pending' ? timeAgo(j.createdAt) : timeAgo(j.doneAt || j.createdAt);
@@ -3246,7 +3247,7 @@
       '</div><div style="margin-top:12px">';
     if (j.customer && j.customer !== 'Unassigned') html += '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ';
     if (j.category) html += '<span class="chip ' + j.category + '">' + (CAT_LABEL[j.category] || j.category) + '</span> ';
-    if (j.status === 'pending' && j.dueAt && Number(j.dueAt) < Date.now()) html += '<span class="chip late">🚨 LATE</span>';
+    if (j.status === 'pending') html += dueChip(j);
     html += '</div>';
     if (j.note) html += '<div class="note" style="margin-top:6px">📢 ' + esc(j.note) + '</div>';
     html += '<div class="meta" style="font-size:12.5px;color:var(--muted)">' +
