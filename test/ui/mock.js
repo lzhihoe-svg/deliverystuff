@@ -48,12 +48,23 @@
       return { ok: true, at: ts, saved: saved };
     },
     getStockTake: function () {
-      var latest = {}, lastAt = 0;
+      var latest = {}, lastAt = 0, subs = {};
       db.inv.forEach(function (r) {
         latest[r.item] = { qty: r.qty, at: r.at, by: r.by };
         if (r.at > lastAt) lastAt = r.at;
+        var key = String(r.at);
+        if (!subs[key]) subs[key] = { by: r.by || '', items: {} };
+        subs[key].items[r.item] = 1;
+      });
+      var names = [];
+      STOCK_SECTIONS.forEach(function (sec) { sec.items.forEach(function (it) { names.push(it.name); }); });
+      var fullAt = 0, fullBy = '';
+      Object.keys(subs).forEach(function (key) {
+        var covered = names.every(function (n) { return subs[key].items[n]; });
+        if (covered && Number(key) > fullAt) { fullAt = Number(key); fullBy = subs[key].by; }
       });
       return {
+        fullAt: fullAt, fullBy: fullBy,
         sections: STOCK_SECTIONS.map(function (sec) {
           return { name: sec.name, hint: sec.hint || '', items: sec.items.map(function (it) {
             var l = latest[it.name];

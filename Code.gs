@@ -1426,9 +1426,11 @@ function submitStockTake(values, by) {
   return { ok: true, at: ts, saved: saved };
 }
 
-/** The catalog with each item's LATEST counted value (+ when and by whom). */
+/** The catalog with each item's LATEST counted value (+ when and by whom),
+    plus fullAt/fullBy: the last time ONE submission covered EVERY item —
+    the boss prefers whole-list counts over one-by-one updates. */
 function getStockTake() {
-  var latest = {}, lastAt = 0;
+  var latest = {}, lastAt = 0, subs = {};
   var sh = invSheet_();
   var last = sh.getLastRow();
   if (last >= 2) {
@@ -1437,7 +1439,22 @@ function getStockTake() {
       var r = rows[i];
       latest[String(r[2])] = { qty: Number(r[3]) || 0, at: r[1], by: r[5] || '' };
       if (Number(r[1]) > lastAt) lastAt = Number(r[1]);
+      var key = String(r[1]); // one submission = one shared timestamp
+      if (!subs[key]) subs[key] = { by: r[5] || '', items: {} };
+      subs[key].items[String(r[2])] = 1;
     }
+  }
+  var names = [];
+  for (var s2 = 0; s2 < STOCK_SECTIONS.length; s2++) {
+    for (var k2 = 0; k2 < STOCK_SECTIONS[s2].items.length; k2++) names.push(STOCK_SECTIONS[s2].items[k2].name);
+  }
+  var fullAt = 0, fullBy = '';
+  for (var key2 in subs) {
+    var covered = true;
+    for (var n = 0; n < names.length; n++) {
+      if (!subs[key2].items[names[n]]) { covered = false; break; }
+    }
+    if (covered && Number(key2) > fullAt) { fullAt = Number(key2); fullBy = subs[key2].by; }
   }
   var sections = [];
   for (var s = 0; s < STOCK_SECTIONS.length; s++) {
@@ -1452,7 +1469,7 @@ function getStockTake() {
     }
     sections.push({ name: sec.name, hint: sec.hint || '', items: items });
   }
-  return { sections: sections, lastAt: lastAt };
+  return { sections: sections, lastAt: lastAt, fullAt: fullAt, fullBy: fullBy };
 }
 
 /**

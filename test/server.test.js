@@ -1123,6 +1123,23 @@ console.log('\n== 📦 stock count (staff key in, admin views) ==');
   check(ctx.getStockTake().sections[0].items[0].by === 'admin', 'and remembers who counted');
   check(r2.at >= r.at, 'counting history stays in the sheet (auditable)');
 
+  // 🗒️ FULL count tracking: partial submissions never set fullAt
+  // (submissions are grouped by timestamp — tick the clock so each one is distinct)
+  const tick = () => { const t = Date.now(); while (Date.now() === t); };
+  check(ctx.getStockTake().fullAt === 0, 'partial counts do NOT count as a full stock take');
+  const everything = [];
+  ctx.getStockTake().sections.forEach(sec => sec.items.forEach(it => everything.push({ item: it.name, qty: 2 })));
+  tick();
+  const rf = ctx.submitStockTake(everything, 'staff');
+  const tf = ctx.getStockTake();
+  check(tf.fullAt === rf.at && tf.fullBy === 'staff',
+    'one submission covering EVERY item = full count, stamped with when + by whom');
+  tick();
+  ctx.submitStockTake([{ item: 'Eyelet', qty: 9 }], 'admin');
+  const tf2 = ctx.getStockTake();
+  check(tf2.fullAt === rf.at && tf2.lastAt > tf2.fullAt,
+    'later partial updates move lastAt but never the full-count stamp');
+
   // stock lives in its OWN sheet — the job boards are untouched
   check(ctx.getAllData().counts.want === 0 && ctx.getJobs('postage').length === 0,
     'stock counts never leak into the job boards');

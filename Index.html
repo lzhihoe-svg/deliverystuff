@@ -2220,32 +2220,62 @@
       h += '</table>';
     });
     document.getElementById('inv-body').innerHTML = h;
-    document.getElementById('inv-last').textContent = invData.lastAt
-      ? '🕒 Last count ' + timeAgo(invData.lastAt) + ' — saved in the Inventory tab of the Google Sheet'
-      : 'First count! Values save into the Inventory tab of the Google Sheet.';
+    // the WHOLE-list count is the one that matters — say when it last happened
+    var el = document.getElementById('inv-last');
+    if (invData.fullAt) {
+      el.innerHTML = '✅ <b>WHOLE list</b> last counted ' + timeAgo(invData.fullAt) +
+        ' · by ' + esc(invData.fullBy || 'staff') +
+        (invData.lastAt > invData.fullAt ? ' — some items updated since' : '');
+      el.style.color = '';
+    } else {
+      el.textContent = '⚠️ Never counted ALL in one go — fill every item, then Submit';
+      el.style.color = '#b45309';
+    }
+    document.querySelectorAll('#inv-body .inv-in').forEach(function (inp) {
+      inp.addEventListener('input', updInvBtn_);
+    });
+    updInvBtn_();
+  }
+  /** Live X/Y on the Submit button — full list = full count. */
+  function updInvBtn_() {
+    var all = document.querySelectorAll('#inv-body .inv-in'), filled = 0;
+    all.forEach(function (i) { if (i.value !== '') filled++; });
+    document.getElementById('inv-submit').textContent =
+      '📤 Submit stock count (' + filled + '/' + all.length + ')';
   }
   function submitStockTake() {
     var values = [];
+    var total = document.querySelectorAll('#inv-body .inv-in').length;
     document.querySelectorAll('#inv-body .inv-in').forEach(function (inp) {
       if (inp.value !== '' && Number(inp.value) >= 0) {
         values.push({ item: inp.getAttribute('data-item'), qty: Number(inp.value) });
       }
     });
     if (!values.length) { toast('🔢 Key in at least one stock value first'); return; }
-    toast('📤 Submitting stock count…');
-    gsCall('submitStockTake', [values, state.role],
-      function (res) {
-        invData.lastAt = res.at;
-        invData.sections.forEach(function (sec) {
-          sec.items.forEach(function (it) {
-            var hit = values.filter(function (v) { return v.item === it.name; })[0];
-            if (hit) { it.qty = hit.qty; it.at = res.at; it.by = state.role === 'admin' ? 'admin' : 'staff'; }
+    function doSubmit() {
+      toast('📤 Submitting stock count…');
+      gsCall('submitStockTake', [values, state.role],
+        function (res) {
+          invData.lastAt = res.at;
+          var who = state.role === 'admin' ? 'admin' : 'staff';
+          if (values.length === total) { invData.fullAt = res.at; invData.fullBy = who; }
+          invData.sections.forEach(function (sec) {
+            sec.items.forEach(function (it) {
+              var hit = values.filter(function (v) { return v.item === it.name; })[0];
+              if (hit) { it.qty = hit.qty; it.at = res.at; it.by = who; }
+            });
           });
-        });
-        renderInventory();
-        toast('✅ Stock count submitted — ' + res.saved + ' item' + (res.saved > 1 ? 's' : '') + ' saved!');
-      },
-      function (e) { toast('⚠️ ' + errMsg_(e)); });
+          renderInventory();
+          toast('✅ Stock count submitted — ' + res.saved + ' item' + (res.saved > 1 ? 's' : '') + ' saved!');
+        },
+        function (e) { toast('⚠️ ' + errMsg_(e)); });
+    }
+    if (values.length < total) {
+      askConfirm('Only ' + values.length + ' of ' + total + ' items counted. Boss prefers the WHOLE list updated in one go — submit the partial count anyway?',
+        '📤 Submit partial count', doSubmit);
+    } else {
+      doSubmit();
+    }
   }
 
   /** PUSH UP (Checking page): send a swiped jobsheet BACK to the front of
