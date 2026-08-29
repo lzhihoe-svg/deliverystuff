@@ -283,6 +283,9 @@
   .inv-table.stock td { border-bottom: 1px solid var(--soft); padding: 8px 8px; font-size: 13.5px; font-weight: 700; }
   .inv-table.stock tr.hd td { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 7px 8px; }
   .inv-table.stock td.stk { text-align: right; width: 110px; }
+  /* per-item: when it was last counted and by whom */
+  .inv-table.stock td.nm .upd { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 1px; }
+  .inv-table.stock td.nm .upd.never { color: #b45309; }
   .inv-table.stock .inv-in {
     width: 90px; text-align: center; font-size: 15px; font-weight: 800;
     border: 1.5px solid #cfe3ad; border-radius: 10px; padding: 7px 4px; background: #fff;
@@ -2205,7 +2208,11 @@
         (sec.hint ? '<span class="inv-hint">' + esc(sec.hint) + '</span>' : '') + '</div>';
       h += '<table class="inv-table stock"><tr class="hd"><td>Type</td><td class="stk">Stock</td></tr>';
       sec.items.forEach(function (it) {
-        h += '<tr><td class="nm">' + esc(it.name) + '</td>' +
+        h += '<tr><td class="nm">' + esc(it.name) +
+          (it.at
+            ? '<span class="upd">🕒 ' + timeAgo(it.at) + (it.by ? ' · by ' + esc(it.by) : '') + '</span>'
+            : '<span class="upd never">🕒 never counted yet</span>') +
+          '</td>' +
           '<td class="stk"><input type="number" min="0" inputmode="numeric" class="inv-in" data-item="' + esc(it.name) +
             '" value="' + (it.qty === '' ? '' : it.qty) + '"></td></tr>';
       });
@@ -2231,7 +2238,7 @@
         invData.sections.forEach(function (sec) {
           sec.items.forEach(function (it) {
             var hit = values.filter(function (v) { return v.item === it.name; })[0];
-            if (hit) { it.qty = hit.qty; it.at = res.at; }
+            if (hit) { it.qty = hit.qty; it.at = res.at; it.by = state.role === 'admin' ? 'admin' : 'staff'; }
           });
         });
         renderInventory();

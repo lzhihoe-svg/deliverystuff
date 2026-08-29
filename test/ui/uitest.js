@@ -2073,6 +2073,19 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.evaluate(() => window.__mockdb.inv.some(r => r.item === 'Paper - Sublimation' && r.qty === 0)),
     'ZERO stock saves correctly');
   check((await page.locator('#inv-last').textContent()).indexOf('Last count') >= 0, 'last-count time shows after submit');
+  // per-item last-updated line: when + by whom
+  const eyeletUpd = await page.evaluate(() => {
+    const inp = document.querySelector('#inv-body .inv-in[data-item="Eyelet"]');
+    const upd = inp.closest('tr').querySelector('.upd');
+    return upd ? upd.textContent : '';
+  });
+  check(eyeletUpd.indexOf('🕒') >= 0 && eyeletUpd.indexOf('by staff') >= 0,
+    'counted items show WHEN and BY WHOM they were last updated (' + eyeletUpd.trim() + ')');
+  check(await page.evaluate(() => {
+    const inp = document.querySelector('#inv-body .inv-in[data-item="Interlock"]');
+    const upd = inp.closest('tr').querySelector('.upd.never');
+    return !!upd && upd.textContent.indexOf('never counted') >= 0;
+  }), 'items nobody counted yet say "never counted yet" in amber');
   await page.evaluate(() => closeInventory());
   await sleep(200);
   await page.evaluate(() => setRole('admin', '1234'));
@@ -2081,6 +2094,18 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await sleep(500);
   check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').inputValue()) === '4',
     'admin opens the page and SEES the staff counts prefilled');
+  check(await page.evaluate(() => {
+    const inp = document.querySelector('#inv-body .inv-in[data-item="Eyelet"]');
+    return inp.closest('tr').querySelector('.upd').textContent.indexOf('by staff') >= 0;
+  }), '…and sees WHO counted each item (by staff), fresh from the server');
+  // admin re-counts one item — the line flips to "by admin"
+  await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('5');
+  await page.click('#inv-submit');
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const inp = document.querySelector('#inv-body .inv-in[data-item="Ink - Red"]');
+    return inp.closest('tr').querySelector('.upd').textContent.indexOf('by admin') >= 0;
+  }), 'admin re-count updates the line to "by admin" straight away');
   await page.evaluate(() => closeInventory());
   await sleep(200);
   // empty submission blocked
