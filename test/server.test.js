@@ -421,17 +421,36 @@ console.log('\n== deleteJob ==');
   const res = ctx.deleteJob(b.id, PIN);
   check(res.ok === true, 'deleteJob returns ok');
   check(ctx.getJobs('delivery').length === 0, 'deleted job gone from getJobs');
-  check(sheetData.length === 2, 'row physically removed (header + 1 left)');
-  check(files[b.photoIds[0]].trashed === true, 'job photo trashed');
-  check(files[bProof].trashed === true, 'proof photo trashed too');
+  check(sheetData.length === 3, 'SOFT delete: the row stays in the sheet');
+  check(!files[b.photoIds[0]].trashed && !files[bProof].trashed,
+    'photos and proof stay in Drive — nothing trashed');
   check(ctx.getJobs('want').length === 1 && ctx.getJobs('want')[0].id === a.id, 'other jobs untouched');
+  check(ctx.getAllData().jobs.delivery.length === 0, 'gone from getAllData too');
+  check(ctx.searchHistory('').results.every(r => r.id !== b.id), 'hidden from Evidence History');
+
+  // the 🗑️ Deleted record + restore
+  const dl = ctx.getDeletedJobs(PIN);
+  check(dl.results.length === 1 && dl.results[0].id === b.id, 'getDeletedJobs lists it');
+  check(dl.results[0].deletedAt > 0, 'with WHEN it was deleted');
+  check(dl.results[0].status === 'deleted', 'status reads deleted');
+  throws(() => ctx.getDeletedJobs(''), 'deleted record is ADMIN only');
+  const rr = ctx.restoreJob(b.id, PIN);
+  check(rr.status === 'done', 'restore returns the job to its OLD status (done)');
+  check(ctx.getJobs('delivery').length === 1 && ctx.getJobs('delivery')[0].proofPhotoId === bProof,
+    'restored job is back on its board with its proof intact');
+  check(ctx.getDeletedJobs(PIN).results.length === 0, 'and out of the deleted record');
+  throws(() => ctx.restoreJob(b.id, PIN), 'restoring a non-deleted job throws');
+  throws(() => ctx.restoreJob(b.id, ''), 'restore is ADMIN only');
+
+  // deleted jobs survive resets untouched
+  ctx.deleteJob(b.id, PIN);
+  ctx.resetAll(PIN);
+  check(ctx.getDeletedJobs(PIN).results.length === 1, 'RESET does not touch the deleted record');
+  check(ctx.getPerformance(PIN).days.every(d => d.posted + d.done + d.load >= 0), 'performance still computes');
+  check(ctx.getPerformance(PIN).days.reduce((s, d) => s + d.posted + d.load + d.done, 0) === 0,
+    'deleted jobs count NOWHERE in performance (want jobs never counted anyway)');
 
   throws(() => ctx.deleteJob('no-such-id', PIN), 'deleting unknown id throws');
-
-  // delete the first data row specifically (regression: off-by-one row math)
-  ctx.deleteJob(a.id, PIN);
-  check(sheetData.length === 1, 'can delete first data row; only header remains');
-  check(ctx.getJobs('want').length === 0 && ctx.getCounts().want === 0, 'empty sheet handled');
 }
 
 console.log('\n== thumbnails + getInitData (speed) ==');
@@ -454,9 +473,9 @@ console.log('\n== thumbnails + getInitData (speed) ==');
   check(files[j.photoIds[0]].trashed && files[j.thumbIds[0]].trashed, 'removed photo AND its thumb trashed');
   check(e.thumbIds[0] && files[e.thumbIds[0]] && !files[e.thumbIds[0]].trashed, 'new thumb saved on edit');
 
-  // delete trashes thumbs + proof thumb
+  // SOFT delete keeps thumbs + proof thumb in Drive
   ctx.deleteJob(d.id, PIN);
-  check(files[d.thumbIds[0]].trashed && files[r.proofThumbId].trashed, 'delete trashes thumbs and proof thumb');
+  check(!files[d.thumbIds[0]].trashed && !files[r.proofThumbId].trashed, 'soft delete keeps thumbs and proof thumb');
 
   const init = ctx.getInitData('want');
   check(Array.isArray(init.jobs) && init.jobs.length === 2, 'getInitData returns jobs');
@@ -747,7 +766,7 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
 
   ctx.deleteJob(ctx.getJobs('delivery')[0].id, PIN);
   check(!files[c.photoIds[0]].trashed, 'deleting the pushed job never trashes the shared photos');
-  check(files[done.proofPhotoId].trashed, 'but its own proof is trashed');
+  check(!files[done.proofPhotoId].trashed, 'soft delete: its own proof stays in Drive too');
 
   const p = ctx.addJob({ tab: 'want', category: '', note: 'to post', photos: [B64], nextTab: 'postage' });
   check(ctx.updateStatus(p.id, 'got', null, null, null).pushed.tab === 'postage', 'pipeline to Postage works too');
@@ -824,7 +843,7 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
     're-report clears the old printed stamp');
 
   ctx.deleteJob(d.id, PIN);
-  check(files[s.printPhotoId].trashed, 'deleting the job trashes its printing photo too');
+  check(!files[s.printPhotoId].trashed, 'soft delete keeps the printing photo in Drive too');
 
   // 📝 shared problem info — staff write, both sides read
   const ni = ctx.addJob({ tab: 'postage', category: '', note: 'note test', customer: 'SN', photos: [B64] });
@@ -1082,8 +1101,8 @@ console.log('\n== 📦 stock count (staff key in, admin views) ==');
   check(cat.sections.length === 3 &&
     cat.sections[0].name === 'Fabric' && cat.sections[1].name === 'Ink' && cat.sections[2].name === 'Paper',
     'catalog has Fabric + Ink + Paper sections');
-  check(cat.sections[0].items.length === 9 && cat.sections[0].items[0].target === 10,
-    'fabric items carry their targets (Eyelet = 10)');
+  check(cat.sections[0].items.length === 12 && cat.sections[0].items[0].target === 10,
+    'fabric items carry their targets (Eyelet = 10; Polysoft + Lobans + Mini Square in)');
   check(cat.sections[1].items.every(i => i.orderIf === 2), 'ink orders when below 2');
   check(cat.sections[0].items.every(i => i.qty === ''), 'no counts yet — empty values');
 

@@ -405,8 +405,54 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
   check(await menuItemVisible('#history-btn'), 'staff sees the History button too (read-only evidence)');
+  // staff never sees the 🗑️ Deleted record
+  await viaMenu('#history-btn');
+  await sleep(400);
+  check(!(await page.locator('#hist-del-btn').isVisible()), 'staff does NOT see the 🗑️ Deleted tab');
+  await page.click('#history-overlay .x-close');
+  await sleep(200);
   await page.evaluate(() => setRole('admin', '1234'));
   await sleep(200);
+
+  console.log('\n-- 🗑️ Deleted record: soft delete + undo --');
+  const delJob = await page.evaluate(() => {
+    const j = window.__mockapi.addJob({ tab: 'delivery', category: 'bus', note: 'Oops deleted', customer: 'OOPS CO', photos: ['od1'], thumbs: ['od1'] });
+    window.__mockapi.deleteJob(j.id, '1234');
+    refresh();
+    return j;
+  });
+  await sleep(500);
+  check((await page.locator('#delivery-list').textContent()).indexOf('Oops deleted') < 0,
+    'deleted job is OFF the board');
+  await viaMenu('#history-btn');
+  await sleep(400);
+  check(await page.locator('#hist-del-btn').isVisible(), 'admin sees the 🗑️ Deleted tab in Evidence History');
+  await page.click('#hist-del-btn');
+  await sleep(500);
+  const delCard = page.locator('#history-results .h-card').filter({ hasText: 'Oops deleted' });
+  check((await delCard.count()) === 1, 'the deleted job is on record there');
+  check((await delCard.textContent()).indexOf('🗑️ Deleted') >= 0, 'marked 🗑️ Deleted with when');
+  check((await delCard.locator('button:has-text("Restore")').count()) === 1, 'with a ↩️ Restore button');
+  await delCard.locator('button:has-text("Restore")').click();
+  await sleep(700);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Oops deleted');
+    return j && j.status === 'pending';
+  }), 'Restore puts the job back to its old status on the server');
+  check((await page.locator('#history-results').textContent()).indexOf('Oops deleted') < 0,
+    'and it leaves the Deleted record');
+  await page.click('#hist-tabs button[data-t=""]'); // back to All for later sections
+  await sleep(300);
+  await page.click('#history-overlay .x-close');
+  await sleep(400);
+  check((await page.locator('#delivery-list').textContent()).indexOf('Oops deleted') >= 0,
+    'the job is BACK on its board');
+  await page.evaluate(() => { // tidy
+    const j = window.__mockdb.jobs.find(x => x.note === 'Oops deleted');
+    if (j) j.status = 'archived';
+    refresh();
+  });
+  await sleep(400);
 
   console.log('\n-- 📊 admin stats: all 4 pages at a glance --');
   check(await menuItemVisible('#stats-btn'), 'admin sees the Stats button');
@@ -2057,7 +2103,13 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#inv-body .inv-sec-head').count()) === 3 &&
     (await page.locator('#inv-body').textContent()).indexOf('PAPER') >= 0,
     'three sections render: Fabric, Ink AND Paper');
-  check((await page.locator('#inv-body .inv-in').count()) === 15, 'all 15 catalog items have a stock input');
+  check((await page.locator('#inv-body .inv-in').count()) === 17, 'all 17 catalog items have a stock input');
+  const invTxt = await page.locator('#inv-body').textContent();
+  check(invTxt.indexOf('Polysoft') >= 0 && invTxt.indexOf('Black Loban') >= 0 &&
+    invTxt.indexOf('White Loban') >= 0 && invTxt.indexOf('Mini Square') >= 0,
+    'new fabrics in: Polysoft, Black Loban, White Loban, Mini Square');
+  check(invTxt.indexOf('Cotton') < 0 && invTxt.indexOf('Paper - Protection') < 0,
+    'Cotton and Paper - Protection removed');
   check((await page.locator('#inv-body .inv-table tr.hd').first().textContent()).indexOf('Target') < 0 &&
     (await page.locator('#inv-body').textContent()).indexOf('Action') < 0,
     'clean table: just Type + Stock (no Target / Action columns)');

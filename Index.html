@@ -1309,6 +1309,7 @@
       <button data-t="delivery">🚚 Delivery</button>
       <button data-t="postage">📦 Postage</button>
       <button data-t="defect">🚨 Defect</button>
+      <button data-t="__deleted" id="hist-del-btn" style="display:none">🗑️ Deleted</button>
     </div>
     <div class="hist-pills" id="hist-cats" style="display:none">
       <button data-c="" class="active">All types</button>
@@ -3419,6 +3420,8 @@
 
   function openHistory() {
     document.getElementById('history-overlay').classList.add('show');
+    // admin also sees the 🗑️ Deleted record — the accidental-delete safety net
+    document.getElementById('hist-del-btn').style.display = isAdmin() ? '' : 'none';
     doHistorySearch(); // show the most recent jobs right away
   }
   function closeHistory() {
@@ -3451,9 +3454,10 @@
 
   var TAB_EMOJI = { want: '🔍 Checking', delivery: '🚚 Delivery', postage: '📦 Postage', defect: '🚨 Defect' };
 
-  function historyCard(j) {
+  function historyCard(j, withRestore) {
     var status;
-    if (j.status === 'done') status = '✅ Done · ' + fmtDT(j.doneAt);
+    if (j.status === 'deleted') status = '🗑️ Deleted' + (j.deletedAt ? ' · ' + fmtDT(j.deletedAt) : '');
+    else if (j.status === 'done') status = '✅ Done · ' + fmtDT(j.doneAt);
     else if (j.status === 'got') status = '❤️ Got It · ' + fmtDT(j.doneAt);
     else if (j.status === 'notseen') status = '❌ Not Seen · ' + fmtDT(j.doneAt);
     else if (j.status === 'archived') {
@@ -3495,13 +3499,46 @@
         ? '<a class="h-drive" href="https://drive.google.com/drive/folders/' + j.folderId +
           '" target="_blank" rel="noopener">📁 Open this job in Drive</a>'
         : '') +
+      (withRestore
+        ? '<button class="btn green small" style="margin-top:8px" onclick="restoreJobNow(\'' + j.id + '\')">↩️ Restore this job</button>'
+        : '') +
       '</div>';
+  }
+
+  /** ADMIN: undo an accidental delete — the job returns to its board
+      exactly as it was (photos never left Drive). */
+  function restoreJobNow(id) {
+    toast('↩️ Restoring…');
+    gsCall('restoreJob', [id, state.pin], function () {
+      toast('✅ Restored — the job is back on its board!');
+      doHistorySearch();
+      refresh();
+    }, function (e) { toast('⚠️ ' + errMsg_(e)); });
   }
 
   function doHistorySearch() {
     var q = document.getElementById('history-q').value.trim();
     var box = document.getElementById('history-results');
     box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">🔎 Searching…</div>';
+    if (histTab === '__deleted') { // 🗑️ the accidental-delete record (admin)
+      gsCall('getDeletedJobs', [state.pin], function (res) {
+        if (!res.results.length) {
+          box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:18px;font-weight:700">😊 Nothing deleted — all clean</div>';
+          return;
+        }
+        box.innerHTML =
+          '<div style="font-size:12.5px;color:var(--muted);margin-top:10px;font-weight:700">' +
+          res.results.length + ' deleted job' + (res.results.length === 1 ? '' : 's') +
+          ' — tap ↩️ Restore to undo</div>' +
+          res.results.map(function (j) { return historyCard(j, true); }).join('');
+        var imgs = box.querySelectorAll('img[data-img]');
+        for (var i = 0; i < imgs.length; i++) imgs[i].setAttribute('data-vis', '1');
+        loadImages();
+      }, function (e) {
+        box.innerHTML = '<div style="text-align:center;color:#b91c1c;padding:18px;font-weight:700">⚠️ ' + esc(errMsg_(e)) + '</div>';
+      });
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (res) {
         var driveLink = res.driveFolderId

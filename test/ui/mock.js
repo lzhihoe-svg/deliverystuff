@@ -22,14 +22,16 @@
       { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
       { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
       { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
-      { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 }, { name: 'Cotton', target: 3 }
+      { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 },
+      { name: 'Polysoft', target: 3 }, { name: 'Black Loban', target: 3 },
+      { name: 'White Loban', target: 3 }, { name: 'Mini Square', target: 3 }
     ] },
     { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
       { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
       { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
     ] },
     { name: 'Paper', hint: '', items: [
-      { name: 'Paper - Sublimation', target: 5 }, { name: 'Paper - Protection', target: 3 }
+      { name: 'Paper - Sublimation', target: 5 }
     ] }
   ];
   var api = {
@@ -83,7 +85,7 @@
     },
     getJobs: function (tab) {
       return db.jobs
-        .filter(function (j) { return j.tab === tab && j.status !== 'archived'; })
+        .filter(function (j) { return j.tab === tab && j.status !== 'archived' && j.status !== 'deleted'; })
         .slice().reverse()
         .map(function (j) { return JSON.parse(JSON.stringify(j)); });
     },
@@ -143,6 +145,7 @@
       q = String(q || '').toLowerCase().trim();
       var all = db.jobs.slice().reverse().filter(function (j) {
         if (!j.proofPhotoId) return false; // evidence = has a proof photo
+        if (j.status === 'deleted') return false;
         if (tab && j.tab !== tab) return false;
         if (category && j.category !== category) return false;
         if (!q) return true;
@@ -221,7 +224,7 @@
       requireAdmin(pin);
       var archived = 0, carried = 0, snap = {};
       db.jobs.forEach(function (j) {
-        if (j.status === 'archived') return;
+        if (j.status === 'archived' || j.status === 'deleted') return;
         var finished = (j.tab === 'want' && j.status === 'got') ||
           (j.status === 'done' && (j.tab === 'defect' ||
             (j.tab === 'delivery' && j.deliveredAt) ||
@@ -262,17 +265,48 @@
       requireAdmin(pin);
       var n = 0, snap = {};
       db.jobs.forEach(function (j) {
-        if (j.status !== 'archived') { snap[j.id] = j.status; j.status = 'archived'; n++; }
+        if (j.status !== 'archived' && j.status !== 'deleted') { snap[j.id] = j.status; j.status = 'archived'; n++; }
       });
       if (n > 0) db.lastReset = snap;
       return { ok: true, archived: n };
     },
     deleteJob: function (id, pin) {
       requireAdmin(pin);
-      var i = db.jobs.findIndex(function (x) { return x.id === id; });
-      if (i < 0) throw new Error('Job not found');
-      db.jobs.splice(i, 1);
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.status !== 'deleted') {
+        j.probLog = j.probLog || [];
+        j.probLog.push({ k: 'delete', at: Date.now(), prev: j.status });
+        j.status = 'deleted';
+      }
       return { ok: true, id: id };
+    },
+    restoreJob: function (id, pin) {
+      requireAdmin(pin);
+      var j = db.jobs.find(function (x) { return x.id === id; });
+      if (!j) throw new Error('Job not found');
+      if (j.status !== 'deleted') throw new Error('Job is not deleted');
+      var prev = 'pending';
+      for (var i = (j.probLog || []).length - 1; i >= 0; i--) {
+        if (j.probLog[i].k === 'delete') { prev = j.probLog[i].prev || 'pending'; break; }
+      }
+      j.status = prev;
+      j.probLog.push({ k: 'restore', at: Date.now() });
+      return { ok: true, id: id, status: prev };
+    },
+    getDeletedJobs: function (pin) {
+      requireAdmin(pin);
+      var out = db.jobs.filter(function (j) { return j.status === 'deleted'; })
+        .map(function (j) {
+          var c = JSON.parse(JSON.stringify(j));
+          c.deletedAt = 0;
+          for (var i = (j.probLog || []).length - 1; i >= 0; i--) {
+            if (j.probLog[i].k === 'delete') { c.deletedAt = j.probLog[i].at || 0; break; }
+          }
+          return c;
+        });
+      out.sort(function (a, b) { return (b.deletedAt || 0) - (a.deletedAt || 0); });
+      return { results: out.slice(0, 100) };
     },
     reportStickerNoJob: function (payload) {
       var photos = (payload && payload.photos) || (payload && payload.photo ? [payload.photo] : []);

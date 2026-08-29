@@ -570,33 +570,73 @@ function editJob(id, changes, pin) {
 
 /** Delete a job's row, then move its photos to the Drive trash. ADMIN ONLY. */
 function deleteJob(id, pin) {
+  // SOFT delete: the row stays in the sheet and every photo stays in Drive.
+  // The job just disappears from the boards, and lives on in the 🗑️ Deleted
+  // tab of Evidence History where the admin can look at it or Restore it.
   requireAdmin_(pin);
-  var toTrash = [];
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
-    // pipeline jobs SHARE photos with their check partner — when either
-    // side is deleted, only its own proof is trashed, never the shared set
-    var sharesPhotos = vals[6] === 'check' || !!vals[21];
-    if (!sharesPhotos) {
-      toTrash = JSON.parse(vals[4] || '[]').concat(JSON.parse(vals[11] || '[]'));
+    var prev = String(sh.getRange(row, 6).getValue() || 'pending');
+    if (prev !== 'deleted') {
+      sh.getRange(row, 6).setValue('deleted');
+      pushProbLog_(sh, row, { k: 'delete', at: new Date().getTime(), prev: prev });
     }
-    if (vals[10]) toTrash.push(vals[10]);
-    if (vals[12]) toTrash.push(vals[12]);
-    if (vals[25]) toTrash.push(vals[25]); // printing-status photo
-    if (vals[26]) toTrash.push(vals[26]);
-    if (vals[28]) toTrash.push(vals[28]); // delivered-confirmation photo
-    if (vals[29]) toTrash.push(vals[29]);
-    sh.deleteRow(row);
   } finally {
     lock.releaseLock();
   }
-  for (var i = 0; i < toTrash.length; i++) trashFile_(toTrash[i]);
   return { ok: true, id: id };
+}
+
+/** ADMIN ONLY. Undo an accidental delete: the job returns to the exact
+    status it had (board, done, delivered — everything intact). */
+function restoreJob(id, pin) {
+  requireAdmin_(pin);
+  var prev = 'pending';
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sh = getSheet_();
+    var row = findRow_(sh, id);
+    if (row < 0) throw new Error('Job not found');
+    if (String(sh.getRange(row, 6).getValue()) !== 'deleted') throw new Error('Job is not deleted');
+    var log = [];
+    try { log = JSON.parse(sh.getRange(row, 35).getValue() || '[]'); } catch (e) {}
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i] && log[i].k === 'delete') { prev = log[i].prev || 'pending'; break; }
+    }
+    sh.getRange(row, 6).setValue(prev);
+    pushProbLog_(sh, row, { k: 'restore', at: new Date().getTime() });
+  } finally {
+    lock.releaseLock();
+  }
+  return { ok: true, id: id, status: prev };
+}
+
+/** ADMIN ONLY. Every deleted job, newest deletion first (max 100) —
+    the "just in case" record for accidental deletes. */
+function getDeletedJobs(pin) {
+  requireAdmin_(pin);
+  var sh = getSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return { results: [] };
+  var rows = sh.getRange(2, 1, last - 1, 35).getValues();
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r[5] !== 'deleted') continue;
+    var j = rowToJob_(r);
+    j.deletedAt = 0;
+    for (var k = j.probLog.length - 1; k >= 0; k--) {
+      if (j.probLog[k] && j.probLog[k].k === 'delete') { j.deletedAt = j.probLog[k].at || 0; break; }
+    }
+    out.push(j);
+  }
+  out.sort(function (a, b) { return (b.deletedAt || 0) - (a.deletedAt || 0); });
+  return { results: out.slice(0, 100) };
 }
 
 /**
@@ -616,7 +656,7 @@ function resetAll(pin) {
     var out = [], snap = {}, n = 0;
     for (var i = 0; i < vals.length; i++) {
       var st = vals[i][5];
-      if (st !== 'archived') { snap[vals[i][0]] = st; st = 'archived'; n++; }
+      if (st !== 'archived' && st !== 'deleted') { snap[vals[i][0]] = st; st = 'archived'; n++; }
       out.push([st]);
     }
     sh.getRange(2, 6, last - 1, 1).setValues(out);
@@ -692,7 +732,7 @@ function resetDone(pin) {
     var out = [], snap = {}, archived = 0, carried = 0;
     for (var i = 0; i < vals.length; i++) {
       var tab = vals[i][1], status = vals[i][5];
-      if (status !== 'archived') {
+      if (status !== 'archived' && status !== 'deleted') {
         var finished =
           (tab === 'want' && status === 'got') ||
           (status === 'done' && (
@@ -790,7 +830,7 @@ function getJobs(tab) {
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    if (r[1] !== tab || r[5] === 'archived') continue;
+    if (r[1] !== tab || r[5] === 'archived' || r[5] === 'deleted') continue;
     out.push(rowToJob_(r));
   }
   out.reverse();
@@ -815,7 +855,7 @@ function getAllData() {
   var rows = sh.getRange(2, 1, last - 1, 35).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived') continue;
+    if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived' || r[5] === 'deleted') continue;
     var j = rowToJob_(r);
     jobs[r[1]].push(j);
     if (j.status === 'pending') counts[r[1]]++;
@@ -1345,14 +1385,16 @@ var STOCK_SECTIONS = [
     { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
     { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
     { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
-    { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 }, { name: 'Cotton', target: 3 }
+    { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 },
+    { name: 'Polysoft', target: 3 }, { name: 'Black Loban', target: 3 },
+    { name: 'White Loban', target: 3 }, { name: 'Mini Square', target: 3 }
   ] },
   { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
     { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
     { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
   ] },
   { name: 'Paper', hint: '', items: [
-    { name: 'Paper - Sublimation', target: 5 }, { name: 'Paper - Protection', target: 3 }
+    { name: 'Paper - Sublimation', target: 5 }
   ] }
 ];
 
@@ -1432,6 +1474,7 @@ function searchHistory(q, pin, tab, category) {
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
     if (!r[10]) continue;                        // EVIDENCE = has a PROOF photo; no proof, not listed
+    if (r[5] === 'deleted') continue;            // deleted jobs live in the Deleted tab only
     if (tab && r[1] !== tab) continue;           // page filter (delivery / postage / …)
     if (category && r[2] !== category) continue; // delivery sub-type (bus / lalamove / pickup)
     if (q) {
@@ -1498,6 +1541,7 @@ function getPerformance(pin) {
       var doneAt = r[10] ? Number(r[9] || 0) : 0; // finished = has a proof photo
       var deliveredAt = Number(r[27] || 0), sentAt = Number(r[33] || 0);
       if (!createdAt) continue;
+      if (r[5] === 'deleted') continue;   // deleted jobs count nowhere
       if (idx[dayStr_(createdAt)] != null) days[idx[dayStr_(createdAt)]].posted++;
       if (doneAt && idx[dayStr_(doneAt)] != null) days[idx[dayStr_(doneAt)]].done++;
       if (deliveredAt && idx[dayStr_(deliveredAt)] != null) days[idx[dayStr_(deliveredAt)]].out++;
