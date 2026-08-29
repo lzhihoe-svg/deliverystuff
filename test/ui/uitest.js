@@ -2113,9 +2113,9 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#inv-body .inv-table tr.hd').first().textContent()).indexOf('Target') < 0 &&
     (await page.locator('#inv-body').textContent()).indexOf('Action') < 0,
     'clean table: just Type + Stock (no Target / Action columns)');
-  // whole-list workflow: live X/Y counter + amber "never counted ALL" line
-  check((await page.locator('#inv-last').textContent()).indexOf('Never counted ALL') >= 0,
-    'header says the WHOLE list has never been counted in one go');
+  // STRICT whole-list workflow: partials are BLOCKED, one stamp for everything
+  check((await page.locator('#inv-last').textContent()).indexOf('Not counted yet') >= 0,
+    'header says the list has not been counted yet');
   check((await page.locator('#inv-submit').textContent()).indexOf('(0/17)') >= 0,
     'Submit button counts filled items live (0/17)');
   await page.locator('#inv-body .inv-in[data-item="Eyelet"]').fill('4');
@@ -2127,44 +2127,15 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     '…and updates as staff type (4/17)');
   await page.click('#inv-submit');
   await sleep(300);
-  // partial count → the app pushes for the WHOLE list first
   check(await page.locator('#confirm-overlay').isVisible() &&
-    (await page.locator('#confirm-msg').textContent()).indexOf('WHOLE list') >= 0,
-    'partial submit asks first — boss prefers the whole list updated');
-  await page.click('#confirm-yes');
-  await sleep(700);
-  check(await page.evaluate(() => window.__mockdb.inv.length === 4 &&
-    window.__mockdb.inv.every(r => r.by === 'staff')), '4 filled values saved on the server (staff, no PIN)');
-  check(await page.evaluate(() => window.__mockdb.inv.some(r => r.item === 'Paper - Sublimation' && r.qty === 0)),
-    'ZERO stock saves correctly');
-  check((await page.locator('#inv-last').textContent()).indexOf('Never counted ALL') >= 0,
-    'after a PARTIAL submit the header still pushes for a whole-list count');
-  // per-item last-updated line: when + by whom
-  const eyeletUpd = await page.evaluate(() => {
-    const inp = document.querySelector('#inv-body .inv-in[data-item="Eyelet"]');
-    const upd = inp.closest('tr').querySelector('.upd');
-    return upd ? upd.textContent : '';
-  });
-  check(eyeletUpd.indexOf('🕒') >= 0 && eyeletUpd.indexOf('by staff') >= 0,
-    'counted items show WHEN and BY WHOM they were last updated (' + eyeletUpd.trim() + ')');
-  check(await page.evaluate(() => {
-    const inp = document.querySelector('#inv-body .inv-in[data-item="Interlock"]');
-    const upd = inp.closest('tr').querySelector('.upd.never');
-    return !!upd && upd.textContent.indexOf('never counted') >= 0;
-  }), 'items nobody counted yet say "never counted yet" in amber');
-  await page.evaluate(() => closeInventory());
-  await sleep(200);
-  await page.evaluate(() => setRole('admin', '1234'));
-  await sleep(300);
-  await viaMenu('#inventory-btn');
-  await sleep(500);
-  check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').inputValue()) === '4',
-    'admin opens the page and SEES the staff counts prefilled');
-  check(await page.evaluate(() => {
-    const inp = document.querySelector('#inv-body .inv-in[data-item="Eyelet"]');
-    return inp.closest('tr').querySelector('.upd').textContent.indexOf('by staff') >= 0;
-  }), '…and sees WHO counted each item (by staff), fresh from the server');
-  // a FULL count: fill everything → no confirm, header flips to ✅ WHOLE list
+    (await page.locator('#confirm-msg').textContent()).indexOf('missing 13 items') >= 0,
+    'partial submit BLOCKED — popup says 13 items still missing');
+  await page.click('#confirm-yes'); // "OK, continue counting" — just closes
+  await sleep(400);
+  check(await page.evaluate(() => window.__mockdb.inv.length === 0),
+    'NOTHING was saved — partial counts cannot be submitted');
+  check(!(await page.locator('#inv-body .upd').count()), 'no per-item time lines — one stamp for the whole list');
+  // fill the rest → full submit goes through
   await page.evaluate(() => {
     document.querySelectorAll('#inv-body .inv-in').forEach(i => {
       if (i.value === '') { i.value = '2'; i.dispatchEvent(new Event('input')); }
@@ -2174,38 +2145,54 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#inv-submit').textContent()).indexOf('(17/17)') >= 0,
     'all filled — button reads (17/17)');
   await page.click('#inv-submit');
-  await sleep(400);
-  check(!(await page.locator('#confirm-overlay').isVisible()), 'a FULL count submits straight away — no nag');
-  await sleep(500);
-  check((await page.locator('#inv-last').textContent()).indexOf('WHOLE list') >= 0 &&
-    (await page.locator('#inv-last').textContent()).indexOf('by admin') >= 0,
-    'header now shows ✅ WHOLE list last counted · by admin');
-  // admin re-counts one item — the line flips to "by admin" and header notes the partial
-  await page.evaluate(() => {
-    document.querySelectorAll('#inv-body .inv-in').forEach(i => { i.value = ''; i.dispatchEvent(new Event('input')); });
-  });
-  await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('5');
-  await page.click('#inv-submit');
-  await sleep(300);
-  await page.click('#confirm-yes'); // partial → confirm first
   await sleep(700);
-  check(await page.evaluate(() => {
-    const inp = document.querySelector('#inv-body .inv-in[data-item="Ink - Red"]');
-    return inp.closest('tr').querySelector('.upd').textContent.indexOf('by admin') >= 0;
-  }), 'admin re-count updates the line to "by admin" straight away');
-  check((await page.locator('#inv-last').textContent()).indexOf('updated since') >= 0,
-    'header keeps the full-count stamp and notes items updated since');
+  check(await page.evaluate(() => window.__mockdb.inv.length === 17 &&
+    window.__mockdb.inv.every(r => r.by === 'staff')), 'all 17 values saved on the server (staff, no PIN)');
+  check(await page.evaluate(() => window.__mockdb.inv.some(r => r.item === 'Paper - Sublimation' && r.qty === 0)),
+    'ZERO stock saves correctly inside the full list');
+  const hdr = await page.locator('#inv-last').textContent();
+  check(hdr.indexOf('WHOLE list') >= 0 && hdr.indexOf('by staff') >= 0,
+    'header shows the whole-list date + time · by staff (' + hdr.trim().slice(0, 60) + '…)');
   await page.evaluate(() => closeInventory());
   await sleep(200);
-  // empty submission blocked
+  await page.evaluate(() => setRole('admin', '1234'));
+  await sleep(300);
+  await viaMenu('#inventory-btn');
+  await sleep(500);
+  check((await page.locator('#inv-body .inv-in[data-item="Eyelet"]').inputValue()) === '4',
+    'admin opens the page and SEES the staff counts prefilled');
+  // admin clears ONE item → blocked; refills → full count now by admin
+  await page.evaluate(() => {
+    const i = document.querySelector('#inv-body .inv-in[data-item="Ink - Red"]');
+    i.value = ''; i.dispatchEvent(new Event('input'));
+  });
+  await sleep(150);
+  check((await page.locator('#inv-submit').textContent()).indexOf('(16/17)') >= 0, 'one cleared — (16/17)');
+  await page.click('#inv-submit');
+  await sleep(300);
+  check(await page.locator('#confirm-overlay').isVisible(), 'even ONE missing item blocks the submit');
+  await page.click('#confirm-yes');
+  await sleep(300);
+  await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('5');
+  await page.click('#inv-submit');
+  await sleep(700);
+  check((await page.locator('#inv-last').textContent()).indexOf('by admin') >= 0,
+    'full re-count moves the whole-list stamp to admin');
+  await page.evaluate(() => closeInventory());
+  await sleep(200);
+  // empty submission blocked with the same popup
   await viaMenu('#inventory-btn');
   await sleep(500);
   await page.evaluate(() => {
     document.querySelectorAll('#inv-body .inv-in').forEach(i => { i.value = ''; });
   });
   await page.click('#inv-submit');
-  await sleep(200);
-  check((await page.locator('#toast').textContent()).indexOf('at least one') >= 0, 'empty submission blocked with a clear message');
+  await sleep(300);
+  check(await page.locator('#confirm-overlay').isVisible() &&
+    (await page.locator('#confirm-msg').textContent()).indexOf('WHOLE list') >= 0,
+    'empty submission blocked by the same whole-list popup');
+  await page.click('#confirm-yes');
+  await sleep(300);
   await page.evaluate(() => closeInventory());
   await sleep(200);
 

@@ -36,16 +36,27 @@
   ];
   var api = {
     submitStockTake: function (values, by) {
-      if (!values || !values.length) throw new Error('Key in at least one stock value');
-      var ts = Date.now(), saved = 0;
+      if (!values || !values.length) throw new Error('Key in the WHOLE list before submitting');
+      var have = {}, good = [];
       values.forEach(function (v) {
         var q = v ? Number(v.qty) : NaN;
         if (!v || !v.item || isNaN(q) || q < 0) return;
-        db.inv.push({ at: ts, item: v.item, qty: q, by: by === 'admin' ? 'admin' : 'staff' });
-        saved++;
+        have[v.item] = 1;
+        good.push({ item: v.item, qty: q });
       });
-      if (!saved) throw new Error('Key in at least one stock value');
-      return { ok: true, at: ts, saved: saved };
+      var missing = [];
+      STOCK_SECTIONS.forEach(function (sec) {
+        sec.items.forEach(function (it) { if (!have[it.name]) missing.push(it.name); });
+      });
+      if (missing.length) {
+        throw new Error('Key in the WHOLE list — ' + missing.length + ' item' + (missing.length > 1 ? 's' : '') +
+          ' missing (' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? '…' : '') + ')');
+      }
+      var ts = Date.now();
+      good.forEach(function (g) {
+        db.inv.push({ at: ts, item: g.item, qty: g.qty, by: by === 'admin' ? 'admin' : 'staff' });
+      });
+      return { ok: true, at: ts, saved: good.length };
     },
     getStockTake: function () {
       var latest = {}, lastAt = 0, subs = {};

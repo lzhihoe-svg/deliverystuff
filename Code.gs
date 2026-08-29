@@ -1404,26 +1404,42 @@ var STOCK_SECTIONS = [
  * time + who, so the full counting history stays auditable.
  */
 function submitStockTake(values, by) {
-  if (!values || !values.length) throw new Error('Key in at least one stock value');
+  // the WHOLE list or nothing — a submission must cover EVERY catalog item
+  if (!values || !values.length) throw new Error('Key in the WHOLE list before submitting');
+  var have = {};
+  var good = [];
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    var q = v ? Number(v.qty) : NaN;
+    if (!v || !v.item || isNaN(q) || q < 0) continue; // 0 is a VALID count
+    var nm = cleanName_(v.item);
+    have[nm] = 1;
+    good.push({ item: nm, qty: q });
+  }
+  var missing = [];
+  for (var s = 0; s < STOCK_SECTIONS.length; s++) {
+    for (var k = 0; k < STOCK_SECTIONS[s].items.length; k++) {
+      var it = STOCK_SECTIONS[s].items[k];
+      if (!have[it.name]) missing.push(it.name);
+    }
+  }
+  if (missing.length) {
+    throw new Error('Key in the WHOLE list — ' + missing.length + ' item' + (missing.length > 1 ? 's' : '') +
+      ' missing (' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? '…' : '') + ')');
+  }
   var ts = new Date().getTime();
   by = by === 'admin' ? 'admin' : 'staff';
-  var saved = 0;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sh = invSheet_();
-    for (var i = 0; i < values.length; i++) {
-      var v = values[i];
-      var q = v ? Number(v.qty) : NaN;
-      if (!v || !v.item || isNaN(q) || q < 0) continue; // 0 is a VALID count
-      sh.appendRow([Utilities.getUuid(), ts, cleanName_(v.item), q, 'stock count', by]);
-      saved++;
+    for (var g = 0; g < good.length; g++) {
+      sh.appendRow([Utilities.getUuid(), ts, good[g].item, good[g].qty, 'stock count', by]);
     }
   } finally {
     lock.releaseLock();
   }
-  if (!saved) throw new Error('Key in at least one stock value');
-  return { ok: true, at: ts, saved: saved };
+  return { ok: true, at: ts, saved: good.length };
 }
 
 /** The catalog with each item's LATEST counted value (+ when and by whom),

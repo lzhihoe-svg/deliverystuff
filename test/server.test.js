@@ -1106,39 +1106,42 @@ console.log('\n== 📦 stock count (staff key in, admin views) ==');
   check(cat.sections[1].items.every(i => i.orderIf === 2), 'ink orders when below 2');
   check(cat.sections[0].items.every(i => i.qty === ''), 'no counts yet — empty values');
 
+  // the WHOLE list or nothing — partial submissions are REFUSED
   throws(() => ctx.submitStockTake([], 'staff'), 'empty submission refused');
   throws(() => ctx.submitStockTake([{ item: 'Eyelet', qty: 'abc' }], 'staff'), 'garbage-only submission refused');
-  const r = ctx.submitStockTake([
+  throws(() => ctx.submitStockTake([
     { item: 'Eyelet', qty: 4 }, { item: 'Ink - Red', qty: 0 }, { item: 'Paper - Sublimation', qty: 7 }
-  ], 'staff');
-  check(r.ok === true && r.saved === 3, 'staff submits a count — 3 items saved, no PIN needed');
+  ], 'staff'), 'PARTIAL submission refused — the whole list is required');
+  try {
+    ctx.submitStockTake([{ item: 'Eyelet', qty: 4 }], 'staff');
+  } catch (e) {
+    check(String(e.message).indexOf('WHOLE list') >= 0 && String(e.message).indexOf('16 items missing') >= 0,
+      'the error says how many items are missing');
+  }
+  check(ctx.getStockTake().lastAt === 0, 'nothing was saved from refused submissions');
 
+  const everything = qty => {
+    const out = [];
+    ctx.getStockTake().sections.forEach(sec => sec.items.forEach(it => out.push({ item: it.name, qty })));
+    return out;
+  };
+  const tick = () => { const t = Date.now(); while (Date.now() === t); };
+  const all1 = everything(4);
+  all1[all1.length - 1].qty = 0; // ZERO must still count as filled
+  const r = ctx.submitStockTake(all1, 'staff');
+  check(r.ok === true && r.saved === 17, 'a FULL submission saves all 17 items, no PIN needed');
   const t1 = ctx.getStockTake();
   check(t1.sections[0].items[0].qty === 4, 'Eyelet latest count = 4');
-  check(t1.sections[1].items[0].qty === 0, 'ZERO is a valid count (Ink - Red = 0)');
-  check(t1.sections[2].items[0].qty === 7 && t1.lastAt === r.at, 'paper counted + lastAt stamped');
+  check(t1.sections[2].items[0].qty === 0, 'ZERO is a valid count inside a full list');
+  check(t1.fullAt === r.at && t1.fullBy === 'staff' && t1.lastAt === r.at,
+    'the WHOLE-list stamp records when + by whom');
 
-  const r2 = ctx.submitStockTake([{ item: 'Eyelet', qty: 12 }], 'admin');
-  check(ctx.getStockTake().sections[0].items[0].qty === 12, 'a NEW count replaces the old value');
-  check(ctx.getStockTake().sections[0].items[0].by === 'admin', 'and remembers who counted');
+  tick();
+  const r2 = ctx.submitStockTake(everything(12), 'admin');
+  const t2 = ctx.getStockTake();
+  check(t2.sections[0].items[0].qty === 12, 'a NEW full count replaces the old values');
+  check(t2.fullAt === r2.at && t2.fullBy === 'admin', 'and moves the whole-list stamp to the new count');
   check(r2.at >= r.at, 'counting history stays in the sheet (auditable)');
-
-  // 🗒️ FULL count tracking: partial submissions never set fullAt
-  // (submissions are grouped by timestamp — tick the clock so each one is distinct)
-  const tick = () => { const t = Date.now(); while (Date.now() === t); };
-  check(ctx.getStockTake().fullAt === 0, 'partial counts do NOT count as a full stock take');
-  const everything = [];
-  ctx.getStockTake().sections.forEach(sec => sec.items.forEach(it => everything.push({ item: it.name, qty: 2 })));
-  tick();
-  const rf = ctx.submitStockTake(everything, 'staff');
-  const tf = ctx.getStockTake();
-  check(tf.fullAt === rf.at && tf.fullBy === 'staff',
-    'one submission covering EVERY item = full count, stamped with when + by whom');
-  tick();
-  ctx.submitStockTake([{ item: 'Eyelet', qty: 9 }], 'admin');
-  const tf2 = ctx.getStockTake();
-  check(tf2.fullAt === rf.at && tf2.lastAt > tf2.fullAt,
-    'later partial updates move lastAt but never the full-count stamp');
 
   // stock lives in its OWN sheet — the job boards are untouched
   check(ctx.getAllData().counts.want === 0 && ctx.getJobs('postage').length === 0,
