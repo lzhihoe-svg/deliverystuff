@@ -677,12 +677,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.locator('#agent-chips .agent-chip', { hasText: 'Affa' }).first().click();
   await openOpts();
   await page.fill('#upload-note', 'WB-pipe 12 tee');
+  check((await page.locator('#btn-submit').textContent()).indexOf('📦 Postage') >= 0,
+    'the Post button SAYS it goes to Postage — the choice is confirmed before posting');
+  // the "send to" choice sits ABOVE the photos: picking it must not move it
+  check(await page.evaluate(() =>
+    document.getElementById('next-wrap').compareDocumentPosition(document.getElementById('postage-groups')) & Node.DOCUMENT_POSITION_FOLLOWING),
+    'send-to chips come BEFORE the photo groups (no jump under the finger)');
   await page.click('#btn-submit');
   await sleep(1100);
   check(await page.evaluate(() => {
     const j = window.__mockdb.jobs.find(x => x.note === 'WB-pipe 12 tee');
     return !!(j && j.tab === 'want' && j.nextTab === 'postage' && j.jsCount === 1 && j.photoIds.length === 2);
   }), 'check stored with jobsheet + waybill and the split remembered');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('👤 Affa') >= 0,
+    'the swipe deck shows the customer name (it used to show nothing)');
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
   await sleep(200);
   pb = await page.locator('#topcard').boundingBox();
@@ -695,6 +703,29 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     const j = window.__mockdb.jobs.find(x => x.tab === 'postage' && x.note === 'WB-pipe 12 tee');
     return !!(j && j.jsCount === 1 && j.photoIds.length === 2 && j.fromCheck);
   }), '❤️ carried the waybill AND the split forward to Postage');
+  check((await page.locator('#want-responded .card').filter({ hasText: 'WB-pipe' }).locator('.chip.cust').textContent()).indexOf('Affa') >= 0,
+    'the ❤️ Got It card on Checking shows the customer too');
+
+  console.log('\n-- ⏱️ a refresh already in flight must not flip back a change made after it left --');
+  await page.click('#nav-post'); await sleep(250);
+  await page.setInputFiles('#photos-file', [IMG]); await sleep(600);
+  await openOpts();
+  await page.fill('#upload-note', 'Race jobsheet');
+  await page.click('#btn-submit'); await sleep(1000);
+  const raceId = await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Race jobsheet').id);
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  // fire a refresh (150 ms mock latency), then swipe ❤️ 30 ms later — the
+  // refresh answer still says 'pending' and lands AFTER the local change
+  await page.evaluate(id => {
+    refresh();
+    setTimeout(() => markJob(id, 'got'), 30);
+  }, raceId);
+  await sleep(1200);
+  check(await page.evaluate(id => window.__kilang.jobs.want.find(j => j.id === id).status === 'got', raceId),
+    'the ❤️ survived the stale refresh answer (no flip back to pending)');
+  check((await page.locator('#topcard').count()) === 0 || (await page.locator('#topcard').getAttribute('data-id')) !== raceId,
+    'the jobsheet did NOT reappear on the swipe deck');
+  await page.evaluate(id => { window.__mockdb.jobs.forEach(j => { if (j.id === id) j.status = 'archived'; }); }, raceId);
   await page.click('#nav-postage');
   await sleep(600);
   const wbCard = page.locator('#postage-list .card').filter({ hasText: 'WB-pipe' }).first();

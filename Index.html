@@ -1061,6 +1061,22 @@
       </div>
     </div>
 
+    <!-- Checking only. Sits ABOVE the photos on purpose: choosing 📦 Postage
+         swaps the photo layout below, so nothing above the finger moves. -->
+    <div id="next-wrap" style="display:none">
+      <label>After check ✅ send to</label>
+      <div class="agent-chips" id="next-chips">
+        <button type="button" class="agent-chip active" data-next="">Nothing</button>
+        <button type="button" class="agent-chip" data-next="delivery">🚚 Delivery</button>
+        <button type="button" class="agent-chip" data-next="postage">📦 Postage</button>
+      </div>
+      <div class="agent-chips" id="next-cats" style="display:none">
+        <button type="button" class="agent-chip" data-ncat="lalamove">🛵 Lalamove</button>
+        <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
+        <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
+      </div>
+    </div>
+
     <div id="generic-photos">
       <label id="photos-label">Photos 📸</label>
       <div class="thumbs" id="upload-thumbs"></div>
@@ -1091,20 +1107,6 @@
       <label>👤 OR CUSTOMER — type the name</label>
       <input type="text" id="upload-customer" oninput="renderAgentChips()"
              placeholder="Type customer name here…">
-    </div>
-
-    <div id="next-wrap" style="display:none">
-      <label>After check ✅ send to</label>
-      <div class="agent-chips" id="next-chips">
-        <button type="button" class="agent-chip active" data-next="">Nothing</button>
-        <button type="button" class="agent-chip" data-next="delivery">🚚 Delivery</button>
-        <button type="button" class="agent-chip" data-next="postage">📦 Postage</button>
-      </div>
-      <div class="agent-chips" id="next-cats" style="display:none">
-        <button type="button" class="agent-chip" data-ncat="lalamove">🛵 Lalamove</button>
-        <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
-        <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
-      </div>
     </div>
 
     <!-- optional details fold away — the post window shows only what's compulsory -->
@@ -1423,9 +1425,27 @@
     if (v) imgCache[id] = v;
     return v;
   }
+  // localStorage writes are SYNCHRONOUS and a batch of photos used to land
+  // as one main-thread stall mid-scroll — queue them and write one per idle
+  // slot instead. Reads come from imgCache first, so nothing waits on this.
+  var persistQ = [], persistTimer = null;
+  function idle_(fn) {
+    return window.requestIdleCallback ? window.requestIdleCallback(fn) : setTimeout(fn, 40);
+  }
   function persistImg(id, data) {
     if (!data || data.length > 300000) return; // thumbs + most full photos survive restarts (half-eviction guards quota)
     if (String(id).indexOf('local') === 0) return; // temp upload previews stay in memory
+    persistQ.push([id, data]);
+    if (persistTimer === null) persistTimer = idle_(flushPersist_);
+  }
+  function flushPersist_() {
+    persistTimer = null;
+    var it = persistQ.shift();
+    if (!it) return;
+    persistNow_(it[0], it[1]);
+    if (persistQ.length) persistTimer = idle_(flushPersist_);
+  }
+  function persistNow_(id, data) {
     try { localStorage.setItem('ki_' + id, data); }
     catch (e) {
       // storage full: drop HALF the cached images (not all!) and retry
@@ -1872,7 +1892,15 @@
   // then the server refresh replaces it in the background
   var inflightJobs = [];   // jobs whose photos are still uploading
   var localSeq = 0;        // ids for temp local previews
+  // Every optimistic change on THIS phone (swipe, undo, done, delivered…)
+  // saves the cache — so the save doubles as the "something changed here"
+  // stamp that lets refresh() spot a stale answer (see refresh).
+  var lastLocalChangeAt = 0;
   function saveJobsCache(tab) {
+    lastLocalChangeAt = Date.now();
+    writeJobsCache_(tab);
+  }
+  function writeJobsCache_(tab) {
     try {
       var clean = state.jobs[tab].filter(function (j) {
         return !j.uploading && !j.proofUploading && String(j.id).indexOf('local-') !== 0;
@@ -2031,17 +2059,23 @@
     if (changed) document.getElementById('scroller').scrollTop = 0;
     // render the cached list instantly, then refresh from the server
     if (!state.jobs[tab].length) state.jobs[tab] = readJobsCache(tab);
-    renderAll();
+    renderVisible_();
     refresh();
   }
 
   function refresh() {
     // ONE round trip refreshes ALL THREE tabs + badges together
+    var askedAt = Date.now();
     refreshSpin(true);
     setSync('🔄 Updating…');
     if (state.prodView) { pvProg.active = true; pvProgSet_(5, 'Updating…'); }
     google.script.run
       .withSuccessHandler(function (res) {
+        // STALE ANSWER: something changed on this phone AFTER this refresh
+        // left (a swipe, an undo, a Done…). Applying it would flip that
+        // change back for a moment — the "it changed, then changed back"
+        // glitch on a slow network. Drop it and ask once more.
+        if (askedAt <= lastLocalChangeAt) { refresh(); return; }
         ['want', 'delivery', 'postage', 'defect'].forEach(function (tb) {
           state.jobs[tb] = res.jobs[tb] || [];
           // keep background-uploading jobs visible through a refresh
@@ -2054,7 +2088,7 @@
             if (idx >= 0) state.jobs[tb][idx] = j;
             else state.jobs[tb].unshift(j);
           });
-          saveJobsCache(tb);
+          writeJobsCache_(tb); // server data, not a local change — no stamp
         });
         lastSyncAt = Date.now();
         state.loadedOnce = true;
@@ -2085,8 +2119,17 @@
     });
   }
 
+  // Only the tab on screen is rebuilt. The other three are marked dirty
+  // and rebuilt the moment they are opened — rebuilding all four on every
+  // tap, swipe and auto-refresh was most of the lag on the factory phones.
+  var dirtyTab = { want: true, delivery: true, postage: true, defect: true };
+  var TAB_RENDER = { want: renderWant, delivery: renderDelivery, postage: renderPostage, defect: renderDefect };
   function renderAll() {
-    renderWant(); renderDelivery(); renderPostage(); renderDefect();
+    dirtyTab.want = dirtyTab.delivery = dirtyTab.postage = dirtyTab.defect = true;
+    renderVisible_();
+  }
+  function renderVisible_() {
+    if (dirtyTab[state.tab]) { dirtyTab[state.tab] = false; TAB_RENDER[state.tab](); }
     updateProblemBadge();
     if (state.prodView) renderProdView(); // the factory TV stays live
     attachCarousels();
@@ -2376,6 +2419,7 @@
                    '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
           '<div class="foot">' +
             '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
+            ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) + ' · ' : '') +
             '📄 ' + (esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             (j.nextTab ? ' · →' + (j.nextTab === 'delivery' ? '🚚' : '📦') + ' after ✅' : '') +
@@ -2404,6 +2448,7 @@
     function statusCard(j, isGot) {
       return '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
+        ((j.customer && j.customer !== 'Unassigned') ? '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ' : '') +
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
         (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
@@ -4174,6 +4219,18 @@
       (state.tab === 'delivery' || state.tab === 'postage' || (isWant && nt)) ? 'block' : 'none';
     if (state.tab !== 'want' || nt) renderAgentChips();
     syncPhotoGroups_();
+    document.getElementById('btn-submit').textContent = submitLabel_();
+  }
+  /** The Post button SAYS where a Checking job goes after the swipe, so the
+      choice is confirmed before it is posted. */
+  function submitLabel_() {
+    if (state.stickerMode) return '🚨 Report to Office';
+    if (state.editing) return '💾 Save';
+    if (state.tab === 'defect') return '✅ DONE';
+    var nt = state.tab === 'want' ? (state.upload.nextTab || '') : '';
+    if (nt === 'postage') return '📤 Post → 📦 Postage';
+    if (nt === 'delivery') return '📤 Post → 🚚 Delivery';
+    return '📤 Post';
   }
   document.getElementById('next-chips').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
@@ -4232,11 +4289,8 @@
     document.getElementById('js-missing').style.display = state.stickerMode ? 'block' : 'none';
     document.getElementById('js-add-btn').style.display = state.stickerMode ? 'none' : 'flex';
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    // the two photo groups (Jobsheet / Waybill-or-Defect) are set up by
-    // syncPhotoGroups_ below, via syncPipelineUI
-    document.getElementById('btn-submit').textContent =
-      state.stickerMode ? '🚨 Report to Office'
-        : job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
+    // the photo groups (Jobsheet / Waybill-or-Defect) and the Post button's
+    // label are set by syncPipelineUI below
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
