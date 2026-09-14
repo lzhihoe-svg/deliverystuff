@@ -186,6 +186,8 @@
     font-size: 22px; text-align: center; padding: 10px;
   }
   .lost-photo span { font-size: 12.5px; font-weight: 700; }
+  /* nothing posted in this group YET (not a failed upload) — amber, not grey */
+  .lost-photo.waiting { background: #fffbeb; color: #92400e; }
   .lost-photo b { font-size: 12.5px; color: #b45309; }
   .car-dots {
     position: absolute; bottom: 8px; left: 0; right: 0;
@@ -1775,6 +1777,14 @@
     return '<div class="lost-photo">📷<span>Photo didn\'t upload</span><b>✏️ Edit → re-add it</b></div>';
   }
 
+  /** A photo group with NOTHING in it yet — e.g. a job that passed Checking
+      on its way to Postage whose J&T sticker has not been snapped yet.
+      Says so plainly, instead of looking like a failed upload. */
+  function waitingTile_(what) {
+    return '<div class="lost-photo waiting">🏷️<span>No ' + what + ' yet</span>' +
+      '<b>✏️ Edit → add it</b></div>';
+  }
+
   /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens the
       full-size viewer where you can swipe through the whole set. */
   function carouselHtml(j) {
@@ -2717,14 +2727,17 @@
   /** Postage: how many of the job's photos are Jobsheet pages (rest = Waybill). */
   function jsCountOf(j) {
     var n = Number(j.jsCount || 0);
-    if (n > 0 && n < j.photoIds.length) return n;
+    // a real split is TRUSTED as posted — including "every photo is a
+    // jobsheet", which is what a Checking job pushed to Postage looks like
+    // before its J&T sticker has been added
+    if (n > 0) return Math.min(n, j.photoIds.length);
     // legacy jobs without the split: first photo = jobsheet, rest = waybill
     return j.photoIds.length > 1 ? 1 : j.photoIds.length;
   }
 
   /** One half of the postage card: its own swipeable mini-carousel.
       Tapping opens the viewer scoped to THIS group's photos only. */
-  function miniCarousel(j, start, end, label) {
+  function miniCarousel(j, start, end, label, emptyWord) {
     var count = end - start;
     var live = [], liveT = [];
     for (var k = start; k < end; k++) {
@@ -2732,7 +2745,9 @@
     }
     var csv = live.join(','), tcsv = liveT.join(',');
     var inner;
-    if (count <= 1) {
+    if (count <= 0) {
+      inner = waitingTile_(emptyWord || 'photo');
+    } else if (count <= 1) {
       inner = j.photoIds[start]
         ? imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"')
         : lostTile_();
@@ -2757,9 +2772,11 @@
       each side shows its 1st photo and swipes left/right through the rest. */
   function pairHtml(j) {
     var n = jsCountOf(j);
+    var isDef = j.tab === 'defect';
     return '<div class="photo-pair">' +
-      miniCarousel(j, 0, n, '📄 Jobsheet') +
-      miniCarousel(j, n, j.photoIds.length, j.tab === 'defect' ? '🚨 Defect' : '🏷️ Waybill') +
+      miniCarousel(j, 0, n, '📄 Jobsheet', 'jobsheet') +
+      miniCarousel(j, n, j.photoIds.length, isDef ? '🚨 Defect' : '🏷️ Waybill',
+        isDef ? 'defect photo' : 'waybill sticker') +
       '</div>';
   }
 
@@ -2779,7 +2796,10 @@
         '<div class="js-q">?<span>NO JOBSHEET</span></div></div>' +
         miniCarousel(j, 0, j.photoIds.length, '🏷️ Waybill') + '</div>';
     } else {
-      media = ((j.tab === 'postage' || j.tab === 'defect') && j.photoIds.length >= 2)
+      // a posted split (jsCount) keeps the pair even with ONE photo, so a
+      // parcel still waiting for its sticker shows the empty waybill side
+      media = ((j.tab === 'postage' || j.tab === 'defect') &&
+               (j.photoIds.length >= 2 || Number(j.jsCount || 0) > 0))
         ? pairHtml(j) : carouselHtml(j);
     }
     // out the door — delivered (any way) or given to J&T: stamp a big green
@@ -4102,6 +4122,47 @@
   }
 
   // ------------------------------------------------------------ check-first pipeline UI
+  /**
+   * Does this post use the TWO-GROUP photo layout (📄 Jobsheet | 🏷️ Waybill)?
+   * Postage and Defect always do — and so does a Checking jobsheet prepared
+   * to go to Postage after the ❤️ swipe, so the waybill sticker can be
+   * snapped up front and carried forward with the job.
+   */
+  function isPairMode() {
+    return state.tab === 'postage' || state.tab === 'defect' ||
+      (state.tab === 'want' && state.upload.nextTab === 'postage');
+  }
+
+  /** Show ONE photo list or the Jobsheet | Waybill pair, and label the
+      second group for the job it belongs to. */
+  function syncPhotoGroups_() {
+    var pair = isPairMode();
+    var toPostage = state.tab === 'want' && state.upload.nextTab === 'postage';
+    document.getElementById('generic-photos').style.display = pair ? 'none' : 'block';
+    document.getElementById('postage-groups').style.display = pair ? 'block' : 'none';
+    document.getElementById('wb-label').textContent =
+      state.tab === 'defect' ? '🚨 Defect photos'
+        : state.stickerMode ? '🏷️ Waybill — snap the sticker 📸'
+        : toPostage ? '🏷️ Waybill photos (J&T) — optional, can be added later'
+        : '🏷️ Waybill photos (J&T)';
+    document.getElementById('wb-add-btn').textContent =
+      state.tab === 'defect' ? '📷 Add Defect Photo(s)'
+        : state.stickerMode ? '📷 Snap the Sticker' : '📷 Add Waybill Photo(s)';
+  }
+
+  /** Changing the pipeline target changes the photo layout — carry photos
+      already picked across instead of making staff add them again. */
+  function movePhotoGroups_(wasPair, nowPair) {
+    if (wasPair === nowPair) return;
+    if (nowPair) {  // one list → the Jobsheet side
+      state.upload.js = state.upload.js.concat(state.upload.photos);
+      state.upload.photos = [];
+    } else {        // two lists → one, jobsheets first
+      state.upload.photos = state.upload.photos.concat(state.upload.js, state.upload.wb);
+      state.upload.js = []; state.upload.wb = [];
+    }
+  }
+
   /** Shows/hides the pipeline, customer and deadline blocks for the tab. */
   function syncPipelineUI() {
     var isWant = state.tab === 'want';
@@ -4112,13 +4173,17 @@
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage' || (isWant && nt)) ? 'block' : 'none';
     if (state.tab !== 'want' || nt) renderAgentChips();
+    syncPhotoGroups_();
   }
   document.getElementById('next-chips').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
+    var wasPair = isPairMode();
     state.upload.nextTab = b.getAttribute('data-next');
     this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
     b.classList.add('active');
+    movePhotoGroups_(wasPair, isPairMode());
     syncPipelineUI();
+    renderAllThumbs();
   });
   document.getElementById('next-cats').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
@@ -4135,16 +4200,18 @@
     if (job && job.uploading) { toast('📤 Still uploading — wait a moment'); return; }
     state.stickerMode = (mode === 'sticker' && !job && state.tab === 'postage');
     state.editing = job;
-    state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '', nextTab: '', nextCat: '' };
-    // reset the pipeline chips to "Nothing"
+    // editing keeps the job's own pipeline target, so a Checking job bound
+    // for Postage still opens with its Jobsheet | Waybill split
+    state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '',
+      nextTab: job ? (job.nextTab || '') : '', nextCat: job ? (job.nextCategory || '') : '' };
     document.getElementById('next-chips').querySelectorAll('button').forEach(function (b) {
-      b.classList.toggle('active', b.getAttribute('data-next') === '');
+      b.classList.toggle('active', b.getAttribute('data-next') === state.upload.nextTab);
     });
     document.getElementById('next-cats').querySelectorAll('button').forEach(function (b) {
-      b.classList.remove('active');
+      b.classList.toggle('active', b.getAttribute('data-ncat') === state.upload.nextCat);
     });
     if (job) {
-      var split = (state.tab === 'postage' || state.tab === 'defect') ? jsCountOf(job) : -1;
+      var split = isPairMode() ? jsCountOf(job) : -1;
       job.photoIds.forEach(function (id, i) {
         if (!id) return; // lost upload slot — dropped here, so 💾 Save heals the job
         var item = { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
@@ -4165,16 +4232,8 @@
     document.getElementById('js-missing').style.display = state.stickerMode ? 'block' : 'none';
     document.getElementById('js-add-btn').style.display = state.stickerMode ? 'none' : 'flex';
     document.getElementById('upload-cat-wrap').style.display = state.tab === 'delivery' ? 'block' : 'none';
-    // postage & defect: two separate photo groups (Jobsheet / Waybill-or-Defect)
-    var isPair = state.tab === 'postage' || state.tab === 'defect';
-    document.getElementById('generic-photos').style.display = isPair ? 'none' : 'block';
-    document.getElementById('postage-groups').style.display = isPair ? 'block' : 'none';
-    document.getElementById('wb-label').textContent =
-      state.tab === 'defect' ? '🚨 Defect photos'
-        : state.stickerMode ? '🏷️ Waybill — snap the sticker 📸' : '🏷️ Waybill photos (J&T)';
-    document.getElementById('wb-add-btn').textContent =
-      state.tab === 'defect' ? '📷 Add Defect Photo(s)'
-        : state.stickerMode ? '📷 Snap the Sticker' : '📷 Add Waybill Photo(s)';
+    // the two photo groups (Jobsheet / Waybill-or-Defect) are set up by
+    // syncPhotoGroups_ below, via syncPipelineUI
     document.getElementById('btn-submit').textContent =
       state.stickerMode ? '🚨 Report to Office'
         : job ? '💾 Save' : (state.tab === 'defect' ? '✅ DONE' : '📤 Post');
@@ -4277,7 +4336,7 @@
     toast(g === 'js' ? (state.tab === 'defect' ? '🚨 Moved to Defect' : '🏷️ Moved to Waybill') : '📄 Moved to Jobsheet');
   }
   function renderAllThumbs() {
-    if (state.tab === 'postage' || state.tab === 'defect') { renderThumbsG('js'); renderThumbsG('wb'); }
+    if (isPairMode()) { renderThumbsG('js'); renderThumbsG('wb'); }
     else renderThumbsG('main');
     loadImages();
   }
@@ -4383,9 +4442,12 @@
     }
 
     var photos, jsCount = 0;
-    if (state.tab === 'postage' || state.tab === 'defect') {
+    if (isPairMode()) {
       if (!state.upload.js.length) { toast('Please add a Jobsheet photo 📄'); return; }
-      if (!state.upload.wb.length) {
+      // Checking → Postage: the J&T sticker is often not printed yet, so the
+      // waybill side stays OPTIONAL here. On the Postage and Defect pages
+      // the second group is still compulsory.
+      if (!state.upload.wb.length && state.tab !== 'want') {
         toast(state.tab === 'defect' ? 'Please add a Defect photo 🚨' : 'Please add a Waybill photo 🏷️');
         return;
       }

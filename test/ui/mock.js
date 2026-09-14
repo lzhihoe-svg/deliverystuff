@@ -506,7 +506,9 @@
           id: 'j' + uid, tab: j.nextTab, category: j.nextCategory || '', note: j.note,
           photoIds: j.photoIds.slice(), thumbIds: j.thumbIds.slice(),
           status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
-          dueAt: j.nextDueAt || '', pinnedAt: '', jsCount: 0,
+          // the 📄 Jobsheet | 🏷️ Waybill split prepared on the check rides along
+          dueAt: j.nextDueAt || '', pinnedAt: '',
+          jsCount: j.nextTab === 'postage' ? (Number(j.jsCount) || 0) : 0,
           customer: j.customer, folderId: j.folderId, fromCheck: true,
           nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: ''
         };

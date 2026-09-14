@@ -774,6 +774,27 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
   check(ctx.updateStatus(plain.id, 'got', null, null, null).pushed === null, 'a plain check pushes nothing');
   const dj = ctx.addJob({ tab: 'delivery', category: 'bus', note: 'x', photos: [B64], nextTab: 'postage' });
   check(dj.nextTab === '', 'nextTab is Checking-only (ignored on other tabs)');
+
+  // 🏷️ the Jobsheet | Waybill split prepared on a Checking post must survive
+  // the ❤️ swipe, so the parcel lands on Postage already split
+  const wb = ctx.addJob({ tab: 'want', category: '', note: 'wb pipe', customer: 'Affa',
+    photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 1, nextTab: 'postage' });
+  check(wb.jsCount === 1, 'a Checking post can carry a jobsheet/waybill split');
+  const wbPush = ctx.updateStatus(wb.id, 'got', null, null, null).pushed;
+  check(wbPush.jsCount === 1, '❤️ carries the split forward to Postage');
+  check(wbPush.photoIds.length === 3, 'the waybill photos ride along with the jobsheet');
+  check(ctx.getJobs('postage').find(j => j.id === wbPush.id).jsCount === 1,
+    'the split is stored on the sheet, not just returned');
+  // the waybill is OPTIONAL up front: every photo may still be a jobsheet
+  const noWb = ctx.addJob({ tab: 'want', category: '', note: 'no sticker yet', customer: 'SN',
+    photos: [B64, B64], thumbs: [B64, B64], jsCount: 2, nextTab: 'postage' });
+  check(ctx.updateStatus(noWb.id, 'got', null, null, null).pushed.jsCount === 2,
+    'a check with no waybill yet pushes an all-jobsheet parcel (sticker added later)');
+  // a Delivery-bound check has no split to carry
+  const dvs = ctx.addJob({ tab: 'want', category: '', note: 'dv split', customer: 'SN',
+    photos: [B64, B64], thumbs: [B64, B64], jsCount: 1, nextTab: 'delivery', nextCategory: 'bus' });
+  check(ctx.updateStatus(dvs.id, 'got', null, null, null).pushed.jsCount === 0,
+    'Delivery has no Jobsheet|Waybill split — jsCount is not carried there');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');

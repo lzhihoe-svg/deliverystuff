@@ -653,6 +653,73 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { // tidy for later sections
     window.__mockdb.jobs.forEach(j => { if (j.note === 'Pipe-test 30 jersey') j.status = 'archived'; });
   });
+
+  console.log('\n-- 🏷️ Checking → Postage: waybill up front, carried through the check --');
+  await page.click('#nav-want');
+  await sleep(400);
+  await page.click('#nav-post');
+  await sleep(250);
+  check(await page.locator('#generic-photos').isVisible() && !await page.locator('#postage-groups').isVisible(),
+    'plain check: ONE photo list, no waybill group');
+  await page.setInputFiles('#photos-file', [IMG]);
+  await sleep(600);
+  await page.click('#next-chips button[data-next="postage"]');
+  await sleep(250);
+  check(await page.locator('#postage-groups').isVisible() && !await page.locator('#generic-photos').isVisible(),
+    'choosing 📦 Postage reveals the 📄 Jobsheet | 🏷️ Waybill groups');
+  check((await page.locator('#js-thumbs .thumb').count()) === 1,
+    'the photo already picked moved to the Jobsheet side (not lost)');
+  check((await page.locator('#wb-label').textContent()).indexOf('optional') >= 0,
+    'waybill is marked optional here — the sticker may not be printed yet');
+  await page.setInputFiles('#wb-file', [IMG2]);
+  await sleep(600);
+  check((await page.locator('#wb-thumbs .thumb').count()) === 1, 'waybill sticker added on the Checking post');
+  await page.locator('#agent-chips .agent-chip', { hasText: 'Affa' }).first().click();
+  await openOpts();
+  await page.fill('#upload-note', 'WB-pipe 12 tee');
+  await page.click('#btn-submit');
+  await sleep(1100);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'WB-pipe 12 tee');
+    return !!(j && j.tab === 'want' && j.nextTab === 'postage' && j.jsCount === 1 && j.photoIds.length === 2);
+  }), 'check stored with jobsheet + waybill and the split remembered');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; });
+  await sleep(200);
+  pb = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pb.x + pb.width / 2 + i * 25, pb.y + pb.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.tab === 'postage' && x.note === 'WB-pipe 12 tee');
+    return !!(j && j.jsCount === 1 && j.photoIds.length === 2 && j.fromCheck);
+  }), '❤️ carried the waybill AND the split forward to Postage');
+  await page.click('#nav-postage');
+  await sleep(600);
+  const wbCard = page.locator('#postage-list .card').filter({ hasText: 'WB-pipe' }).first();
+  check((await wbCard.locator('.photo-pair .lbl').allTextContents()).join('|').indexOf('Waybill') >= 0,
+    'the pushed parcel shows the 📄 Jobsheet | 🏷️ Waybill split on its card');
+  // sticker not printed yet: every photo is a jobsheet — the waybill side
+  // must SAY so, not look like a photo that failed to upload
+  await page.evaluate(() => {
+    const src = window.__mockdb.jobs.find(j => j.tab === 'postage' && j.note === 'WB-pipe 12 tee');
+    window.__mockdb.jobs.push(Object.assign({}, src, {
+      id: 'nowb1', note: 'No-sticker-yet 5 cap', jsCount: 2, nextJobId: ''
+    }));
+  });
+  await page.evaluate(() => refresh());
+  await sleep(700);
+  const nwCard = page.locator('#postage-list .card').filter({ hasText: 'No-sticker-yet' }).first();
+  check((await nwCard.locator('.lost-photo.waiting').count()) === 1,
+    'a parcel with no sticker yet shows the empty waybill side');
+  check((await nwCard.locator('.lost-photo.waiting').textContent()).indexOf('waybill sticker') >= 0,
+    "it reads 'No waybill sticker yet', not 'Photo didn't upload'");
+  await page.evaluate(() => {
+    window.__mockdb.jobs.forEach(j => {
+      if (j.note === 'WB-pipe 12 tee' || j.note === 'No-sticker-yet 5 cap') j.status = 'archived';
+    });
+  });
   await page.evaluate(() => refresh());
   await sleep(500);
   await page.click('#nav-delivery');

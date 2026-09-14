@@ -179,7 +179,10 @@ function jobFolderOf_(lbl) {
 
 /** "Jobsheet 1" / "Waybill 2" / "Defect 1" / "Photo 3" — what a photo IS in its job. */
 function photoKind_(tab, jsCount, index) {
-  if ((tab === 'postage' || tab === 'defect') && jsCount > 0) {
+  // 'want' is in the list because a Checking jobsheet prepared for Postage
+  // carries the same Jobsheet | Waybill split, and SHARES these files with
+  // the postage job it becomes after the ❤️ swipe.
+  if ((tab === 'postage' || tab === 'defect' || tab === 'want') && jsCount > 0) {
     if (index < jsCount) return 'Jobsheet ' + (index + 1);
     return (tab === 'defect' ? 'Defect ' : 'Waybill ') + (index - jsCount + 1);
   }
@@ -909,11 +912,14 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
       var vals = sh.getRange(row, 1, 1, 35).getValues()[0];
       if (vals[18] && !vals[21]) {
         var pid = Utilities.getUuid();
+        // the 📄 Jobsheet | 🏷️ Waybill split prepared on the Checking post
+        // rides along, so the parcel lands on Postage already split
+        var pushJs = (vals[18] === 'postage') ? (Number(vals[15]) || 0) : 0;
         var prow = [
           pid, vals[18], vals[19] || '', vals[3],
           vals[4], 'pending',
           'check', new Date().getTime(), '', '', '',
-          vals[11], '', vals[20] || '', '', 0,
+          vals[11], '', vals[20] || '', '', pushJs,
           vals[16] || 'Unassigned', vals[17] || '',
           '', '', '', '',
           '', '', '', '', '',
