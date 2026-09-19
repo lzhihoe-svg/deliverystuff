@@ -28,6 +28,8 @@ function makeEnv() {
     return {
       _data: data,
       setName() {}, setFrozenRows() {},
+      getMaxColumns() { return data.reduce((m, r) => Math.max(m, r.length), 26); },
+      insertColumnsAfter() {},
       appendRow(row) { data.push(row.slice()); },
       getLastRow() { return data.length; },
       deleteRow(r) { data.splice(r - 1, 1); },
@@ -795,6 +797,28 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
     photos: [B64, B64], thumbs: [B64, B64], jsCount: 1, nextTab: 'delivery', nextCategory: 'bus' });
   check(ctx.updateStatus(dvs.id, 'got', null, null, null).pushed.jsCount === 0,
     'Delivery has no Jobsheet|Waybill split — jsCount is not carried there');
+
+  // 🚨 SECOND destination: some jobs must be checked for defects AND go out
+  const both = ctx.addJob({ tab: 'want', category: '', note: 'qc + post', customer: 'SN',
+    photos: [B64, B64, B64], thumbs: [B64, B64, B64], jsCount: 2, nextTab: 'postage', alsoDefect: true });
+  check(both.alsoDefect === true, 'a Checking post can ask for a Defect check as well');
+  const rb = ctx.updateStatus(both.id, 'got', null, null, null);
+  check(!!(rb.pushed && rb.pushed.tab === 'postage' && rb.pushedDefect && rb.pushedDefect.tab === 'defect'),
+    '❤️ pushes to Postage AND Defect');
+  check(rb.pushedDefect.photoIds.length === 2 && rb.pushedDefect.jsCount === 2,
+    'the Defect job gets the JOBSHEET photos only (the waybill stays with the parcel)');
+  check(rb.pushed.photoIds.length === 3 && rb.pushed.jsCount === 2, 'the parcel keeps jobsheet + waybill');
+  check(rb.pushedDefect.fromCheck && rb.pushedDefect.customer === 'SN', 'Defect job is marked passed-check with the customer');
+  check(ctx.getJobs('defect').some(j => j.id === rb.pushedDefect.id), 'Defect job is on the Defect board');
+  check(ctx.updateStatus(both.id, 'got', null, null, null).pushedDefect === null, 'second ❤️ does not double-push the Defect job');
+  const ub = ctx.undoSwipe(both.id);
+  check(ub.pulledBack === rb.pushed.id && ub.pulledBackDefect === rb.pushedDefect.id, 'UNDO pulls back BOTH pushed jobs');
+  check(!ctx.getJobs('defect').some(j => j.id === rb.pushedDefect.id), 'Defect job gone after undo');
+  const only = ctx.addJob({ tab: 'want', category: '', note: 'qc only', customer: 'SN', photos: [B64], thumbs: [B64], alsoDefect: true });
+  const ro = ctx.updateStatus(only.id, 'got', null, null, null);
+  check(ro.pushed === null && !!ro.pushedDefect && ro.pushedDefect.jsCount === 1, 'Defect-only check pushes just the Defect job');
+  const notWant = ctx.addJob({ tab: 'postage', category: '', note: 'x', customer: 'SN', photos: [B64, B64], thumbs: [B64, B64], jsCount: 1, alsoDefect: true });
+  check(notWant.alsoDefect === false, 'alsoDefect is Checking-only (ignored on other tabs)');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');

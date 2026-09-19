@@ -1075,6 +1075,10 @@
         <button type="button" class="agent-chip" data-ncat="bus">🚌 Bus</button>
         <button type="button" class="agent-chip" data-ncat="pickup">🤝 Pickup</button>
       </div>
+      <!-- second destination: the same job ALSO goes to the Defect board -->
+      <div class="agent-chips" id="next-also">
+        <button type="button" class="agent-chip" id="also-defect-btn">🚨 + Also check for Defect</button>
+      </div>
     </div>
 
     <div id="generic-photos">
@@ -1800,9 +1804,9 @@
   /** A photo group with NOTHING in it yet — e.g. a job that passed Checking
       on its way to Postage whose J&T sticker has not been snapped yet.
       Says so plainly, instead of looking like a failed upload. */
-  function waitingTile_(what) {
+  function waitingTile_(what, hint) {
     return '<div class="lost-photo waiting">🏷️<span>No ' + what + ' yet</span>' +
-      '<b>✏️ Edit → add it</b></div>';
+      '<b>' + (hint || '✏️ Edit → add it') + '</b></div>';
   }
 
   /** Swipeable photo strip for a job card. Shows THUMBNAILS; tap opens the
@@ -2355,9 +2359,11 @@
     google.script.run
       .withSuccessHandler(function (res) {
         // pipeline pull-back: the wrong ❤️ had already pushed a job — remove it
-        if (res && res.pulledBack) {
-          ['delivery', 'postage'].forEach(function (tb) {
-            state.jobs[tb] = state.jobs[tb].filter(function (x) { return x.id !== res.pulledBack; });
+        if (res && (res.pulledBack || res.pulledBackDefect)) {
+          ['delivery', 'postage', 'defect'].forEach(function (tb) {
+            state.jobs[tb] = state.jobs[tb].filter(function (x) {
+              return x.id !== res.pulledBack && x.id !== res.pulledBackDefect;
+            });
             saveJobsCache(tb);
           });
           renderAll();
@@ -2422,7 +2428,9 @@
             ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) + ' · ' : '') +
             '📄 ' + (esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
-            (j.nextTab ? ' · →' + (j.nextTab === 'delivery' ? '🚚' : '📦') + ' after ✅' : '') +
+            ((j.nextTab || j.alsoDefect) ? ' · →' +
+              (j.nextTab ? (j.nextTab === 'delivery' ? '🚚' : '📦') : '') +
+              (j.alsoDefect ? '🚨' : '') + ' after ✅' : '') +
             ' · ' + timeAgo(j.createdAt) + ' · ' + pending.length + ' left</div>' +
             (j.uploading || !jobMenuHtml_(j) ? '' : '<div class="rowbtn end">' + moreBtn_(j) + '</div>') +
           '</div>' +
@@ -2451,7 +2459,8 @@
         ((j.customer && j.customer !== 'Unassigned') ? '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ' : '') +
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
-        (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') + '</div>' +
+        (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') +
+        (j.defectJobId ? (j.nextJobId ? ' + Defect' : ' · ➡️ sent to Defect') : '') + '</div>' +
         (!isGot ? ((j.problem !== 'printed' && !j.printedAt
             ? '<div class="prob-line">🚨 On the Problem page — office will print it</div>' : '') +
           probHistoryHtml_(j)) : '') +
@@ -2782,7 +2791,7 @@
 
   /** One half of the postage card: its own swipeable mini-carousel.
       Tapping opens the viewer scoped to THIS group's photos only. */
-  function miniCarousel(j, start, end, label, emptyWord) {
+  function miniCarousel(j, start, end, label, emptyWord, emptyHint) {
     var count = end - start;
     var live = [], liveT = [];
     for (var k = start; k < end; k++) {
@@ -2791,7 +2800,7 @@
     var csv = live.join(','), tcsv = liveT.join(',');
     var inner;
     if (count <= 0) {
-      inner = waitingTile_(emptyWord || 'photo');
+      inner = waitingTile_(emptyWord || 'photo', emptyHint);
     } else if (count <= 1) {
       inner = j.photoIds[start]
         ? imgTag(thumbOf(j, start), '', 'onclick="viewPhotoSet(\'' + csv + '\', 0, \'' + tcsv + '\')"')
@@ -2820,8 +2829,11 @@
     var isDef = j.tab === 'defect';
     return '<div class="photo-pair">' +
       miniCarousel(j, 0, n, '📄 Jobsheet', 'jobsheet') +
+      // a Defect-CHECK job pushed from Checking starts with no defect photo:
+      // the factory inspects it and the proof photo closes it
       miniCarousel(j, n, j.photoIds.length, isDef ? '🚨 Defect' : '🏷️ Waybill',
-        isDef ? 'defect photo' : 'waybill sticker') +
+        isDef ? 'defect photo' : 'waybill sticker',
+        isDef ? '🔍 Check it — 📸 proof when done' : '') +
       '</div>';
   }
 
@@ -2971,18 +2983,29 @@
     if (status === 'archived') toast('🗄️ Hidden.');
     google.script.run
       .withSuccessHandler(function (res) {
-        // pipeline: a passed check auto-pushed a job to the next board
-        if (res && res.pushed) {
-          state.jobs[res.pushed.tab].unshift(res.pushed);
-          saveJobsCache(res.pushed.tab);
+        // pipeline: a passed check auto-pushed a job to the next board —
+        // and/or a Defect-check job (a job can go to BOTH)
+        if (res && (res.pushed || res.pushedDefect)) {
           var cj = null;
           for (var k = 0; k < state.jobs.want.length; k++) {
             if (state.jobs.want[k].id === res.id) { cj = state.jobs.want[k]; break; }
           }
-          if (cj) cj.nextJobId = res.pushed.id;
+          var where = [];
+          if (res.pushed) {
+            state.jobs[res.pushed.tab].unshift(res.pushed);
+            saveJobsCache(res.pushed.tab);
+            if (cj) cj.nextJobId = res.pushed.id;
+            where.push(res.pushed.tab === 'delivery' ? 'Delivery' : 'Postage');
+          }
+          if (res.pushedDefect) {
+            state.jobs.defect.unshift(res.pushedDefect);
+            saveJobsCache('defect');
+            if (cj) cj.defectJobId = res.pushedDefect.id;
+            where.push('Defect');
+          }
           saveJobsCache('want');
           renderAll(); updateBadgeLocal();
-          toast(res.pushed.tab === 'delivery' ? '➡️ Passed check — sent to Delivery!' : '➡️ Passed check — sent to Postage!');
+          toast('➡️ Passed check — sent to ' + where.join(' + ') + '!');
         }
       })
       .withFailureHandler(bgFail)
@@ -4212,12 +4235,13 @@
   function syncPipelineUI() {
     var isWant = state.tab === 'want';
     var nt = state.upload.nextTab || '';
+    var goes = nt || state.upload.alsoDefect;   // this check pushes SOMEWHERE after ❤️
     document.getElementById('next-wrap').style.display = (isWant && !state.editing) ? 'block' : 'none';
     document.getElementById('next-cats').style.display = (isWant && nt === 'delivery') ? 'flex' : 'none';
-    document.getElementById('customer-wrap').style.display = (state.tab !== 'want' || nt) ? 'block' : 'none';
+    document.getElementById('customer-wrap').style.display = (state.tab !== 'want' || goes) ? 'block' : 'none';
     document.getElementById('due-wrap').style.display =
       (state.tab === 'delivery' || state.tab === 'postage' || (isWant && nt)) ? 'block' : 'none';
-    if (state.tab !== 'want' || nt) renderAgentChips();
+    if (state.tab !== 'want' || goes) renderAgentChips();
     syncPhotoGroups_();
     document.getElementById('btn-submit').textContent = submitLabel_();
   }
@@ -4228,8 +4252,10 @@
     if (state.editing) return '💾 Save';
     if (state.tab === 'defect') return '✅ DONE';
     var nt = state.tab === 'want' ? (state.upload.nextTab || '') : '';
-    if (nt === 'postage') return '📤 Post → 📦 Postage';
-    if (nt === 'delivery') return '📤 Post → 🚚 Delivery';
+    var also = state.tab === 'want' && state.upload.alsoDefect ? ' + 🚨 Defect' : '';
+    if (nt === 'postage') return '📤 Post → 📦 Postage' + also;
+    if (nt === 'delivery') return '📤 Post → 🚚 Delivery' + also;
+    if (also) return '📤 Post → 🚨 Defect';
     return '📤 Post';
   }
   document.getElementById('next-chips').addEventListener('click', function (e) {
@@ -4248,6 +4274,13 @@
     this.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
     b.classList.add('active');
   });
+  // 🚨 toggle: ALSO push a Defect-check job on ❤️ — on its own, or on top
+  // of Delivery / Postage (some jobs must be checked for defects AND go out)
+  document.getElementById('also-defect-btn').addEventListener('click', function () {
+    state.upload.alsoDefect = !state.upload.alsoDefect;
+    this.classList.toggle('active', state.upload.alsoDefect);
+    syncPipelineUI();
+  });
 
   // ------------------------------------------------------------ upload & edit modal
   function openUpload(editId, mode) {
@@ -4260,10 +4293,12 @@
     // editing keeps the job's own pipeline target, so a Checking job bound
     // for Postage still opens with its Jobsheet | Waybill split
     state.upload = { photos: [], js: [], wb: [], cat: job ? (job.category || '') : '',
-      nextTab: job ? (job.nextTab || '') : '', nextCat: job ? (job.nextCategory || '') : '' };
+      nextTab: job ? (job.nextTab || '') : '', nextCat: job ? (job.nextCategory || '') : '',
+      alsoDefect: job ? !!job.alsoDefect : false };
     document.getElementById('next-chips').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-next') === state.upload.nextTab);
     });
+    document.getElementById('also-defect-btn').classList.toggle('active', state.upload.alsoDefect);
     document.getElementById('next-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-ncat') === state.upload.nextCat);
     });
@@ -4435,7 +4470,8 @@
     var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
                                  document.getElementById('upload-due-month').value,
                                  document.getElementById('upload-due').value) : '';
-    var needName = state.tab !== 'want' || nextTab;
+    var alsoDefect = (isWant && !state.editing) ? !!state.upload.alsoDefect : false;
+    var needName = state.tab !== 'want' || nextTab || alsoDefect;
     var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
 
     // "Got sticker, No Job" report: waybill only, jobsheet is the red ? —
@@ -4573,7 +4609,8 @@
       createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
       dueAt: isWant ? '' : dueMs, jsCount: jsCount, customer: customer || 'Unassigned',
       nextTab: nextTab, nextCategory: nextTab === 'delivery' ? state.upload.nextCat : '',
-      nextDueAt: nextTab ? dueMs : '', nextJobId: '', uploading: true
+      nextDueAt: nextTab ? dueMs : '', nextJobId: '',
+      alsoDefect: alsoDefect, defectJobId: '', uploading: true
     };
     state.jobs[postTab].unshift(tempJob);
     inflightJobs.push(tempJob);
@@ -4605,7 +4642,8 @@
         jsCount: jsCount,
         nextTab: nextTab,
         nextCategory: nextTab === 'delivery' ? state.upload.nextCat : '',
-        nextDueAt: nextTab ? dueMs : ''
+        nextDueAt: nextTab ? dueMs : '',
+        alsoDefect: alsoDefect
       }],
       function (job) {
         uploadsPending--; updatePill();

@@ -134,6 +134,7 @@
         folderId: 'fold-' + (uid),
         nextTab: (p.tab === 'want' && (p.nextTab === 'delivery' || p.nextTab === 'postage')) ? p.nextTab : '',
         nextCategory: p.nextCategory || '', nextDueAt: p.nextDueAt || '', nextJobId: '',
+        alsoDefect: p.tab === 'want' && !!p.alsoDefect, defectJobId: '',
         problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
         deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: '', probLog: []
       };
@@ -233,7 +234,13 @@
         if (idx >= 0) { db.jobs.splice(idx, 1); pulledBack = j.nextJobId; }
         j.nextJobId = '';
       }
-      return { id: id, status: 'pending', pinnedAt: j.pinnedAt, pulledBack: pulledBack };
+      var pulledBackDefect = '';
+      if (j.defectJobId) {
+        var didx = db.jobs.findIndex(function (x) { return x.id === j.defectJobId && x.status === 'pending'; });
+        if (didx >= 0) { db.jobs.splice(didx, 1); pulledBackDefect = j.defectJobId; }
+        j.defectJobId = '';
+      }
+      return { id: id, status: 'pending', pinnedAt: j.pinnedAt, pulledBack: pulledBack, pulledBackDefect: pulledBackDefect };
     },
     askAgain: function (id, pin) {
       requireAdmin(pin);
@@ -499,6 +506,23 @@
         if (proof) j.proofPhotoId = 'proof-' + id;
         if (proofThumb) j.proofThumbId = 'proofth-' + id;
       }
+      // second destination: a Defect-check job with the JOBSHEET photos only
+      var pushedDefect = null;
+      if (status === 'got' && j.alsoDefect && !j.defectJobId) {
+        uid++;
+        var jsN = Number(j.jsCount) || 0;
+        var dP = jsN > 0 ? j.photoIds.slice(0, jsN) : j.photoIds.slice();
+        var dT = jsN > 0 ? j.thumbIds.slice(0, jsN) : j.thumbIds.slice();
+        var dj = {
+          id: 'j' + uid, tab: 'defect', category: '', note: j.note, photoIds: dP, thumbIds: dT,
+          status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
+          dueAt: '', pinnedAt: '', jsCount: dP.length, customer: j.customer, folderId: j.folderId, fromCheck: true,
+          nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: '', alsoDefect: false, defectJobId: ''
+        };
+        db.jobs.push(dj);
+        j.defectJobId = dj.id;
+        pushedDefect = JSON.parse(JSON.stringify(dj));
+      }
       var pushed = null;
       if (status === 'got' && j.nextTab && !j.nextJobId) {
         uid++;
@@ -516,7 +540,7 @@
         j.nextJobId = pj.id;
         pushed = JSON.parse(JSON.stringify(pj));
       }
-      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '', proofThumbId: j.proofThumbId || '', pushed: pushed };
+      return { id: id, status: status, doneAt: j.doneAt, proofPhotoId: j.proofPhotoId || '', proofThumbId: j.proofThumbId || '', pushed: pushed, pushedDefect: pushedDefect };
     }
   };
 

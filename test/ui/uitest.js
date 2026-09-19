@@ -726,6 +726,47 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#topcard').count()) === 0 || (await page.locator('#topcard').getAttribute('data-id')) !== raceId,
     'the jobsheet did NOT reappear on the swipe deck');
   await page.evaluate(id => { window.__mockdb.jobs.forEach(j => { if (j.id === id) j.status = 'archived'; }); }, raceId);
+
+  console.log('\n-- 🚨 Checking → Defect AND Postage (one job, two boards) --');
+  await page.click('#nav-want'); await sleep(300);
+  await page.click('#nav-post'); await sleep(250);
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  await page.click('#also-defect-btn'); await sleep(200);
+  check(await page.locator('#also-defect-btn').evaluate(b => b.classList.contains('active')), 'the "+ Also check for Defect" toggle lights up');
+  check((await page.locator('#btn-submit').textContent()).indexOf('📦 Postage + 🚨 Defect') >= 0, 'Post button names BOTH destinations');
+  await page.setInputFiles('#js-file', [IMG]); await sleep(600);
+  await page.setInputFiles('#wb-file', [IMG2]); await sleep(600);
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await openOpts();
+  await page.fill('#upload-note', 'Both-boards 8 polo');
+  await page.click('#btn-submit'); await sleep(1100);
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('→📦🚨 after ✅') >= 0, 'swipe deck shows →📦🚨');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; }); await sleep(200);
+  pb = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pb.x + pb.width / 2 + i * 25, pb.y + pb.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(900);
+  check(await page.evaluate(() => {
+    const js = window.__mockdb.jobs.filter(x => x.note === 'Both-boards 8 polo');
+    const p = js.find(x => x.tab === 'postage'), d = js.find(x => x.tab === 'defect');
+    return !!(p && d && p.photoIds.length === 2 && d.photoIds.length === 1 && d.jsCount === 1 && d.fromCheck);
+  }), '❤️ created BOTH: the parcel (jobsheet + waybill) and the Defect check (jobsheet only)');
+  check((await page.locator('#toast').textContent()).indexOf('Postage + Defect') >= 0, 'toast says sent to Postage + Defect');
+  await page.click('#nav-defect'); await sleep(600);
+  const dCard = page.locator('#defect-list .card').filter({ hasText: 'Both-boards' }).first();
+  check((await dCard.count()) === 1, 'the job shows on the Defect board');
+  check((await dCard.locator('.lost-photo.waiting').textContent()).indexOf('Check it') >= 0, 'its Defect side reads "Check it — proof when done"');
+  await page.click('#nav-postage'); await sleep(500);
+  check((await page.locator('#postage-list .card').filter({ hasText: 'Both-boards' }).count()) === 1, 'and on the Postage board too');
+  await page.click('#nav-want'); await sleep(400);
+  check((await page.locator('#want-responded .card').filter({ hasText: 'Both-boards' }).locator('.meta').textContent()).indexOf('Postage + Defect') >= 0,
+    'Got It card says sent to Postage + Defect');
+  await clickSafe(page.locator('#undo-bar button')); await sleep(800);
+  check(await page.evaluate(() => window.__mockdb.jobs.filter(x => x.note === 'Both-boards 8 polo' && x.tab !== 'want').length === 0),
+    'UNDO pulled back BOTH pushed jobs');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.note === 'Both-boards 8 polo') j.status = 'archived'; }); });
   await page.click('#nav-postage');
   await sleep(600);
   const wbCard = page.locator('#postage-list .card').filter({ hasText: 'WB-pipe' }).first();
