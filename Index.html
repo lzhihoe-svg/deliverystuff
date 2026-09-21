@@ -3408,10 +3408,14 @@
     // Checking has its own swipe page — the TV shows the production boards
     ['delivery', 'postage', 'defect'].forEach(function (tb) {
       var jobs = state.jobs[tb].slice();
-      // problem jobs first inside each group, then newest first
+      // problem jobs first inside each group, then the most URGENT Ready-by
+      // first (no deadline last), then newest — the same order as the phone
+      // boards, so the TV and the phones agree on what is next
       jobs.sort(function (a, b) {
         var qa = pvProb_(a) ? 0 : 1, qb = pvProb_(b) ? 0 : 1;
         if (qa !== qb) return qa - qb;
+        var da = a.dueAt ? Number(a.dueAt) : Infinity, db = b.dueAt ? Number(b.dueAt) : Infinity;
+        if (da !== db) return da - db;
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
       var groups = pvGroups_(tb, jobs);

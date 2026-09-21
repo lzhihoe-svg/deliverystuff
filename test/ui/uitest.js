@@ -1846,6 +1846,31 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) < 50,
     'tapping the top of the screen scrolls back up — no dragging needed');
 
+  console.log('\n-- 📺 TV sorts To Do by Ready-by, most urgent first (not newest first) --');
+  await page.evaluate(() => {
+    const now = Date.now(), day = 86400000;
+    const mk = (id, note, createdAgo, due) => ({
+      id, tab: 'delivery', category: 'bus', note, photoIds: ['ph-' + id], thumbIds: ['th-' + id],
+      status: 'pending', createdAt: now - createdAgo, doneAt: '', proofPhotoId: '', proofThumbId: '',
+      dueAt: due, pinnedAt: '', jsCount: 0, customer: 'Sort ' + id, folderId: '', nextTab: '', nextCategory: '',
+      nextDueAt: '', nextJobId: '', problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
+      deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: '', probLog: []
+    });
+    window.__mockdb.jobs.push(
+      mk('srtA', 'Due Thursday, posted just now', 10 * 60000, now + 3 * day),
+      mk('srtB', 'Due today, posted 4 hr ago', 4 * 3600000, now + 2 * 3600000),
+      mk('srtC', 'No due date, posted 1 hr ago', 3600000, ''));
+  });
+  await page.evaluate(() => refresh()); await sleep(700);
+  await viaMenu('#prodview-btn'); await sleep(400);
+  const tvOrder = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#pv-delivery .pv-card2 .pv-cust')).map(e => e.textContent.trim()).filter(t => t.indexOf('Sort ') >= 0));
+  check(tvOrder.join('|') === '👤 Sort srtB|👤 Sort srtA|👤 Sort srtC',
+    'TV To Do order: due today → due Thursday → no due date (was newest-first) — got ' + tvOrder.join(' | '));
+  await page.evaluate(() => closeProdView());
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (String(j.id).indexOf('srt') === 0) j.status = 'archived'; }); });
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- 📺 Production View: 5 columns for the factory TV --');
   await page.evaluate(() => { // seed content: a defect job + a postage job for the detail-card test
     window.__mockapi.addJob({ tab: 'defect', category: '', note: 'TV-defect', customer: 'CG', photos: ['tvd1', 'tvd2'], thumbs: ['tvd1', 'tvd2'], jsCount: 1 });
