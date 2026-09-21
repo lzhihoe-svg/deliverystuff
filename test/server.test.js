@@ -819,6 +819,27 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
   check(ro.pushed === null && !!ro.pushedDefect && ro.pushedDefect.jsCount === 1, 'Defect-only check pushes just the Defect job');
   const notWant = ctx.addJob({ tab: 'postage', category: '', note: 'x', customer: 'SN', photos: [B64, B64], thumbs: [B64, B64], jsCount: 1, alsoDefect: true });
   check(notWant.alsoDefect === false, 'alsoDefect is Checking-only (ignored on other tabs)');
+
+  // 📶 a photo that lands AFTER the ❤️ (bad Wi-Fi retry) must still reach the pushed jobs
+  const late = ctx.addJob({ tab: 'want', category: '', note: 'late photo', customer: 'SN',
+    photos: [B64], thumbs: [B64], jsCount: 1, nextTab: 'postage', alsoDefect: true });
+  const rl = ctx.updateStatus(late.id, 'got', null, null, null);
+  check(rl.pushed.photoIds.length === 1, 'pushed with the one photo that had arrived');
+  ctx.addPhotoToJob(late.id, 1, B64, B64); // the waybill arrives late
+  const pl = ctx.getJobs('postage').find(j => j.id === rl.pushed.id);
+  check(pl.photoIds.length === 2 && !!pl.photoIds[1] && !!pl.thumbIds[1], 'late waybill reached the pushed parcel');
+  check(ctx.getJobs('defect').find(j => j.id === rl.pushedDefect.id).photoIds.length === 1,
+    'the Defect job (jobsheet pages only) did NOT get the waybill');
+  const late2 = ctx.addJob({ tab: 'want', category: '', note: 'late page', customer: 'SN',
+    photos: [B64], thumbs: [B64], nextTab: 'delivery', nextCategory: 'bus', alsoDefect: true });
+  const rl2 = ctx.updateStatus(late2.id, 'got', null, null, null);
+  ctx.addPhotoToJob(late2.id, 1, B64, B64); // a second jobsheet page, no split
+  check(ctx.getJobs('delivery').find(j => j.id === rl2.pushed.id).photoIds.length === 2 &&
+        ctx.getJobs('defect').find(j => j.id === rl2.pushedDefect.id).photoIds.length === 2,
+    'no split: a late jobsheet page reaches BOTH pushed jobs');
+  const ordinary = ctx.addJob({ tab: 'postage', category: '', note: 'ordinary', customer: 'SN', photos: [B64], thumbs: [B64], jsCount: 1 });
+  ctx.addPhotoToJob(ordinary.id, 1, B64, B64);
+  check(ctx.getJobs('postage').find(j => j.id === ordinary.id).photoIds.length === 2, 'an ordinary job still takes its photos as before');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');

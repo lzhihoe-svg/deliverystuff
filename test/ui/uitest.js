@@ -767,6 +767,60 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await page.evaluate(() => window.__mockdb.jobs.filter(x => x.note === 'Both-boards 8 polo' && x.tab !== 'want').length === 0),
     'UNDO pulled back BOTH pushed jobs');
   await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.note === 'Both-boards 8 polo') j.status = 'archived'; }); });
+
+  console.log('\n-- 🏷️ both photos under Jobsheet by mistake → the form ASKS before posting --');
+  await page.click('#nav-want'); await sleep(300);
+  await page.click('#nav-post'); await sleep(250);
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  await page.setInputFiles('#js-file', [IMG, IMG2]); await sleep(900); // multi-select: both under Jobsheet
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await openOpts();
+  await page.fill('#upload-note', 'Mis-filed 3 tee');
+  await page.click('#btn-submit'); await sleep(300);
+  check(await page.locator('#confirm-overlay').isVisible(), 'Post asks: is the LAST photo the waybill sticker?');
+  check((await page.locator('#confirm-no').textContent()).indexOf('all jobsheet') >= 0, 'the other answer reads "all jobsheet" (not Cancel)');
+  await page.click('#confirm-yes'); await sleep(1300);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Mis-filed 3 tee');
+    return !!(j && j.jsCount === 1 && j.photoIds.length === 2);
+  }), '"Yes" moved the last photo to Waybill — saved as Jobsheet 1 + Waybill 1');
+  check((await page.locator('#confirm-no').textContent()) === 'Cancel', 'confirm box is back to a plain Cancel for the next use');
+  // change of mind: Postage → Delivery → Postage must NOT collapse the split
+  await page.click('#nav-post'); await sleep(250);
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  await page.setInputFiles('#js-file', [IMG]); await sleep(600);
+  await page.setInputFiles('#wb-file', [IMG2]); await sleep(600);
+  await page.click('#next-chips button[data-next="delivery"]'); await sleep(200);
+  check((await page.locator('#upload-thumbs .thumb').count()) === 2, 'switching to Delivery shows both in one list');
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  check((await page.locator('#js-thumbs .thumb').count()) === 1 && (await page.locator('#wb-thumbs .thumb').count()) === 1,
+    'switching back to Postage restores Jobsheet 1 | Waybill 1 (no collapse)');
+  // "No — all jobsheet" posts as-is, once, without asking again
+  await page.click('#wb-thumbs .thumb-move'); await sleep(200); // ⬆️ To Jobsheet → 2 | 0
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await openOpts();
+  await page.fill('#upload-note', 'Two pages 4 cap');
+  await page.click('#btn-submit'); await sleep(300);
+  check(await page.locator('#confirm-overlay').isVisible(), 'asks again for a fresh post');
+  await page.click('#confirm-no'); await sleep(1300);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.note === 'Two pages 4 cap');
+    return !!(j && j.jsCount === 2 && j.photoIds.length === 2);
+  }), '"No — all jobsheet" posts both as jobsheet pages');
+  check(!await page.locator('#upload-overlay').isVisible(), 'and the post window closed (no re-ask loop)');
+  // an already-misfiled parcel on the Postage board says how to fix it
+  await page.evaluate(() => {
+    const src = window.__mockdb.jobs.find(j => j.note === 'Two pages 4 cap');
+    window.__mockdb.jobs.push(Object.assign({}, src, { id: 'misf1', tab: 'postage', note: 'Misfiled parcel 9', nextTab: '', alsoDefect: false }));
+  });
+  await page.evaluate(() => refresh()); await sleep(700);
+  await page.click('#nav-postage'); await sleep(500);
+  const mfCard = page.locator('#postage-list .card').filter({ hasText: 'Misfiled parcel' }).first();
+  check((await mfCard.locator('.lost-photo.waiting').textContent()).indexOf('To Waybill') >= 0,
+    'its empty Waybill side says "2 photos under Jobsheet — ✏️ Edit → ⬇️ To Waybill"');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => {
+    if (j.note === 'Mis-filed 3 tee' || j.note === 'Two pages 4 cap' || j.note === 'Misfiled parcel 9') j.status = 'archived';
+  }); });
   await page.click('#nav-postage');
   await sleep(600);
   const wbCard = page.locator('#postage-list .card').filter({ hasText: 'WB-pipe' }).first();

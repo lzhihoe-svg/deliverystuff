@@ -103,6 +103,15 @@
       while (j.thumbIds.length <= index) j.thumbIds.push('');
       j.photoIds[index] = 'ph-' + id + '-' + index;
       j.thumbIds[index] = thumb ? ('th-' + id + '-' + index) : '';
+      // a late photo also reaches the job(s) this check already pushed
+      var jsN = Number(j.jsCount) || 0;
+      [j.nextJobId, (jsN === 0 || index < jsN) ? j.defectJobId : ''].forEach(function (pid) {
+        var pj = pid && db.jobs.find(function (x) { return x.id === pid; });
+        if (!pj) return;
+        while (pj.photoIds.length <= index) pj.photoIds.push('');
+        while (pj.thumbIds.length <= index) pj.thumbIds.push('');
+        pj.photoIds[index] = j.photoIds[index]; pj.thumbIds[index] = j.thumbIds[index];
+      });
       return { id: id, index: index, photoId: j.photoIds[index], thumbId: j.thumbIds[index] };
     },
     getJobs: function (tab) {

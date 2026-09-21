@@ -519,6 +519,25 @@ function addPhotoToJob(id, index, fullB64, thumbB64) {
     thumbIds[index] = tId;
     sh.getRange(row, 5).setValue(JSON.stringify(photoIds));
     sh.getRange(row, 12).setValue(JSON.stringify(thumbIds));
+    // A photo that lands AFTER the ❤️ swipe (bad Wi-Fi retry) must ALSO
+    // reach the job(s) this check already pushed — they copied the photo
+    // list at push time, they don't share it. The Defect job only holds
+    // the jobsheet pages, so a waybill (index ≥ jsCount) skips it.
+    var link = sh.getRange(row, 16, 1, 22).getValues()[0]; // jsCount … defectJobId
+    var jsN = Number(link[0]) || 0, nextJobId = link[6], defectJobId = link[21];
+    var targets = [nextJobId, (jsN === 0 || index < jsN) ? defectJobId : ''];
+    for (var t = 0; t < targets.length; t++) {
+      if (!targets[t]) continue;
+      var prow = findRow_(sh, targets[t]);
+      if (prow < 0) continue;
+      var pp = JSON.parse(sh.getRange(prow, 5).getValue() || '[]');
+      var pt = JSON.parse(sh.getRange(prow, 12).getValue() || '[]');
+      while (pp.length <= index) pp.push('');
+      while (pt.length <= index) pt.push('');
+      pp[index] = pId; pt[index] = tId;
+      sh.getRange(prow, 5).setValue(JSON.stringify(pp));
+      sh.getRange(prow, 12).setValue(JSON.stringify(pt));
+    }
   } finally {
     lock.releaseLock();
   }

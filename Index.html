@@ -1143,7 +1143,7 @@
     <button class="x-close" onclick="closeConfirm()">✕</button>
     <h2 id="confirm-msg" style="padding-right:0;font-size:17px;margin-top:6px"></h2>
     <div class="btn-row">
-      <button class="btn gray" onclick="closeConfirm()">Cancel</button>
+      <button class="btn gray" id="confirm-no" onclick="confirmNo()">Cancel</button>
       <button class="btn red" id="confirm-yes" onclick="confirmYes()"></button>
     </div>
   </div>
@@ -2827,13 +2827,18 @@
   function pairHtml(j) {
     var n = jsCountOf(j);
     var isDef = j.tab === 'defect';
+    // several photos under Jobsheet and NONE under Waybill — the sticker
+    // was most likely filed as a jobsheet page; say how to fix it
+    var misfiled = !isDef && n >= j.photoIds.length && j.photoIds.length >= 2;
     return '<div class="photo-pair">' +
       miniCarousel(j, 0, n, '📄 Jobsheet', 'jobsheet') +
       // a Defect-CHECK job pushed from Checking starts with no defect photo:
       // the factory inspects it and the proof photo closes it
       miniCarousel(j, n, j.photoIds.length, isDef ? '🚨 Defect' : '🏷️ Waybill',
         isDef ? 'defect photo' : 'waybill sticker',
-        isDef ? '🔍 Check it — 📸 proof when done' : '') +
+        isDef ? '🔍 Check it — 📸 proof when done'
+          : misfiled ? n + ' photos under Jobsheet — is one the sticker? ✏️ Edit → ⬇️ To Waybill'
+          : '') +
       '</div>';
   }
 
@@ -3015,18 +3020,28 @@
   // generic confirm modal — window.confirm() can be silently blocked
   // inside the Apps Script sandbox iframe
   var confirmCb = null;
-  function askConfirm(msg, yesLabel, cb) {
-    confirmCb = cb;
+  // noLabel/noCb turn it into a two-way QUESTION ("sticker?" / "all
+  // jobsheet") instead of yes/cancel; ✕ still just closes.
+  var confirmNoCb = null;
+  function askConfirm(msg, yesLabel, cb, noLabel, noCb) {
+    confirmCb = cb; confirmNoCb = noCb || null;
     document.getElementById('confirm-msg').textContent = msg;
     document.getElementById('confirm-yes').textContent = yesLabel;
+    document.getElementById('confirm-no').textContent = noLabel || 'Cancel';
     document.getElementById('confirm-overlay').classList.add('show');
   }
   function closeConfirm() {
-    confirmCb = null;
+    confirmCb = null; confirmNoCb = null;
+    document.getElementById('confirm-no').textContent = 'Cancel';
     document.getElementById('confirm-overlay').classList.remove('show');
   }
   function confirmYes() {
     var cb = confirmCb;
+    closeConfirm();
+    if (cb) cb();
+  }
+  function confirmNo() {
+    var cb = confirmNoCb;
     closeConfirm();
     if (cb) cb();
   }
@@ -4222,10 +4237,14 @@
       already picked across instead of making staff add them again. */
   function movePhotoGroups_(wasPair, nowPair) {
     if (wasPair === nowPair) return;
-    if (nowPair) {  // one list → the Jobsheet side
-      state.upload.js = state.upload.js.concat(state.upload.photos);
+    if (nowPair) {  // one list → two: each photo goes back to the group it
+                    // was picked for (a waybill stays a waybill); photos
+                    // picked in the single list count as jobsheet
+      var all = state.upload.js.concat(state.upload.wb, state.upload.photos);
+      state.upload.js = all.filter(function (p) { return p.g !== 'wb'; });
+      state.upload.wb = all.filter(function (p) { return p.g === 'wb'; });
       state.upload.photos = [];
-    } else {        // two lists → one, jobsheets first
+    } else {        // two lists → one, jobsheets first (tags kept)
       state.upload.photos = state.upload.photos.concat(state.upload.js, state.upload.wb);
       state.upload.js = []; state.upload.wb = [];
     }
@@ -4308,7 +4327,7 @@
         if (!id) return; // lost upload slot — dropped here, so 💾 Save heals the job
         var item = { id: id, thumbId: (job.thumbIds && job.thumbIds[i]) || '' };
         if (split < 0) state.upload.photos.push(item);
-        else (i < split ? state.upload.js : state.upload.wb).push(item);
+        else { item.g = i < split ? 'js' : 'wb'; state.upload[item.g].push(item); }
       });
     }
 
@@ -4420,6 +4439,7 @@
     var from = grp(g), to = g === 'js' ? state.upload.wb : state.upload.js;
     var p = from.splice(i, 1)[0];
     if (!p) return;
+    p.g = g === 'js' ? 'wb' : 'js';
     to.push(p);
     renderAllThumbs();
     toast(g === 'js' ? (state.tab === 'defect' ? '🚨 Moved to Defect' : '🏷️ Moved to Waybill') : '📄 Moved to Jobsheet');
@@ -4455,7 +4475,7 @@
     var remaining = files.length;
     files.forEach(function (f) {
       compressImage(f, function (img) {
-        grp(g).push({ b64: img.full, thumb: img.thumb });
+        grp(g).push({ b64: img.full, thumb: img.thumb, g: g }); // g: which group it was picked for
         remaining--;
         if (remaining === 0) { busy(false); renderAllThumbs(); }
       });
@@ -4539,6 +4559,23 @@
       // the second group is still compulsory.
       if (!state.upload.wb.length && state.tab !== 'want') {
         toast(state.tab === 'defect' ? 'Please add a Defect photo 🚨' : 'Please add a Waybill photo 🏷️');
+        return;
+      }
+      // Checking → Postage with EVERY photo under Jobsheet and none under
+      // Waybill: nine times out of ten the last one IS the sticker (both
+      // picked together). Ask, instead of filing the sticker as page 2.
+      if (state.tab === 'want' && !state.upload.wb.length && state.upload.js.length >= 2 && !state.upload.allJsOk) {
+        askConfirm(state.upload.js.length + ' photos under 📄 Jobsheet, none under 🏷️ Waybill. ' +
+          'Is the LAST photo the J&T waybill sticker?',
+          '🏷️ Yes — last one is the sticker',
+          function () {
+            var p = state.upload.js.pop();
+            p.g = 'wb'; state.upload.wb.push(p);
+            renderAllThumbs();
+            submitUpload();
+          },
+          '📄 No — all jobsheet',
+          function () { state.upload.allJsOk = true; submitUpload(); });
         return;
       }
       photos = state.upload.js.concat(state.upload.wb);
