@@ -1846,6 +1846,52 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.evaluate(() => document.getElementById('scroller').scrollTop)) < 50,
     'tapping the top of the screen scrolls back up — no dragging needed');
 
+  console.log('\n-- 📷 image loader self-heals: a stuck batch, a failed batch, a missing file --');
+  await page.evaluate(() => {
+    const now = Date.now();
+    const mk = (i, thumb) => ({ id: 'ldr' + i, tab: 'delivery', category: 'bus', note: 'Loader job ' + i,
+      photoIds: ['ldrp' + i], thumbIds: [thumb], status: 'pending', createdAt: now - i * 1000, doneAt: '', proofPhotoId: '', proofThumbId: '',
+      dueAt: '', pinnedAt: '', jsCount: 0, customer: 'Ldr', folderId: '', nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: '',
+      problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '', deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '',
+      problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: '', probLog: [] });
+    for (let i = 0; i < 6; i++) window.__mockdb.jobs.push(mk(i, 'ldrt' + i));
+    window.__mockdb.jobs.push(mk(9, 'ldrt-missing-file')); // Drive file gone → server answers null
+    // the first image batches HANG (a google.script.run call that never comes
+    // back); watchdog + retry are sped up for the test
+    window.__IMG_TIMEOUT = 1200; window.__IMG_RETRY_BASE = 200;
+    window.__mocklat = Object.assign(window.__mocklat || {}, { getImagesData: 10 * 60 * 1000 });
+  });
+  await page.click('#nav-delivery'); await sleep(800); // refresh → render
+  // like the TV: mark these photos visible by hand, then fire — the batches hang
+  await page.evaluate(() => {
+    document.querySelectorAll('#delivery-list img[data-img^="ldrt"]').forEach(im => im.setAttribute('data-vis', '1'));
+    loadImages();
+  });
+  await sleep(300);
+  await page.evaluate(() => { window.__mocklat.getImagesData = 150; window.__mockfail = { getImagesData: 1 }; }); // then ONE fails outright
+  await sleep(5000);
+  const loaderState = await page.evaluate(() => {
+    const ims = Array.from(document.querySelectorAll('#delivery-list img[data-img^="ldrt"]'));
+    return {
+      n: ims.length,
+      loaded: ims.filter(im => im.getAttribute('data-img') !== 'ldrt-missing-file' && im.src.indexOf('Loading') < 0 && im.src.indexOf('missing') < 0).length,
+      missingTile: (ims.find(im => im.getAttribute('data-img') === 'ldrt-missing-file') || {}).src || '',
+      missingAsked: window.__imgRequests.filter(x => x === 'ldrt-missing-file').length
+    };
+  });
+  check(loaderState.n === 7 && loaderState.loaded === 6,
+    'after a hung batch AND a failed batch, every photo still loaded by itself (' + loaderState.loaded + '/6)');
+  check(decodeURIComponent(loaderState.missingTile).indexOf('Photo missing in Drive') >= 0,
+    "a photo whose Drive file is gone shows 'Photo missing in Drive', not 'Loading…' forever");
+  await page.evaluate(() => loadImages()); await sleep(400);
+  const askedAgain = await page.evaluate(() => window.__imgRequests.filter(x => x === 'ldrt-missing-file').length);
+  check(askedAgain === loaderState.missingAsked && askedAgain >= 1, 'the missing file is asked for once, never re-requested (' + askedAgain + 'x)');
+  await page.evaluate(() => {
+    window.__IMG_TIMEOUT = 0; window.__IMG_RETRY_BASE = 0; delete window.__mocklat.getImagesData; window.__mockfail = null;
+    window.__mockdb.jobs.forEach(j => { if (String(j.id).indexOf('ldr') === 0) j.status = 'archived'; });
+  });
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- 📺 TV sorts To Do by Ready-by, most urgent first (not newest first) --');
   await page.evaluate(() => {
     const now = Date.now(), day = 86400000;

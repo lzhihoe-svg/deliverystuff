@@ -1390,7 +1390,7 @@
   var imgCache = {};
   var imgFetching = {};
   var activeLoads = 0;
-  var MAX_PARALLEL = 8, BATCH = 8;
+  var MAX_PARALLEL = 4, BATCH = 8; // 4 in flight: 8 hammered Drive and stalled on the TV
 
   // Interactive work (PIN check, saves) and photo uploads get the network to
   // themselves: background image downloads pause while they run. This is what
@@ -1533,23 +1533,52 @@
       fireBatch_(batch);
     }
   }
+  // A Drive file that is gone (deleted / moved) — shown as a tile, NEVER
+  // re-requested (it used to sit on "Loading…" forever and be asked for
+  // again on every pass). Kept in memory only.
+  var MISSING_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
+    '<rect width="400" height="300" fill="#f1f3ea"/>' +
+    '<text x="200" y="150" font-size="46" text-anchor="middle">🚫</text>' +
+    '<text x="200" y="200" font-size="18" fill="#6f7663" text-anchor="middle" font-family="sans-serif" font-weight="bold">Photo missing in Drive</text></svg>');
+  var imgFails = 0, imgRetryTimer = null;
+  /** A failed / stuck batch tries again by itself: 2s, 4s, 8s … 30s max —
+      the 60-second refresh is not the only thing that can wake the loader. */
+  function scheduleImgRetry_() {
+    if (imgRetryTimer) return;
+    var wait = Math.min(30000, (window.__IMG_RETRY_BASE || 2000) * Math.pow(2, Math.min(imgFails, 4)));
+    imgRetryTimer = setTimeout(function () { imgRetryTimer = null; loadImages(); }, wait);
+  }
   function fireBatch_(batch) {
     activeLoads++;
     batch.forEach(function (id) { imgFetching[id] = true; });
+    var settled = false, dog = null;
+    function settle() {   // exactly ONE of success / failure / watchdog frees the slot
+      if (settled) return false;
+      settled = true; clearTimeout(dog);
+      activeLoads = Math.max(0, activeLoads - 1);
+      batch.forEach(function (id) { delete imgFetching[id]; });
+      return true;
+    }
+    // WATCHDOG: a google.script.run call can silently never come back.
+    // Without this, a few stuck batches pinned activeLoads at the cap and
+    // image loading stopped for good — "Loading…" forever on the TV.
+    dog = setTimeout(function () {
+      if (settle()) { imgFails++; scheduleImgRetry_(); }
+    }, window.__IMG_TIMEOUT || 45000);
     google.script.run
       .withSuccessHandler(function (map) {
-        activeLoads--;
         for (var k in map) {
           if (map[k]) { imgCache[k] = map[k]; persistImg(k, map[k]); }
+          else if (map[k] === null) imgCache[k] = MISSING_IMG;
         }
-        batch.forEach(function (id) { delete imgFetching[id]; });
+        var first = settle();  // a late answer after the watchdog still fills the cache
         applyLoaded();
         syncPhotosTick();
-        loadImages();
+        if (first) { imgFails = 0; loadImages(); }
       })
       .withFailureHandler(function () {
-        activeLoads--;
-        batch.forEach(function (id) { delete imgFetching[id]; });
+        if (settle()) { imgFails++; scheduleImgRetry_(); }
       })
       .getImagesData(batch);
   }
