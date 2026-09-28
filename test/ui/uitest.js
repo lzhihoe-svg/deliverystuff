@@ -108,13 +108,21 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await page.locator('#topcard').count()) === 1, 'job posted, stack showing');
   check(await page.evaluate(() => window.__mockdb.jobs[0].thumbIds.length === 2), 'thumbnails uploaded alongside photos');
 
-  console.log('\n-- tap flips photos (finger tap on multi-photo card) --');
+  console.log('\n-- tap ENLARGES the jobsheet (finger tap on multi-photo card) --');
   let tb = await page.locator('#topcard').boundingBox();
-  const beforeTap = await page.locator('#topcard img[data-img]').getAttribute('data-img');
-  await page.touchscreen.tap(tb.x + tb.width * 0.85, tb.y + tb.height * 0.4);
+  const firstPhoto = await page.locator('#topcard img[data-img]').getAttribute('data-img');
+  const nPhotos = (await page.locator('#topcard').getAttribute('data-photos')).split(',').length;
+  await page.touchscreen.tap(tb.x + tb.width * 0.5, tb.y + tb.height * 0.4);
   await sleep(300);
-  check((await page.locator('#topcard img[data-img]').getAttribute('data-img')) !== beforeTap, 'finger tap right side flips photo');
+  check(await page.locator('#viewer').isVisible(), 'finger tap opens the full-screen viewer');
+  check((await page.locator('#viewer-img').getAttribute('data-img')) === firstPhoto, 'viewer starts on the photo that was showing');
+  check((await page.locator('#viewer-count').textContent()).indexOf('1 / ' + nPhotos) >= 0, 'viewer shows 1 / ' + nPhotos);
+  await page.click('#viewer-next'); await sleep(200);
+  check((await page.locator('#viewer-count').textContent()).indexOf('2 / ' + nPhotos) >= 0, '› goes to the next photo inside the viewer');
+  await page.keyboard.press('Escape'); await sleep(200);
+  check(!await page.locator('#viewer').isVisible(), 'Escape closes it');
   check((await page.locator('#topcard').count()) === 1, 'tap does not swipe the card away');
+  check((await page.locator('#topcard img[data-img]').getAttribute('data-img')) === firstPhoto, 'the card itself did not flip');
 
   // second job so the page has enough content to scroll
   await page.click('#nav-post');

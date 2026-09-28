@@ -2447,11 +2447,18 @@
         var j = show[i];
         var top = (i === show.length - 1);
         var multi = j.photoIds.length > 1;
-        html += '<div class="swipe-card" data-id="' + j.id + '" data-photos="' + j.photoIds.join(',') + '" data-idx="0" ' +
+        // live photo set (skips a slot whose upload never finished) — a TAP on
+        // the card opens it full screen, where ‹ › / swipe walk the set
+        var live = [], liveT = [];
+        for (var k = 0; k < j.photoIds.length; k++) {
+          if (j.photoIds[k]) { live.push(j.photoIds[k]); liveT.push(thumbOf(j, k)); }
+        }
+        html += '<div class="swipe-card" data-id="' + j.id + '" data-photos="' + live.join(',') + '" ' +
+          'data-thumbs="' + liveT.join(',') + '" data-idx="0" ' +
           (top ? 'id="topcard"' : '') + '>' +
           imgTag(j.photoIds[0]) +   // full image on the big card: must be readable
-          (multi ? dotsHtml(j.photoIds.length, 'stack-dots') +
-                   '<div class="stack-hint">👆 Tap left / right side for more photos</div>' : '') +
+          (multi ? dotsHtml(j.photoIds.length, 'stack-dots') : '') +
+          '<div class="stack-hint">👆 Tap to enlarge' + (multi ? ' · ' + live.length + ' photos' : '') + '</div>' +
           '<div class="foot">' +
             '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
             ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) + ' · ' : '') +
@@ -2515,21 +2522,14 @@
     r.innerHTML = html2;
   }
 
-  /** Tap left/right side of the top swipe card to flip between its photos. */
-  function stackTap(card, clientX) {
-    var ids = (card.getAttribute('data-photos') || '').split(',');
-    if (ids.length < 2) return;
+  /** A TAP on the swipe card opens the jobsheet FULL SCREEN — the card is
+      too small to read sizes from. ‹ › / swipe / arrow keys walk the set
+      in there; ✕ or the dark edge brings the deck back untouched. */
+  function openStackViewer(card) {
+    var ids = (card.getAttribute('data-photos') || '').split(',').filter(function (x) { return x; });
+    if (!ids.length) return;
     var idx = parseInt(card.getAttribute('data-idx') || '0', 10);
-    var rect = card.getBoundingClientRect();
-    var dir = (clientX - rect.left) > rect.width / 2 ? 1 : -1;
-    idx = (idx + dir + ids.length) % ids.length;
-    card.setAttribute('data-idx', idx);
-    var img = card.querySelector('img[data-img]');
-    img.setAttribute('data-img', ids[idx]);
-    img.src = cachedImg(ids[idx]) || PLACEHOLDER;
-    var dots = card.querySelectorAll('.stack-dots span');
-    dots.forEach(function (d, i) { d.className = i === idx ? 'on' : ''; });
-    loadImages();
+    viewPhotoSet(ids.join(','), idx, card.getAttribute('data-thumbs') || '');
   }
 
   // Direction-locked swipe: vertical finger movement scrolls the page
@@ -2587,9 +2587,9 @@
         swipeFinish();
         if (e.cancelable) e.preventDefault(); // stop the follow-up synthetic mouse events
       } else if (swipe.mode === 'maybe') {
-        stackTap(card, swipe.sx); // small movement = tap
+        openStackViewer(card); // small movement = tap → full screen
         // browsers fire mousedown/mouseup AFTER a tap; without this the
-        // mouse path would run stackTap again and flip the photo back
+        // mouse path would open the viewer a second time
         if (e.cancelable) e.preventDefault();
       }
       swipe.mode = 'idle';
@@ -2610,7 +2610,7 @@
   });
   window.addEventListener('mouseup', function () {
     if (swipe.mode !== 'mouse') return;
-    if (Math.abs(swipe.dx) < 8) stackTap(swipe.card, swipe.sx);
+    if (Math.abs(swipe.dx) < 8) openStackViewer(swipe.card);
     else swipeFinish();
     swipe.mode = 'idle';
   });
