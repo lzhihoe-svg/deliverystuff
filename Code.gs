@@ -1483,9 +1483,9 @@ var STOCK_SECTIONS = [
     { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
     { name: 'Hexagon', target: 5 }, { name: 'Lycra 280', target: 3 },
     { name: 'Polysoft', target: 3 }, { name: 'Ultron', target: 3 },
-    { name: 'Mesh', target: 3 },
-    // `was`: the name this item used to be counted under — old counts carry over
-    { name: 'Mini Square & Accessories', target: 3, was: 'Mini Square' },
+    { name: 'Mesh', target: 3 }, { name: 'Mini Square', target: 3 }
+  ] },
+  { name: 'Accessories', hint: '', items: [
     { name: 'Black Loban', target: 3 }, { name: 'White Loban', target: 3 },
     { name: 'Black Collar', target: 3 }, { name: 'White Collar', target: 3 }
   ] },

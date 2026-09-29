@@ -1164,18 +1164,21 @@ console.log('\n== 📦 stock count (staff key in, admin views) ==');
 {
   const { ctx } = makeEnv();
   const cat = ctx.getStockTake();
-  check(cat.sections.length === 3 &&
-    cat.sections[0].name === 'Fabric' && cat.sections[1].name === 'Ink' && cat.sections[2].name === 'Paper',
-    'catalog has Fabric + Ink + Paper sections');
-  check(cat.sections[0].items.length === 14 && cat.sections[0].items[0].target === 10,
-    'fabric items carry their targets (Eyelet = 10; 14 fabrics incl. the Collars)');
+  check(cat.sections.length === 4 &&
+    cat.sections[0].name === 'Fabric' && cat.sections[1].name === 'Accessories' &&
+    cat.sections[2].name === 'Ink' && cat.sections[3].name === 'Paper',
+    'catalog has Fabric + Accessories + Ink + Paper sections');
+  check(cat.sections[0].items.length === 10 && cat.sections[0].items[0].target === 10,
+    'fabric items carry their targets (Eyelet = 10; 10 fabrics)');
+  check(cat.sections[1].items.map(i => i.name).join('|') === 'Black Loban|White Loban|Black Collar|White Collar',
+    'Accessories: Black Loban, White Loban, Black Collar, White Collar');
   check(cat.sections[0].items.map(i => i.name).join('|') ===
-    'Eyelet|Mini Eyelet|Interlock|RJPK|Hexagon|Lycra 280|Polysoft|Ultron|Mesh|Mini Square & Accessories|Black Loban|White Loban|Black Collar|White Collar',
+    'Eyelet|Mini Eyelet|Interlock|RJPK|Hexagon|Lycra 280|Polysoft|Ultron|Mesh|Mini Square',
     'fabric order is the shelf order the boss listed');
-  check(cat.sections[2].items.map(i => i.name).join('|') === 'Paper - Sublimation|Jobsheet Paper',
+  check(cat.sections[3].items.map(i => i.name).join('|') === 'Paper - Sublimation|Jobsheet Paper',
     'Paper: Sublimation + the new Jobsheet Paper');
   check(ctx.getAllData().invLastAt === 0, 'getAllData carries invLastAt for the header chip (0 = never counted)');
-  check(cat.sections[1].items.every(i => i.orderIf === 2), 'ink orders when below 2');
+  check(cat.sections[2].items.every(i => i.orderIf === 2), 'ink orders when below 2');
   check(cat.sections[0].items.every(i => i.qty === ''), 'no counts yet — empty values');
 
   // the WHOLE list or nothing — partial submissions are REFUSED
@@ -1204,7 +1207,7 @@ console.log('\n== 📦 stock count (staff key in, admin views) ==');
   check(r.ok === true && r.saved === 20, 'a FULL submission saves all 20 items, no PIN needed');
   const t1 = ctx.getStockTake();
   check(t1.sections[0].items[0].qty === 4, 'Eyelet latest count = 4');
-  check(t1.sections[2].items[1].qty === 0, 'ZERO is a valid count inside a full list (last item = Jobsheet Paper)');
+  check(t1.sections[3].items[1].qty === 0, 'ZERO is a valid count inside a full list (last item = Jobsheet Paper)');
   check(t1.fullAt === r.at && t1.fullBy === 'staff' && t1.lastAt === r.at,
     'the WHOLE-list stamp records when + by whom');
 

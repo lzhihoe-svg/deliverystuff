@@ -2379,18 +2379,19 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await viaMenu('#inventory-btn');
   await sleep(500);
   check(await page.locator('#inventory-overlay').isVisible(), 'Stock Count opens from the ☰ menu (staff too)');
-  check((await page.locator('#inv-body .inv-sec-head').count()) === 3 &&
+  check((await page.locator('#inv-body .inv-sec-head').count()) === 4 &&
+    (await page.locator('#inv-body').textContent()).indexOf('ACCESSORIES') >= 0 &&
     (await page.locator('#inv-body').textContent()).indexOf('PAPER') >= 0,
-    'three sections render: Fabric, Ink AND Paper');
+    'four sections render: Fabric, Accessories, Ink AND Paper');
   check((await page.locator('#inv-body .inv-in').count()) === 20, 'all 20 catalog items have a stock input');
   const invTxt = await page.locator('#inv-body').textContent();
   check(invTxt.indexOf('Polysoft') >= 0 && invTxt.indexOf('Black Loban') >= 0 &&
-    invTxt.indexOf('White Loban') >= 0 && invTxt.indexOf('Mini Square & Accessories') >= 0 &&
+    invTxt.indexOf('White Loban') >= 0 && invTxt.indexOf('Mini Square') >= 0 &&
     invTxt.indexOf('Black Collar') >= 0 && invTxt.indexOf('White Collar') >= 0 && invTxt.indexOf('Jobsheet Paper') >= 0,
-    'fabrics in: Polysoft, Lobans, Mini Square & Accessories, Collars · Paper: Jobsheet Paper');
+    'in: Polysoft, Mini Square · Accessories: Lobans + Collars · Paper: Jobsheet Paper');
   check((await page.locator('#inv-body .inv-in').evaluateAll(els => els.map(e => e.getAttribute('data-item')).slice(0, 14).join('|'))) ===
-    'Eyelet|Mini Eyelet|Interlock|RJPK|Hexagon|Lycra 280|Polysoft|Ultron|Mesh|Mini Square & Accessories|Black Loban|White Loban|Black Collar|White Collar',
-    'fabric rows in shelf order');
+    'Eyelet|Mini Eyelet|Interlock|RJPK|Hexagon|Lycra 280|Polysoft|Ultron|Mesh|Mini Square|Black Loban|White Loban|Black Collar|White Collar',
+    'fabric rows in shelf order, then the Accessories');
   check(invTxt.indexOf('Cotton') < 0 && invTxt.indexOf('Paper - Protection') < 0,
     'Cotton and Paper - Protection removed');
   check((await page.locator('#inv-body .inv-table tr.hd').first().textContent()).indexOf('Target') < 0 &&
