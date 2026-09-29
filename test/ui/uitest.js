@@ -2369,17 +2369,28 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   console.log('\n-- 📦 Stock Count: fixed list, targets, action column --');
   await page.evaluate(() => setRole('staff', ''));
   await sleep(200);
+  // 📦 header chip: when the stock was last counted; one tap opens the page
+  check((await page.locator('#inv-chip').textContent()).indexOf('not counted yet') >= 0 &&
+    await page.locator('#inv-chip').evaluate(e => e.classList.contains('stale')),
+    'header chip reads "📦 Stock not counted yet" in amber');
+  await page.click('#inv-chip'); await sleep(500);
+  check(await page.locator('#inventory-overlay').isVisible(), 'tapping the chip opens Stock Count straight away');
+  await page.evaluate(() => closeInventory()); await sleep(200);
   await viaMenu('#inventory-btn');
   await sleep(500);
   check(await page.locator('#inventory-overlay').isVisible(), 'Stock Count opens from the ☰ menu (staff too)');
   check((await page.locator('#inv-body .inv-sec-head').count()) === 3 &&
     (await page.locator('#inv-body').textContent()).indexOf('PAPER') >= 0,
     'three sections render: Fabric, Ink AND Paper');
-  check((await page.locator('#inv-body .inv-in').count()) === 17, 'all 17 catalog items have a stock input');
+  check((await page.locator('#inv-body .inv-in').count()) === 20, 'all 20 catalog items have a stock input');
   const invTxt = await page.locator('#inv-body').textContent();
   check(invTxt.indexOf('Polysoft') >= 0 && invTxt.indexOf('Black Loban') >= 0 &&
-    invTxt.indexOf('White Loban') >= 0 && invTxt.indexOf('Mini Square') >= 0,
-    'new fabrics in: Polysoft, Black Loban, White Loban, Mini Square');
+    invTxt.indexOf('White Loban') >= 0 && invTxt.indexOf('Mini Square & Accessories') >= 0 &&
+    invTxt.indexOf('Black Collar') >= 0 && invTxt.indexOf('White Collar') >= 0 && invTxt.indexOf('Jobsheet Paper') >= 0,
+    'fabrics in: Polysoft, Lobans, Mini Square & Accessories, Collars · Paper: Jobsheet Paper');
+  check((await page.locator('#inv-body .inv-in').evaluateAll(els => els.map(e => e.getAttribute('data-item')).slice(0, 14).join('|'))) ===
+    'Eyelet|Mini Eyelet|Interlock|RJPK|Hexagon|Lycra 280|Polysoft|Ultron|Mesh|Mini Square & Accessories|Black Loban|White Loban|Black Collar|White Collar',
+    'fabric rows in shelf order');
   check(invTxt.indexOf('Cotton') < 0 && invTxt.indexOf('Paper - Protection') < 0,
     'Cotton and Paper - Protection removed');
   check((await page.locator('#inv-body .inv-table tr.hd').first().textContent()).indexOf('Target') < 0 &&
@@ -2388,20 +2399,20 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   // STRICT whole-list workflow: partials are BLOCKED, one stamp for everything
   check((await page.locator('#inv-last').textContent()).indexOf('Not counted yet') >= 0,
     'header says the list has not been counted yet');
-  check((await page.locator('#inv-submit').textContent()).indexOf('(0/17)') >= 0,
-    'Submit button counts filled items live (0/17)');
+  check((await page.locator('#inv-submit').textContent()).indexOf('(0/20)') >= 0,
+    'Submit button counts filled items live (0/20)');
   await page.locator('#inv-body .inv-in[data-item="Eyelet"]').fill('4');
   await page.locator('#inv-body .inv-in[data-item="Ink - Red"]').fill('3');
   await page.locator('#inv-body .inv-in[data-item="Ink - Blue"]').fill('2');
   await page.locator('#inv-body .inv-in[data-item="Paper - Sublimation"]').fill('0');
   await sleep(150);
-  check((await page.locator('#inv-submit').textContent()).indexOf('(4/17)') >= 0,
-    '…and updates as staff type (4/17)');
+  check((await page.locator('#inv-submit').textContent()).indexOf('(4/20)') >= 0,
+    '…and updates as staff type (4/20)');
   await page.click('#inv-submit');
   await sleep(300);
   check(await page.locator('#confirm-overlay').isVisible() &&
-    (await page.locator('#confirm-msg').textContent()).indexOf('missing 13 items') >= 0,
-    'partial submit BLOCKED — popup says 13 items still missing');
+    (await page.locator('#confirm-msg').textContent()).indexOf('missing 16 items') >= 0,
+    'partial submit BLOCKED — popup says 16 items still missing');
   await page.click('#confirm-yes'); // "OK, continue counting" — just closes
   await sleep(400);
   check(await page.evaluate(() => window.__mockdb.inv.length === 0),
@@ -2414,14 +2425,17 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     });
   });
   await sleep(150);
-  check((await page.locator('#inv-submit').textContent()).indexOf('(17/17)') >= 0,
-    'all filled — button reads (17/17)');
+  check((await page.locator('#inv-submit').textContent()).indexOf('(20/20)') >= 0,
+    'all filled — button reads (20/20)');
   await page.click('#inv-submit');
   await sleep(700);
-  check(await page.evaluate(() => window.__mockdb.inv.length === 17 &&
-    window.__mockdb.inv.every(r => r.by === 'staff')), 'all 17 values saved on the server (staff, no PIN)');
+  check(await page.evaluate(() => window.__mockdb.inv.length === 20 &&
+    window.__mockdb.inv.every(r => r.by === 'staff')), 'all 20 values saved on the server (staff, no PIN)');
   check(await page.evaluate(() => window.__mockdb.inv.some(r => r.item === 'Paper - Sublimation' && r.qty === 0)),
     'ZERO stock saves correctly inside the full list');
+  check((await page.locator('#inv-chip').textContent()).indexOf('counted just now') >= 0 &&
+    !(await page.locator('#inv-chip').evaluate(e => e.classList.contains('stale'))),
+    'header chip now reads "📦 Stock counted just now" (green)');
   const hdr = await page.locator('#inv-last').textContent();
   check(hdr.indexOf('WHOLE list') >= 0 && hdr.indexOf('by staff') >= 0,
     'header shows the whole-list date + time · by staff (' + hdr.trim().slice(0, 60) + '…)');
@@ -2439,7 +2453,7 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     i.value = ''; i.dispatchEvent(new Event('input'));
   });
   await sleep(150);
-  check((await page.locator('#inv-submit').textContent()).indexOf('(16/17)') >= 0, 'one cleared — (16/17)');
+  check((await page.locator('#inv-submit').textContent()).indexOf('(19/20)') >= 0, 'one cleared — (19/20)');
   await page.click('#inv-submit');
   await sleep(300);
   check(await page.locator('#confirm-overlay').isVisible(), 'even ONE missing item blocks the submit');

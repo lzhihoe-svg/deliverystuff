@@ -21,17 +21,18 @@
     { name: 'Fabric', hint: '10 combined rolls = FREE SHIPPING', items: [
       { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
       { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
-      { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
-      { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 },
-      { name: 'Polysoft', target: 3 }, { name: 'Black Loban', target: 3 },
-      { name: 'White Loban', target: 3 }, { name: 'Mini Square', target: 3 }
+      { name: 'Hexagon', target: 5 }, { name: 'Lycra 280', target: 3 },
+      { name: 'Polysoft', target: 3 }, { name: 'Ultron', target: 3 },
+      { name: 'Mesh', target: 3 }, { name: 'Mini Square & Accessories', target: 3 },
+      { name: 'Black Loban', target: 3 }, { name: 'White Loban', target: 3 },
+      { name: 'Black Collar', target: 3 }, { name: 'White Collar', target: 3 }
     ] },
     { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
       { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
       { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
     ] },
     { name: 'Paper', hint: '', items: [
-      { name: 'Paper - Sublimation', target: 5 }
+      { name: 'Paper - Sublimation', target: 5 }, { name: 'Jobsheet Paper', target: 5 }
     ] }
   ];
   var api = {
@@ -156,7 +157,8 @@
     getAllData: function () {
       return {
         jobs: { want: api.getJobs('want'), delivery: api.getJobs('delivery'), postage: api.getJobs('postage'), defect: api.getJobs('defect') },
-        counts: api.getCounts()
+        counts: api.getCounts(),
+        invLastAt: db.inv.reduce(function (m, r) { return Math.max(m, Number(r.at) || 0); }, 0)
       };
     },
     editJob: function (id, ch, pin) {

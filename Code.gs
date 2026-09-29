@@ -898,12 +898,25 @@ function getInitData(tab) {
  * ALL three tabs + badge counts in ONE round trip — a single sheet read.
  * Used by the Refresh button so Checking, Delivery and Postage update together.
  */
+/** When the stock was last counted (ms, 0 = never) — for the header chip. */
+function invLastAt_() {
+  try {
+    var sh = invSheet_();
+    var last = sh.getLastRow();
+    if (last < 2) return 0;
+    var col = sh.getRange(2, 2, last - 1, 1).getValues();
+    var m = 0;
+    for (var i = 0; i < col.length; i++) if (Number(col[i][0]) > m) m = Number(col[i][0]);
+    return m;
+  } catch (e) { return 0; }
+}
+
 function getAllData() {
   var sh = getSheet_();
   var last = sh.getLastRow();
   var jobs = { want: [], delivery: [], postage: [], defect: [] };
   var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
-  if (last < 2) return { jobs: jobs, counts: counts };
+  if (last < 2) return { jobs: jobs, counts: counts, invLastAt: invLastAt_() };
   var rows = sh.getRange(2, 1, last - 1, 37).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -913,7 +926,8 @@ function getAllData() {
     if (j.status === 'pending') counts[r[1]]++;
   }
   jobs.want.reverse(); jobs.delivery.reverse(); jobs.postage.reverse(); jobs.defect.reverse();
-  return { jobs: jobs, counts: counts };
+  // invLastAt rides along so the header can show "📦 Stock counted 3 days ago"
+  return { jobs: jobs, counts: counts, invLastAt: invLastAt_() };
 }
 
 /**
@@ -1464,19 +1478,23 @@ function invSheet_() {
  */
 var STOCK_SECTIONS = [
   { name: 'Fabric', hint: '10 combined rolls = FREE SHIPPING', items: [
+    // in the order the boss counts them on the shelf
     { name: 'Eyelet', target: 10 }, { name: 'Mini Eyelet', target: 10 },
     { name: 'Interlock', target: 5 }, { name: 'RJPK', target: 5 },
-    { name: 'Hexagon', target: 5 }, { name: 'Ultron', target: 3 },
-    { name: 'Mesh', target: 3 }, { name: 'Lycra 280', target: 3 },
-    { name: 'Polysoft', target: 3 }, { name: 'Black Loban', target: 3 },
-    { name: 'White Loban', target: 3 }, { name: 'Mini Square', target: 3 }
+    { name: 'Hexagon', target: 5 }, { name: 'Lycra 280', target: 3 },
+    { name: 'Polysoft', target: 3 }, { name: 'Ultron', target: 3 },
+    { name: 'Mesh', target: 3 },
+    // `was`: the name this item used to be counted under — old counts carry over
+    { name: 'Mini Square & Accessories', target: 3, was: 'Mini Square' },
+    { name: 'Black Loban', target: 3 }, { name: 'White Loban', target: 3 },
+    { name: 'Black Collar', target: 3 }, { name: 'White Collar', target: 3 }
   ] },
   { name: 'Ink', hint: 'Ink supplier: FREE DELIVERY · order if below 2', orderIf: 2, items: [
     { name: 'Ink - Red', target: 3 }, { name: 'Ink - Blue', target: 3 },
     { name: 'Ink - Yellow', target: 3 }, { name: 'Ink - Black', target: 3 }
   ] },
   { name: 'Paper', hint: '', items: [
-    { name: 'Paper - Sublimation', target: 5 }
+    { name: 'Paper - Sublimation', target: 5 }, { name: 'Jobsheet Paper', target: 5 }
   ] }
 ];
 
@@ -1560,7 +1578,7 @@ function getStockTake() {
     var items = [];
     for (var k = 0; k < sec.items.length; k++) {
       var it = sec.items[k];
-      var l = latest[it.name];
+      var l = latest[it.name] || (it.was ? latest[it.was] : null); // renamed item keeps its history
       items.push({ name: it.name, target: it.target,
         orderIf: sec.orderIf || it.target,
         qty: l ? l.qty : '', at: l ? l.at : '', by: l ? l.by : '' });

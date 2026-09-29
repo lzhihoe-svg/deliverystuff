@@ -64,8 +64,10 @@
   }
   #sync-row .sync-chip {
     display: inline-block; background: var(--lime-soft); border-radius: 999px; padding: 4px 11px;
-    cursor: pointer;
+    cursor: pointer; margin: 0 6px 4px 0;
   }
+  /* 📦 stock chip turns amber when the count is a week old (or never done) */
+  #sync-row .sync-chip.stale { background: #fef3c7; color: #92400e; }
   .role-btn {
     border: 1px solid #e4e8d8; background: #fff; color: #4b5142;
     border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -1688,9 +1690,18 @@
     clearTimeout(syncTimer);
     if (!txt) { row.style.display = 'none'; return; }
     // the chip is a one-tap refresh — no need to dig into the ☰ menu
-    row.innerHTML = '<span class="sync-chip" onclick="manualRefresh()">' + txt + '</span>';
+    row.innerHTML = '<span class="sync-chip" onclick="manualRefresh()">' + txt + '</span>' + invChipHtml_();
     row.style.display = 'block';
     if (autoHideMs) syncTimer = setTimeout(function () { row.style.display = 'none'; }, autoHideMs);
+  }
+  /** 📦 when the stock was last counted, next to "Updated at" — one tap opens
+      the Stock Count page. Amber once it is a week old: time to count again. */
+  function invChipHtml_() {
+    if (state.invLastAt === undefined) return '';
+    var at = Number(state.invLastAt) || 0;
+    var stale = !at || (Date.now() - at) > 7 * DAY;
+    return '<span class="sync-chip' + (stale ? ' stale' : '') + '" id="inv-chip" onclick="openInventory()">📦 Stock ' +
+      (at ? 'counted ' + timeAgo(at) : 'not counted yet') + '</span>';
   }
   function refreshSpin(on) {
     document.getElementById('refresh-btn').textContent = on ? '⏳ Refreshing…' : '🔄 Refresh';
@@ -2125,6 +2136,7 @@
         });
         lastSyncAt = Date.now();
         state.loadedOnce = true;
+        if (res.invLastAt !== undefined) state.invLastAt = res.invLastAt;
         renderAll(); renderBadges(res.counts);
         refreshSpin(false);
         syncAfterData();
@@ -2343,6 +2355,7 @@
         invData.lastAt = res.at;
         invData.fullAt = res.at;
         invData.fullBy = state.role === 'admin' ? 'admin' : 'staff';
+        state.invLastAt = res.at; syncAfterData(); // header chip: "counted just now"
         invData.sections.forEach(function (sec) {
           sec.items.forEach(function (it) {
             var hit = values.filter(function (v) { return v.item === it.name; })[0];
