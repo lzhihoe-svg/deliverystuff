@@ -1938,6 +1938,29 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check(await menuItemVisible('#prodview-btn'), '☰ menu has 📺 Production View');
   await viaMenu('#prodview-btn');
   await sleep(500);
+
+  // 👁️ SIMPLE VIEW — Problems column folds away, other three widen
+  check((await page.locator('#pv-simple-btn').textContent()).indexOf('Simple view') >= 0,
+    'TV header has a 👁️ Simple view button');
+  await page.click('#pv-simple-btn'); await sleep(250);
+  check(!await page.locator('#pv-col-problems').isVisible() &&
+    !await page.locator('#pv-statsbar .pv-sb.prob').isVisible(),
+    'Simple view hides the Problems column AND its stats tile');
+  check(await page.evaluate(() => {
+    const cols = getComputedStyle(document.querySelector('#prodview .pv-grid')).gridTemplateColumns.split(' ');
+    const w = cols.map(parseFloat);
+    return cols.length === 3 && Math.abs(w[0] - w[1]) < 2 && w[2] > 0 && w[2] < w[0];
+  }), 'the three columns re-fit the full width (40/40/20)');
+  check((await page.locator('#pv-simple-btn').textContent()).indexOf('Full view') >= 0,
+    'button now offers 🚨 Full view');
+  // the choice survives closing and reopening the TV
+  await page.evaluate(() => closeProdView()); await sleep(200);
+  await viaMenu('#prodview-btn'); await sleep(400);
+  check(!await page.locator('#pv-col-problems').isVisible(), 'Simple view is remembered on reopen');
+  await page.click('#pv-simple-btn'); await sleep(250);
+  check(await page.locator('#pv-col-problems').isVisible() &&
+    await page.evaluate(() => getComputedStyle(document.querySelector('#prodview .pv-grid')).gridTemplateColumns.split(' ').length === 4),
+    'Full view brings the Problems column back (4 columns again)');
   check(await page.locator('#prodview').isVisible(), 'production view opens full screen');
   check((await page.locator('#prodview .pv-col').count()) === 4,
     '4 columns: Delivery · Postage · Defect · Problems (Checking removed)');

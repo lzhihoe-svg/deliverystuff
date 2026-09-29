@@ -521,6 +521,8 @@
     .pv-clock .t { font-size: 20px; }
     .pv-clock .d { display: none; }
     .pv-upd { display: none; }
+    /* phones: the Simple-view toggle shrinks to its emoji so ✕ stays reachable */
+    .pv-btn-lbl { display: none; }
   }
   /* 📊 horizontal stats bar on top — SAME grid as the columns below, so
      each tile sits exactly above its own column */
@@ -572,6 +574,11 @@
   /* the slim Defect + Problems columns fit ONE card per row */
   #pv-defect .pv-grid2, #pv-problems .pv-grid2 { grid-template-columns: 1fr; }
   .pv-col h3.pv-h-prob { background: linear-gradient(135deg, #b91c1c, #dc2626); }
+  /* 👁️ SIMPLE VIEW — the Problems column folds away; Delivery, Postage and
+     Defect widen to fill the whole TV (problem jobs still show 🚨 on their
+     own cards inside those columns) */
+  .pv.simple .pv-statsbar, .pv.simple .pv-grid { grid-template-columns: 40fr 40fr 20fr; }
+  .pv.simple #pv-col-problems, .pv.simple .pv-sb.prob { display: none; }
   .pv-card2 { cursor: pointer; }
   /* click a TV card → its detail card (above the TV, below the viewer) */
   #pvd-overlay { z-index: 65; }
@@ -1255,6 +1262,7 @@
     <div class="pv-title">🏭 ARA<span style="color:var(--green)">MEGA</span> — PRODUCTION</div>
     <div class="pv-clock"><div class="t" id="pv-time"></div><div class="d" id="pv-date"></div></div>
     <div class="pv-upd" id="pv-upd"></div>
+    <button class="role-btn" id="pv-simple-btn" onclick="togglePvSimple()">👁️<span class="pv-btn-lbl"> Simple view</span></button>
     <button class="role-btn" id="pv-refresh" onclick="refresh()">🔄 Refresh</button>
     <button class="x-close" style="position:static" onclick="closeProdView()">✕</button>
   </div>
@@ -1263,7 +1271,7 @@
     <div class="pv-col"><h3>🚚 Delivery</h3><div class="pv-list" id="pv-delivery"></div></div>
     <div class="pv-col"><h3>📦 Postage</h3><div class="pv-list" id="pv-postage"></div></div>
     <div class="pv-col"><h3>🚨 Defect</h3><div class="pv-list" id="pv-defect"></div></div>
-    <div class="pv-col"><h3 class="pv-h-prob">🚨 Problems</h3><div class="pv-list" id="pv-problems"></div></div>
+    <div class="pv-col" id="pv-col-problems"><h3 class="pv-h-prob">🚨 Problems</h3><div class="pv-list" id="pv-problems"></div></div>
   </div>
 </div>
 
@@ -3208,8 +3216,26 @@
   }
   setInterval(pvClockTick_, 1000);
 
+  /** 👁️ Simple view: hide the Problems column, widen the other three.
+      The choice is remembered per device — the TV stays how it was set. */
+  function applyPvSimple_() {
+    var on = false;
+    try { on = localStorage.getItem('kilangPvSimple') === '1'; } catch (e) {}
+    document.getElementById('prodview').classList.toggle('simple', on);
+    document.getElementById('pv-simple-btn').innerHTML = on
+      ? '🚨<span class="pv-btn-lbl"> Full view</span>'
+      : '👁️<span class="pv-btn-lbl"> Simple view</span>';
+  }
+  function togglePvSimple() {
+    try {
+      var on = localStorage.getItem('kilangPvSimple') === '1';
+      localStorage.setItem('kilangPvSimple', on ? '0' : '1');
+    } catch (e) {}
+    applyPvSimple_();
+  }
   function openProdView() {
     state.prodView = true;
+    applyPvSimple_();
     renderProdView();
     pvClockTick_();
     document.getElementById('prodview').classList.add('show');
