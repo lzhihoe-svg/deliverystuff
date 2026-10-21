@@ -1900,6 +1900,44 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   });
   await page.evaluate(() => refresh()); await sleep(500);
 
+  console.log('\n-- 🏷️ Job Name: keyed in on post, shown on card / deck / TV, carried forward --');
+  await page.click('#nav-want'); await sleep(300);
+  await page.click('#nav-post'); await sleep(250);
+  check(await page.locator('#upload-jobname').isVisible(), 'the post window has a Job Name field');
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  await page.setInputFiles('#js-file', [IMG]); await sleep(600);
+  await page.fill('#upload-jobname', 'JERSEY MEGA FC 30 PCS');
+  await page.locator('#agent-chips .agent-chip', { hasText: 'SN' }).first().click();
+  await openOpts();
+  await page.fill('#upload-note', 'siap cepat');
+  await page.click('#btn-submit'); await sleep(1100);
+  check(await page.evaluate(() => {
+    const j = window.__mockdb.jobs.find(x => x.jobName === 'JERSEY MEGA FC 30 PCS');
+    return !!(j && j.tab === 'want' && j.note === 'siap cepat');
+  }), 'Job Name saved on the server next to the instruction');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('JERSEY MEGA FC 30 PCS') >= 0,
+    'the swipe deck caption leads with the Job Name');
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; }); await sleep(200);
+  pb = await page.locator('#topcard').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(pb.x + pb.width / 2 + i * 25, pb.y + pb.height / 2, { steps: 2 });
+  await page.mouse.up();
+  await sleep(900);
+  check(await page.evaluate(() =>
+    window.__mockdb.jobs.some(x => x.tab === 'postage' && x.jobName === 'JERSEY MEGA FC 30 PCS')),
+    '❤️ carried the Job Name to the Postage board');
+  await page.click('#nav-postage'); await sleep(500);
+  const jnCard = page.locator('#postage-list .card').filter({ hasText: 'JERSEY MEGA FC' }).first();
+  check((await jnCard.locator('.note').first().textContent()).indexOf('🏷️ JERSEY MEGA FC 30 PCS') >= 0,
+    'the card shows the Job Name bold above the instruction');
+  await viaMenu('#prodview-btn'); await sleep(400);
+  check((await page.locator('#pv-postage .pv-note').allTextContents()).some(t => t.indexOf('JERSEY MEGA FC 30 PCS') >= 0),
+    'the TV card shows the Job Name');
+  await page.evaluate(() => closeProdView());
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.jobName === 'JERSEY MEGA FC 30 PCS') j.status = 'archived'; }); });
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- 📺 TV sorts To Do by Ready-by, most urgent first (not newest first) --');
   await page.evaluate(() => {
     const now = Date.now(), day = 86400000;

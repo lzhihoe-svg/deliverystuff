@@ -1114,6 +1114,10 @@
       <input type="file" id="wb-file" accept="image/*" multiple onchange="photosPickedG(this, 'wb')">
     </div>
 
+    <label>🏷️ Job Name (optional)</label>
+    <input type="text" id="upload-jobname" maxlength="80"
+           placeholder="Example: JERSEY PSV BATCH 7 PCS">
+
     <div id="customer-wrap" style="display:none">
       <label>🤝 AGENT — tap one</label>
       <div class="agent-chips" id="agent-chips"></div>
@@ -1836,7 +1840,7 @@
     var j = findJobAll(id);
     if (!j) return;
     document.getElementById('chrono-title').textContent =
-      '🕐 ' + (((j.customer && j.customer !== 'Unassigned') ? j.customer + ' — ' : '') + (j.note || (PROB_TAB[j.tab] || 'Job')));
+      '🕐 ' + (((j.customer && j.customer !== 'Unassigned') ? j.customer + ' — ' : '') + (j.jobName || j.note || (PROB_TAB[j.tab] || 'Job')));
     document.getElementById('chrono-body').innerHTML =
       chronoHtml_(j) || '<div class="empty"><span class="big">🕐</span>Only just posted — no story yet.</div>';
     document.getElementById('chrono-overlay').classList.add('show');
@@ -2265,7 +2269,7 @@
     var j = findJobAll(id);
     if (!j) return;
     state.jobMenuId = id;
-    document.getElementById('jobmenu-title').textContent = j.note || (PROB_TAB[j.tab] || 'Job');
+    document.getElementById('jobmenu-title').textContent = j.jobName || j.note || (PROB_TAB[j.tab] || 'Job');
     document.getElementById('jobmenu-sub').textContent =
       ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + j.customer + ' · ' : '') + (PROB_TAB[j.tab] || j.tab);
     document.getElementById('jobmenu-list').innerHTML = tv ? jobMenuTvHtml_(j) : jobMenuHtml_(j);
@@ -2483,7 +2487,7 @@
           '<div class="foot">' +
             '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
             ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) + ' · ' : '') +
-            '📄 ' + (esc(j.note) || 'Jobsheet') +
+            '📄 ' + (esc(j.jobName) || esc(j.note) || 'Jobsheet') +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             ((j.nextTab || j.alsoDefect) ? ' · →' +
               (j.nextTab ? (j.nextTab === 'delivery' ? '🚚' : '📦') : '') +
@@ -2514,6 +2518,7 @@
       return '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
         ((j.customer && j.customer !== 'Unassigned') ? '<span class="chip cust">👤 ' + esc(j.customer) + '</span> ' : '') +
+        (j.jobName ? '<div class="note" style="font-size:15px;font-weight:800">🏷️ ' + esc(j.jobName) + '</div>' : '') +
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
         (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') +
@@ -2934,6 +2939,7 @@
     else if (!isDone) statusChip = dueChip(j);
     if (!statusChip && j.category) statusChip = '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     html += statusChip;
+    if (j.jobName) html += '<div class="note" style="font-weight:800">🏷️ ' + esc(j.jobName) + '</div>';
     if (j.note) html += '<div class="note">📢 ' + esc(j.note) + '</div>';
     html += '<div class="meta">Posted ' + timeAgo(j.createdAt) +
       (j.category && statusChip.indexOf('chip ' + j.category) < 0 ? ' · ' + CAT_LABEL[j.category] : '') +
@@ -3299,7 +3305,7 @@
       '<div class="pv-body2">' +
       // every row always renders (blank if empty) so all cards match in height
       '<div class="pv-cust">' + ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) : '&nbsp;') + '</div>' +
-      '<div class="pv-note">' + (j.note ? esc(j.note) : '&nbsp;') + '</div>' +
+      '<div class="pv-note">' + (j.jobName || j.note ? esc(j.jobName || j.note) : '&nbsp;') + '</div>' +
       '<div class="pv-st">' + (showTab ? (PROB_TAB[j.tab] || j.tab) + ' · ' : '') + when + chips + '</div></div>' +
       // problems column: SAY the problem / SHOW the solved picture
       (showTab && pvProb_(j)
@@ -3449,6 +3455,7 @@
     if (j.category) html += '<span class="chip ' + j.category + '">' + (CAT_LABEL[j.category] || j.category) + '</span> ';
     if (j.status === 'pending') html += dueChip(j);
     html += '</div>';
+    if (j.jobName) html += '<div class="note" style="margin-top:6px;font-weight:800">🏷️ ' + esc(j.jobName) + '</div>';
     if (j.note) html += '<div class="note" style="margin-top:6px">📢 ' + esc(j.note) + '</div>';
     html += '<div class="meta" style="font-size:12.5px;color:var(--muted)">' +
       (PROB_TAB[j.tab] || j.tab) + ' · Posted ' + fmtDT(j.createdAt) + '</div>';
@@ -3684,7 +3691,8 @@
     }
     var cust = (j.customer && j.customer !== 'Unassigned') ? j.customer : '';
     return '<div class="h-card">' +
-      '<div class="h-note">' + (cust ? '👤 ' + esc(cust) + (j.note ? ' — ' : '') : '') +
+      '<div class="h-note">' + (cust ? '👤 ' + esc(cust) + (j.jobName || j.note ? ' — ' : '') : '') +
+        (j.jobName ? esc(j.jobName) + (j.note ? ' · ' : '') : '') +
         (esc(j.note) || (cust ? '' : 'No note')) + '</div>' +
       '<div class="h-meta">' + (TAB_EMOJI[j.tab] || j.tab) +
         (j.category ? ' · ' + (CAT_LABEL[j.category] || j.category) : '') +
@@ -3818,7 +3826,8 @@
     document.querySelectorAll('#deliv-via button, #deliv-by button').forEach(function (b) { b.classList.remove('active'); });
     // show WHICH job is being confirmed — no more wrong-job taps
     var who = (j && j.customer && j.customer !== 'Unassigned') ? j.customer : '';
-    var ctx = who && j.note ? '👤 ' + who + ' — ' + j.note : (who ? '👤 ' + who : (j && j.note) || '');
+    var what = j && (j.jobName || j.note) ? (j.jobName || j.note) : '';
+    var ctx = who && what ? '👤 ' + who + ' — ' + what : (who ? '👤 ' + who : what);
     var dj = document.getElementById('deliv-job');
     dj.textContent = ctx;
     dj.style.display = ctx ? 'block' : 'none';
@@ -4026,7 +4035,8 @@
         imgTag(thumbOf(j, 0), '', 'class="pic" onclick="viewPhoto(\'' + j.photoIds[0] + '\', \'' + thumbOf(j, 0) + '\')"') +
         '<div class="info">' +
         '<div class="t1">' + (PROB_TAB[j.tab] || j.tab) + (j.category ? ' · ' + esc(CAT_LABEL[j.category] || j.category) : '') + '</div>' +
-        (who || j.note ? '<div class="t2">' + esc(who) + (who && j.note ? ' — ' : '') + esc(j.note || '') + '</div>' : '') +
+        (who || j.jobName || j.note ? '<div class="t2">' + esc(who) + (who && (j.jobName || j.note) ? ' — ' : '') +
+          esc(j.jobName || '') + (j.jobName && j.note ? ' · ' : '') + esc(j.note || '') + '</div>' : '') +
         '<div class="t3">' + (j.problem === 'custom' ? '🚨 ' + esc(customText_(j))
           : j.tab === 'want' ? '❌ Not seen'
           : j.problem === 'nosticker' ? '🏷️ No sticker'
@@ -4085,7 +4095,7 @@
     document.getElementById('raise-save').textContent = editing ? '💾 Save Problem' : '🚨 Raise Problem';
     document.getElementById('raise-sub').textContent =
       ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + j.customer + ' · ' : '') +
-      (j.note || (PROB_TAB[j.tab] || ''));
+      (j.jobName || j.note || (PROB_TAB[j.tab] || ''));
     document.getElementById('raise-text').value = editing ? customText_(j) : '';
     document.getElementById('raise-overlay').classList.add('show');
     setTimeout(function () { document.getElementById('raise-text').focus(); }, 120);
@@ -4418,6 +4428,7 @@
     // the photo groups (Jobsheet / Waybill-or-Defect) and the Post button's
     // label are set by syncPipelineUI below
     document.getElementById('upload-note').value = job ? (job.note || '') : '';
+    document.getElementById('upload-jobname').value = job ? (job.jobName || '') : '';
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     syncPipelineUI();
@@ -4565,6 +4576,7 @@
     var alsoDefect = (isWant && !state.editing) ? !!state.upload.alsoDefect : false;
     var needName = state.tab !== 'want' || nextTab || alsoDefect;
     var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
+    var jobName = document.getElementById('upload-jobname').value.trim().slice(0, 80);
 
     // "Got sticker, No Job" report: waybill only, jobsheet is the red ? —
     // one server call creates the job ALREADY flagged for the office
@@ -4581,7 +4593,7 @@
         sPk.push(k1); sTk.push(k2);
       }
       var sTemp = {
-        id: 'local-' + localSeq, tab: 'postage', category: '', note: note,
+        id: 'local-' + localSeq, tab: 'postage', category: '', note: note, jobName: jobName,
         photoIds: sPk, thumbIds: sTk, status: 'pending',
         createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
         dueAt: dueMs || '', jsCount: 0, customer: customer || 'Unassigned',
@@ -4596,7 +4608,7 @@
       uploadsPending += sFulls.length; updatePill();
       var sKey = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       gsCall('reportStickerNoJob', [{
-          note: note, customer: customer, clientId: sKey,
+          note: note, customer: customer, clientId: sKey, jobName: jobName,
           photos: sFulls, thumbs: sThumbs, dueAt: dueMs || ''
         }],
         function (job) {
@@ -4687,6 +4699,7 @@
         .withFailureHandler(function (e) { busy(false); toast('⚠️ ' + errMsg_(e)); })
         .editJob(state.editing.id, {
           note: note,
+          jobName: jobName,
           category: state.tab === 'delivery' ? state.upload.cat : (state.editing.category || ''),
           dueAt: dueMs,
           jsCount: jsCount,
@@ -4713,7 +4726,7 @@
       tempPhotoIds.push(pk); tempThumbIds.push(tk);
     }
     var tempJob = {
-      id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note,
+      id: 'local-' + localSeq, tab: postTab, category: state.upload.cat, note: note, jobName: jobName,
       photoIds: tempPhotoIds, thumbIds: tempThumbIds, status: 'pending',
       createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
       dueAt: isWant ? '' : dueMs, jsCount: jsCount, customer: customer || 'Unassigned',
@@ -4743,6 +4756,7 @@
         tab: postTab,
         category: tempJob.category,
         note: note,
+        jobName: jobName,
         customer: customer,
         clientId: clientKey,
         photos: [fulls[0]],

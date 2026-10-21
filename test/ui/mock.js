@@ -137,6 +137,7 @@
       uid++;
       var job = {
         id: p.clientId || ('j' + uid), tab: p.tab, category: p.category || '', note: p.note || '',
+        jobName: String(p.jobName || '').trim().slice(0, 80),
         photoIds: p.photos.map(function (_, i) { return 'ph' + uid + '-' + i; }),
         thumbIds: p.photos.map(function (_, i) { return (p.thumbs && p.thumbs[i]) ? ('th' + uid + '-' + i) : ''; }),
         status: 'pending', createdAt: Date.now(), doneAt: '',
@@ -170,6 +171,7 @@
       ch.photos = (ch.photos || []).filter(function (p) { return p && (p.b64 || p.id); });
       if (!ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
+      if (ch.jobName !== undefined) j.jobName = String(ch.jobName || '').trim().slice(0, 80);
       j.dueAt = ch.dueAt || '';
       j.jsCount = ch.jsCount || 0;
       if (ch.customer !== undefined) j.customer = (ch.customer || '').trim() || 'Unassigned';
@@ -185,7 +187,7 @@
         if (tab && j.tab !== tab) return false;
         if (category && j.category !== category) return false;
         if (!q) return true;
-        return (j.note + ' ' + (j.customer || '') + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
+        return (j.note + ' ' + (j.jobName || '') + ' ' + (j.customer || '') + ' ' + j.category + ' ' + j.tab).toLowerCase().indexOf(q) >= 0;
       });
       all.sort(function (a, b) {
         var oa = (a.deliveredAt || a.sentAt) ? 1 : 0;
@@ -527,7 +529,7 @@
         var dP = jsN > 0 ? j.photoIds.slice(0, jsN) : j.photoIds.slice();
         var dT = jsN > 0 ? j.thumbIds.slice(0, jsN) : j.thumbIds.slice();
         var dj = {
-          id: 'j' + uid, tab: 'defect', category: '', note: j.note, photoIds: dP, thumbIds: dT,
+          id: 'j' + uid, tab: 'defect', category: '', note: j.note, jobName: j.jobName || '', photoIds: dP, thumbIds: dT,
           status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
           dueAt: '', pinnedAt: '', jsCount: dP.length, customer: j.customer, folderId: j.folderId, fromCheck: true,
           nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: '', alsoDefect: false, defectJobId: ''
@@ -540,7 +542,7 @@
       if (status === 'got' && j.nextTab && !j.nextJobId) {
         uid++;
         var pj = {
-          id: 'j' + uid, tab: j.nextTab, category: j.nextCategory || '', note: j.note,
+          id: 'j' + uid, tab: j.nextTab, category: j.nextCategory || '', note: j.note, jobName: j.jobName || '',
           photoIds: j.photoIds.slice(), thumbIds: j.thumbIds.slice(),
           status: 'pending', createdAt: Date.now(), doneAt: '', proofPhotoId: '', proofThumbId: '',
           // the 📄 Jobsheet | 🏷️ Waybill split prepared on the check rides along

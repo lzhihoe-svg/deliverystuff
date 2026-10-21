@@ -60,7 +60,7 @@ function ensureSetup_() {
                     'nextTab', 'nextCategory', 'nextDueAt', 'nextJobId',
                     'problem', 'problemAt', 'printedAt', 'printPhotoId', 'printThumbId',
                     'deliveredAt', 'deliveredPhotoId', 'deliveredThumbId', 'problemNote', 'deliveredVia', 'deliveredBy', 'sentAt',
-                    'probLog', 'alsoDefect', 'defectJobId']);
+                    'probLog', 'alsoDefect', 'defectJobId', 'jobName']);
       sh.setFrozenRows(1);
       props.setProperty('SHEET_ID', ss.getId());
     }
@@ -73,7 +73,7 @@ function ensureSetup_() {
   }
 }
 
-var JOB_COLS = 37; // width of one job row (see the header in ensureSetup_)
+var JOB_COLS = 38; // width of one job row (see the header in ensureSetup_)
 
 function getSheet_() {
   ensureSetup_();
@@ -85,7 +85,7 @@ function getSheet_() {
   if (props.getProperty('JOB_COLS') !== String(JOB_COLS)) {
     var have = sh.getMaxColumns();
     if (have < JOB_COLS) sh.insertColumnsAfter(have, JOB_COLS - have);
-    sh.getRange(1, 36, 1, 2).setValues([['alsoDefect', 'defectJobId']]);
+    sh.getRange(1, 36, 1, 3).setValues([['alsoDefect', 'defectJobId', 'jobName']]);
     props.setProperty('JOB_COLS', String(JOB_COLS));
   }
   return sh;
@@ -311,7 +311,8 @@ function rowToJob_(r) {
     probLog: (function (raw) { try { return JSON.parse(raw || '[]'); } catch (e) { return []; } })(r[34]),
     // check-first pipeline, second destination: ALSO push a Defect-check
     // job on ❤️ (a job can go to Defect AND Delivery/Postage)
-    alsoDefect: !!r[35], defectJobId: r[36] || ''
+    alsoDefect: !!r[35], defectJobId: r[36] || '',
+    jobName: r[37] || ''   // short job title, e.g. "JERSEY PSV BATCH 09' 7 PCS"
   };
 }
 
@@ -348,6 +349,7 @@ function addJob(payload) {
   var dueAt = payload.dueAt ? Number(payload.dueAt) : '';
   var jsCount = payload.jsCount ? Number(payload.jsCount) : 0;
   var customer = cleanName_(payload.customer) || 'Unassigned';
+  var jobName = String(payload.jobName || '').trim().slice(0, 80);
 
   // Every job gets its OWN Drive folder: month / customer / job.
   // Jobsheet, waybill and (later) the proof all land together in it.
@@ -378,7 +380,7 @@ function addJob(payload) {
     var sh = getSheet_();
     if (payload.clientId) {
       var row = findRow_(sh, id);
-      if (row > 0) existing = sh.getRange(row, 1, 1, 37).getValues()[0];
+      if (row > 0) existing = sh.getRange(row, 1, 1, 38).getValues()[0];
     }
     if (!existing) {
       sh.appendRow([
@@ -390,7 +392,7 @@ function addJob(payload) {
         nextTab, nextCategory, nextDueAt, '',
         '', '', '', '', '',
         '', '', '', '', '', '', '', '',
-        alsoDefect ? 1 : '', ''
+        alsoDefect ? 1 : '', '', jobName
       ]);
     }
   } finally {
@@ -408,7 +410,7 @@ function addJob(payload) {
     thumbIds: thumbIds, proofThumbId: '', dueAt: dueAt, pinnedAt: '',
     jsCount: jsCount, customer: customer,
     nextTab: nextTab, nextCategory: nextCategory, nextDueAt: nextDueAt, nextJobId: '',
-    alsoDefect: alsoDefect, defectJobId: ''
+    alsoDefect: alsoDefect, defectJobId: '', jobName: jobName
   };
 }
 
@@ -581,7 +583,7 @@ function editJob(id, changes, pin) {
       for (var k = 0; k < newIds.length; k++) { trashFile_(newIds[k]); trashFile_(newThumbIds[k]); }
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     var oldIds = JSON.parse(vals[4] || '[]');
     var oldThumbs = JSON.parse(vals[11] || '[]');
 
@@ -604,6 +606,9 @@ function editJob(id, changes, pin) {
     sh.getRange(row, 14).setValue(dueAt);
     sh.getRange(row, 16).setValue(jsCount);
     sh.getRange(row, 17).setValue(editCustomer);
+    var editJobName = changes.jobName !== undefined
+      ? String(changes.jobName || '').trim().slice(0, 80) : (vals[37] || '');
+    sh.getRange(row, 38).setValue(editJobName);
 
     vals[2] = changes.category || '';
     vals[3] = changes.note || '';
@@ -612,6 +617,7 @@ function editJob(id, changes, pin) {
     vals[13] = dueAt;
     vals[15] = jsCount;
     vals[16] = editCustomer;
+    vals[37] = editJobName;
     job = rowToJob_(vals);
   } finally {
     lock.releaseLock();
@@ -675,7 +681,7 @@ function getDeletedJobs(pin) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { results: [] };
-  var rows = sh.getRange(2, 1, last - 1, 37).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 38).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -780,7 +786,7 @@ function resetDone(pin) {
     var last = sh.getLastRow();
     if (last < 2) return { ok: true, archived: 0, carried: 0 };
     // 34 columns: we need deliveredAt (28) and sentAt (34), not just status
-    var vals = sh.getRange(2, 1, last - 1, 37).getValues();
+    var vals = sh.getRange(2, 1, last - 1, 38).getValues();
     var out = [], snap = {}, archived = 0, carried = 0;
     for (var i = 0; i < vals.length; i++) {
       var tab = vals[i][1], status = vals[i][5];
@@ -878,7 +884,7 @@ function getJobs(tab) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var rows = sh.getRange(2, 1, last - 1, 37).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 38).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -917,7 +923,7 @@ function getAllData() {
   var jobs = { want: [], delivery: [], postage: [], defect: [] };
   var counts = { want: 0, delivery: 0, postage: 0, defect: 0 };
   if (last < 2) return { jobs: jobs, counts: counts, invLastAt: invLastAt_() };
-  var rows = sh.getRange(2, 1, last - 1, 37).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 38).getValues();
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     if (!jobs.hasOwnProperty(r[1]) || r[5] === 'archived' || r[5] === 'deleted') continue;
@@ -972,7 +978,7 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
     // nextJobId guards against double-push (re-swipes after Push Up).
     var pushed = null, pushedDefect = null;
     if (status === 'got') {
-      var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+      var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
       // SECOND destination: a Defect-check job. It gets the JOBSHEET photos
       // only (the waybill belongs to the parcel); its Defect side starts
       // empty until the factory snaps what it found. defectJobId guards
@@ -992,7 +998,7 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
           '', '', '', '',
           '', '', '', '', '',
           '', '', '', '', '', '', '', '',
-          '', ''
+          '', '', vals[37] || ''
         ];
         sh.appendRow(drow);
         sh.getRange(row, 37).setValue(did);
@@ -1012,7 +1018,7 @@ function updateStatus(id, status, proofBase64, proofThumbBase64, pin) {
           '', '', '', '',
           '', '', '', '', '',
           '', '', '', '', '', '', '', '',
-          '', ''
+          '', '', vals[37] || ''
         ];
         sh.appendRow(prow);
         sh.getRange(row, 22).setValue(pid);
@@ -1053,7 +1059,7 @@ function sentBus(id, proofBase64, proofThumbBase64) {
       trashFile_(proofId); trashFile_(proofThumbId);
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     if (vals[1] !== 'postage') {
       trashFile_(proofId); trashFile_(proofThumbId);
       throw new Error('Only a postage job can be marked Sent bus');
@@ -1107,7 +1113,7 @@ function reportProblem(id, kind, text) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     if (mark !== 'custom' &&
         vals[1] !== 'delivery' && vals[1] !== 'postage' && vals[1] !== 'defect') {
       throw new Error('Only Delivery/Postage/Defect jobs can be reported');
@@ -1143,7 +1149,7 @@ function editProblemReport(id, text) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     if (vals[22] !== 'custom') throw new Error('Only a typed problem can be edited');
     var log = [];
     try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
@@ -1167,7 +1173,7 @@ function deleteProblemReport(id) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     var mark = vals[22];
     if (mark !== 'custom' && mark !== 'reported' && mark !== 'nosticker' && mark !== 'nojob') {
       throw new Error('No active report to delete');
@@ -1241,7 +1247,7 @@ function solveProblem(id, photoB64, thumbB64) {
       trashFile_(photoId); trashFile_(thumbId);
       throw new Error('Job not found');
     }
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
       vals[22] === 'custom' || (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) {
@@ -1296,7 +1302,7 @@ function deleteSolve(id) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     var log = [];
     try { log = JSON.parse(vals[34] || '[]'); } catch (e) {}
     if (vals[22] !== 'printed' || !log.length || log[log.length - 1].k !== 'solve') {
@@ -1357,7 +1363,7 @@ function setProblemNote(id, text) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     var isProblem = vals[22] === 'reported' || vals[22] === 'nosticker' || vals[22] === 'nojob' ||
       vals[22] === 'custom' || (vals[1] === 'want' && vals[5] === 'notseen');
     if (!isProblem) throw new Error('This job is not on the Problem page');
@@ -1385,7 +1391,7 @@ function markDelivered(id, via, by) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     if (vals[1] !== 'delivery') throw new Error('Delivered confirmation is for Delivery jobs');
     if (vals[5] !== 'done') throw new Error('Finish the job first (Done + proof), then confirm delivered');
     sh.getRange(row, 28).setValue(ts);
@@ -1431,7 +1437,7 @@ function markSentJnt(id) {
     var sh = getSheet_();
     var row = findRow_(sh, id);
     if (row < 0) throw new Error('Job not found');
-    var vals = sh.getRange(row, 1, 1, 37).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 38).getValues()[0];
     if (vals[1] !== 'postage') throw new Error('Sent-to-J&T is for Postage jobs');
     if (vals[5] !== 'done') throw new Error('Finish the parcel first (Done + proof), then mark Sent');
     sh.getRange(row, 34).setValue(ts);
@@ -1602,7 +1608,7 @@ function searchHistory(q, pin, tab, category) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { results: [], total: 0, driveFolderId: masterFolder_().getId() };
-  var rows = sh.getRange(2, 1, last - 1, 37).getValues();
+  var rows = sh.getRange(2, 1, last - 1, 38).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0; i--) { // newest first
     var r = rows[i];
@@ -1611,7 +1617,7 @@ function searchHistory(q, pin, tab, category) {
     if (tab && r[1] !== tab) continue;           // page filter (delivery / postage / …)
     if (category && r[2] !== category) continue; // delivery sub-type (bus / lalamove / pickup)
     if (q) {
-      var hay = (String(r[3]) + ' ' + String(r[16]) + ' ' + r[2] + ' ' + r[1] + ' ' +
+      var hay = (String(r[3]) + ' ' + String(r[16]) + ' ' + String(r[37]) + ' ' + r[2] + ' ' + r[1] + ' ' +
         dayStr_(r[7]) + ' ' + dayStr_(r[9])).toLowerCase();
       if (hay.indexOf(q) < 0) continue;
     }
@@ -1666,7 +1672,7 @@ function getPerformance(pin) {
   var sh = getSheet_();
   var last = sh.getLastRow();
   if (last >= 2) {
-    var rows = sh.getRange(2, 1, last - 1, 37).getValues();
+    var rows = sh.getRange(2, 1, last - 1, 38).getValues();
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       if (r[1] === 'want') continue;

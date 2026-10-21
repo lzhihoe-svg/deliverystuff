@@ -840,6 +840,23 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
   const ordinary = ctx.addJob({ tab: 'postage', category: '', note: 'ordinary', customer: 'SN', photos: [B64], thumbs: [B64], jsCount: 1 });
   ctx.addPhotoToJob(ordinary.id, 1, B64, B64);
   check(ctx.getJobs('postage').find(j => j.id === ordinary.id).photoIds.length === 2, 'an ordinary job still takes its photos as before');
+
+  // 🏷️ Job Name rides through the whole pipeline
+  const named = ctx.addJob({ tab: 'want', category: '', note: 'urgent one', customer: 'SN',
+    jobName: "JERSEY PSV BATCH 09' 7 PCS",
+    photos: [B64, B64], thumbs: [B64, B64], jsCount: 1, nextTab: 'postage', alsoDefect: true });
+  check(named.jobName === "JERSEY PSV BATCH 09' 7 PCS", 'addJob stores the Job Name');
+  const rn = ctx.updateStatus(named.id, 'got', null, null, null);
+  check(rn.pushed.jobName === "JERSEY PSV BATCH 09' 7 PCS" && rn.pushedDefect.jobName === "JERSEY PSV BATCH 09' 7 PCS",
+    '❤️ carries the Job Name to BOTH pushed jobs');
+  ctx.updateStatus(rn.pushed.id, 'done', B64, B64, null);
+  check(ctx.searchHistory('psv batch', null, '', '').results.some(j => j.id === rn.pushed.id),
+    'History finds evidence by Job Name');
+  const edN = ctx.editJob(rn.pushed.id, { note: 'x', jobName: 'RENAMED JOB', jsCount: 1,
+    photos: [{ id: rn.pushed.photoIds[0] }, { id: rn.pushed.photoIds[1] }] }, '1234');
+  check(edN.jobName === 'RENAMED JOB' &&
+    ctx.getJobs('postage').find(j => j.id === rn.pushed.id).jobName === 'RENAMED JOB',
+    '✏️ Edit can change the Job Name (stored on the sheet)');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');
