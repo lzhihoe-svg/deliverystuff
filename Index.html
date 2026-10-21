@@ -2487,7 +2487,8 @@
           '<div class="foot">' +
             '<div class="cap">' + (j.uploading ? '📤 Uploading… · ' : '') + (j.pinnedAt ? '📌 ' : '') +
             ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) + ' · ' : '') +
-            '📄 ' + (esc(j.jobName) || esc(j.note) || 'Jobsheet') +
+            '📄 ' + (j.jobName ? esc(j.jobName) + (j.note ? ' · ' : '') : '') +
+            (esc(j.note) || (j.jobName ? '' : 'Jobsheet')) +
             (multi ? ' · ' + j.photoIds.length + ' 📷' : '') +
             ((j.nextTab || j.alsoDefect) ? ' · →' +
               (j.nextTab ? (j.nextTab === 'delivery' ? '🚚' : '📦') : '') +
@@ -3305,7 +3306,9 @@
       '<div class="pv-body2">' +
       // every row always renders (blank if empty) so all cards match in height
       '<div class="pv-cust">' + ((j.customer && j.customer !== 'Unassigned') ? '👤 ' + esc(j.customer) : '&nbsp;') + '</div>' +
-      '<div class="pv-note">' + (j.jobName || j.note ? esc(j.jobName || j.note) : '&nbsp;') + '</div>' +
+      '<div class="pv-note">' + (j.jobName || j.note
+        ? (j.jobName ? esc(j.jobName) + (j.note ? ' · ' : '') : '') + esc(j.note || '')
+        : '&nbsp;') + '</div>' +
       '<div class="pv-st">' + (showTab ? (PROB_TAB[j.tab] || j.tab) + ' · ' : '') + when + chips + '</div></div>' +
       // problems column: SAY the problem / SHOW the solved picture
       (showTab && pvProb_(j)
@@ -3693,7 +3696,7 @@
     return '<div class="h-card">' +
       '<div class="h-note">' + (cust ? '👤 ' + esc(cust) + (j.jobName || j.note ? ' — ' : '') : '') +
         (j.jobName ? esc(j.jobName) + (j.note ? ' · ' : '') : '') +
-        (esc(j.note) || (cust ? '' : 'No note')) + '</div>' +
+        (esc(j.note) || (cust || j.jobName ? '' : 'No note')) + '</div>' +
       '<div class="h-meta">' + (TAB_EMOJI[j.tab] || j.tab) +
         (j.category ? ' · ' + (CAT_LABEL[j.category] || j.category) : '') +
         ' · Posted ' + fmtDT(j.createdAt) + '</div>' +

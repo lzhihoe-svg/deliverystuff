@@ -988,6 +988,14 @@ console.log("\n== 🚨 problem flow (haven't received → office prints) ==");
     'retrying with the same clientId does not double-post');
   check(ctx.solveProblem(sj.id, B64, B64).problem === 'printed',
     'office prints the jobsheet and solves the sticker job');
+  // 🏷️ a NAMED sticker report keeps its Job Name (it used to be dropped),
+  // and the Drive job folder is named by it so evidence is findable
+  const sjn = ctx.reportStickerNoJob({ photo: B64, thumb: B64, clientId: 'stickN', jobName: 'NAMED STICKER JOB' });
+  const sjnBoard = ctx.getJobs('postage').filter(x => x.id === sjn.id)[0];
+  check(sjn.jobName === 'NAMED STICKER JOB' && sjnBoard.jobName === 'NAMED STICKER JOB',
+    "the 'Got sticker, No Job' report keeps the Job Name");
+  check(String(sjnBoard.folderId).indexOf('NAMED STICKER JOB') >= 0,
+    'the Drive job folder is named by the Job Name');
 }
 
 console.log('\n== 🚨 typed problems (raise / edit / delete by staff) ==');

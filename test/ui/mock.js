@@ -357,6 +357,7 @@
       var thumbs = (payload && payload.thumbs) || (payload && payload.thumb ? [payload.thumb] : []);
       if (!photos.length) throw new Error('Sticker photo required');
       var job = api.addJob({ tab: 'postage', category: '', note: String((payload && payload.note) || ''),
+        jobName: String((payload && payload.jobName) || ''),
         customer: String((payload && payload.customer) || ''), clientId: payload && payload.clientId,
         photos: photos, thumbs: thumbs, dueAt: (payload && payload.dueAt) || '', jsCount: 0 });
       var r = api.reportProblem(job.id, 'nojob');

@@ -353,7 +353,9 @@ function addJob(payload) {
 
   // Every job gets its OWN Drive folder: month / customer / job.
   // Jobsheet, waybill and (later) the proof all land together in it.
-  var folder = makeJobFolder_(customer, payload.tab, payload.category, payload.note, createdAt);
+  // the job's Drive folder is named by what people actually search for:
+  // the Job Name when there is one, the note otherwise
+  var folder = makeJobFolder_(customer, payload.tab, payload.category, jobName || payload.note, createdAt);
   var folderId = folder.getId();
 
   var photoIds = [], thumbIds = [];
@@ -785,7 +787,7 @@ function resetDone(pin) {
     var sh = getSheet_();
     var last = sh.getLastRow();
     if (last < 2) return { ok: true, archived: 0, carried: 0 };
-    // 34 columns: we need deliveredAt (28) and sentAt (34), not just status
+    // full row: we need deliveredAt (col 28) and sentAt (col 34), not just status
     var vals = sh.getRange(2, 1, last - 1, 38).getValues();
     var out = [], snap = {}, archived = 0, carried = 0;
     for (var i = 0; i < vals.length; i++) {
@@ -1208,6 +1210,7 @@ function reportStickerNoJob(payload) {
   var job = addJob({
     tab: 'postage', category: '',
     note: String((payload && payload.note) || ''),
+    jobName: String((payload && payload.jobName) || ''),
     customer: String((payload && payload.customer) || ''),
     clientId: payload && payload.clientId,
     photos: photos,

@@ -1917,6 +1917,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   }), 'Job Name saved on the server next to the instruction');
   check((await page.locator('#topcard .foot .cap').textContent()).indexOf('JERSEY MEGA FC 30 PCS') >= 0,
     'the swipe deck caption leads with the Job Name');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('siap cepat') >= 0,
+    '…and STILL shows the instruction beside it (the note must never be hidden by the name)');
   await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; }); await sleep(200);
   pb = await page.locator('#topcard').boundingBox();
   await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
@@ -1932,8 +1934,8 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   check((await jnCard.locator('.note').first().textContent()).indexOf('🏷️ JERSEY MEGA FC 30 PCS') >= 0,
     'the card shows the Job Name bold above the instruction');
   await viaMenu('#prodview-btn'); await sleep(400);
-  check((await page.locator('#pv-postage .pv-note').allTextContents()).some(t => t.indexOf('JERSEY MEGA FC 30 PCS') >= 0),
-    'the TV card shows the Job Name');
+  check((await page.locator('#pv-postage .pv-note').allTextContents()).some(t => t.indexOf('JERSEY MEGA FC 30 PCS · siap cepat') >= 0),
+    'the TV card shows the Job Name AND the instruction');
   await page.evaluate(() => closeProdView());
   await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.jobName === 'JERSEY MEGA FC 30 PCS') j.status = 'archived'; }); });
   await page.evaluate(() => refresh()); await sleep(500);
