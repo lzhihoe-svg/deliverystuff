@@ -2936,8 +2936,13 @@
     // of the story moves into the meta line below the note
     var statusChip = '';
     if (lost) statusChip = '<span class="chip old">⚠️ ' + lost + ' photo didn\'t upload — ✏️ Edit to re-add</span> ';
-    else if (old) statusChip = '<span class="chip old">⚠️ Over 1 day!</span> ';
-    else if (!isDone) statusChip = dueChip(j);
+    else if (!isDone) {
+      // a REAL deadline outranks the age warning: "🕒 Ready by today" (or
+      // 🚨 LATE once it passes) says more than "posted over a day ago".
+      // ⚠️ Over 1 day! only marks old jobs that have NO deadline at all.
+      statusChip = dueChip(j);
+      if (!statusChip && old) statusChip = '<span class="chip old">⚠️ Over 1 day!</span> ';
+    }
     if (!statusChip && j.category) statusChip = '<span class="chip ' + j.category + '">' + CAT_LABEL[j.category] + '</span> ';
     html += statusChip;
     if (j.jobName) html += '<div class="note" style="font-weight:800">🏷️ ' + esc(j.jobName) + '</div>';

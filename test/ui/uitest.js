@@ -1940,6 +1940,35 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.jobName === 'JERSEY MEGA FC 30 PCS') j.status = 'archived'; }); });
   await page.evaluate(() => refresh()); await sleep(500);
 
+  console.log('\n-- ⏰ a deadline outranks the "Over 1 day" age warning --');
+  await page.evaluate(() => {
+    const now = Date.now(), day = 86400000;
+    const eod = new Date(); eod.setHours(23, 59, 59, 0); // date-only "due today"
+    const mk = (id, note, createdAgo, due) => ({
+      id, tab: 'delivery', category: 'bus', note, photoIds: ['ph-' + id], thumbIds: ['th-' + id],
+      status: 'pending', createdAt: now - createdAgo, doneAt: '', proofPhotoId: '', proofThumbId: '',
+      dueAt: due, pinnedAt: '', jsCount: 0, customer: 'Chip ' + id, folderId: '', nextTab: '', nextCategory: '',
+      nextDueAt: '', nextJobId: '', problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '',
+      deliveredAt: '', deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '', sentAt: '', probLog: []
+    });
+    window.__mockdb.jobs.push(
+      mk('chipA', 'Posted 2 days ago, due TODAY', 2 * day, eod.getTime()),
+      mk('chipB', 'Posted 2 days ago, no deadline', 2 * day, ''),
+      mk('chipC', 'Posted 2 days ago, deadline PASSED', 2 * day, now - 3600000));
+  });
+  await page.evaluate(() => refresh()); await sleep(700);
+  await page.click('#nav-delivery'); await sleep(400);
+  const chipOf = async id => (await page.locator('#delivery-list .card').filter({ hasText: 'Chip ' + id })
+    .locator('.chip.due, .chip.soon, .chip.late, .chip.old').first().textContent());
+  check((await chipOf('chipA')).indexOf('Ready by today') >= 0,
+    'posted 2 days ago but due TODAY → shows "🕒 Ready by today", NOT "Over 1 day!"');
+  check((await chipOf('chipB')).indexOf('Over 1 day') >= 0,
+    'an old job with NO deadline still warns "⚠️ Over 1 day!"');
+  check((await chipOf('chipC')).indexOf('LATE') >= 0,
+    'a passed deadline shows "🚨 LATE", not the age warning');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (String(j.id).indexOf('chip') === 0) j.status = 'archived'; }); });
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- 📺 TV sorts To Do by Ready-by, most urgent first (not newest first) --');
   await page.evaluate(() => {
     const now = Date.now(), day = 86400000;
