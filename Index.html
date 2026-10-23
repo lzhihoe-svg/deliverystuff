@@ -4441,8 +4441,8 @@
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     syncPipelineUI();
     // a Checking job bound for Delivery/Postage carries its Ready-by in
-    // nextDueAt — show THAT one in the edit window
-    var preDue = job ? (job.nextTab ? job.nextDueAt : job.dueAt) : '';
+    // nextDueAt — show THAT one in the edit window (same rule as the server)
+    var preDue = job ? ((job.tab === 'want' && job.nextTab) ? job.nextDueAt : job.dueAt) : '';
     if (preDue) {
       var dd = new Date(Number(preDue));
       document.getElementById('upload-due-day').value = String(dd.getDate());
@@ -4453,6 +4453,15 @@
       document.getElementById('upload-due-month').value = '';
       document.getElementById('upload-due').value = '';
     }
+    // snapshot of the prefilled deadline: if the fields are saved UNTOUCHED,
+    // the job keeps its exact deadline — recomputing a passed date would
+    // silently roll it one year forward (dueToMs picks the nearest future year)
+    state.upload.dueWas = {
+      d: document.getElementById('upload-due-day').value,
+      m: document.getElementById('upload-due-month').value,
+      t: document.getElementById('upload-due').value,
+      ms: preDue || ''
+    };
 
     document.getElementById('upload-cats').querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', !!job && b.getAttribute('data-cat') === job.category);
@@ -4585,12 +4594,25 @@
     // date every time a Checking job was edited.
     var nextTab = isWant ? (state.upload.nextTab || '') : '';
     var hasDue = state.tab === 'delivery' || state.tab === 'postage' || (isWant && nextTab);
-    var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
-                                 document.getElementById('upload-due-month').value,
-                                 document.getElementById('upload-due').value) : '';
+    var dueD = document.getElementById('upload-due-day').value,
+        dueM = document.getElementById('upload-due-month').value,
+        dueT = document.getElementById('upload-due').value;
+    var dueMs = hasDue ? dueToMs(dueD, dueM, dueT) : '';
+    // editing with the date fields UNTOUCHED keeps the exact stored deadline —
+    // see the dueWas snapshot in openUpload (year-rollover guard for LATE jobs)
+    if (hasDue && state.editing && state.upload.dueWas &&
+        dueD === state.upload.dueWas.d && dueM === state.upload.dueWas.m && dueT === state.upload.dueWas.t) {
+      dueMs = state.upload.dueWas.ms;
+    }
     var alsoDefect = isWant ? !!state.upload.alsoDefect : false;
     var needName = state.tab !== 'want' || nextTab || alsoDefect;
     var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
+    // an edit whose customer field got accidentally CLEARED keeps the job's
+    // existing customer — never silently save it back to 'Unassigned'
+    if (state.editing && needName && !customer &&
+        state.editing.customer && state.editing.customer !== 'Unassigned') {
+      customer = state.editing.customer;
+    }
     var jobName = document.getElementById('upload-jobname').value.trim().slice(0, 80);
 
     // "Got sticker, No Job" report: waybill only, jobsheet is the red ? —
@@ -4663,7 +4685,9 @@
       // Checking → Postage with EVERY photo under Jobsheet and none under
       // Waybill: nine times out of ten the last one IS the sticker (both
       // picked together). Ask, instead of filing the sticker as page 2.
-      if (state.tab === 'want' && !state.upload.wb.length && state.upload.js.length >= 2 && !state.upload.allJsOk) {
+      // post-time question only: an EDIT of an all-jobsheet parcel is a legit
+      // state (the card already explains ⬇️ To Waybill) — never re-ask on Save
+      if (state.tab === 'want' && !state.editing && !state.upload.wb.length && state.upload.js.length >= 2 && !state.upload.allJsOk) {
         askConfirm(state.upload.js.length + ' photos under 📄 Jobsheet, none under 🏷️ Waybill. ' +
           'Is the LAST photo the J&T waybill sticker?',
           '🏷️ Yes — last one is the sticker',
@@ -4684,7 +4708,9 @@
       if (!photos.length) { toast('Please add a photo first 📸'); return; }
     }
     if (state.tab === 'delivery' && !state.upload.cat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
-    if (isWant && nextTab === 'delivery' && !state.upload.nextCat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
+    // new posts only: the chooser is hidden while editing, so blocking an
+    // edit on a missing method would make the job uneditable
+    if (isWant && !state.editing && nextTab === 'delivery' && !state.upload.nextCat) { toast('Choose delivery method first 🛵🚌🤝'); return; }
     // NEW posts must say who the job is for — tap an agent or type a customer
     if (!state.editing && needName && !customer) {
       toast('👤 Tap an agent or type the customer name first');

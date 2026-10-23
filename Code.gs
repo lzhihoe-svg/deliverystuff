@@ -600,7 +600,8 @@ function editJob(id, changes, pin) {
     for (var t = 0; t < oldThumbs.length; t++) {
       if (oldThumbs[t] && finalThumbs.indexOf(oldThumbs[t]) < 0) toTrash.push(oldThumbs[t]);
     }
-    var dueAt = changes.dueAt ? Number(changes.dueAt) : '';
+    // dueAt: undefined = leave the deadline alone; '' = clear it
+    var dueAt = changes.dueAt !== undefined ? (changes.dueAt ? Number(changes.dueAt) : '') : undefined;
     var jsCount = changes.jsCount ? Number(changes.jsCount) : 0;
 
     sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
@@ -608,12 +609,22 @@ function editJob(id, changes, pin) {
     // a Checking job bound for Delivery/Postage keeps its Ready-by in
     // nextDueAt (it is the deadline of the job it BECOMES after ❤️) —
     // editing must write it there, not give the check itself a deadline
-    if (vals[1] === 'want' && vals[18]) {
-      sh.getRange(row, 21).setValue(dueAt);
-      vals[20] = dueAt;
-    } else {
-      sh.getRange(row, 14).setValue(dueAt);
-      vals[13] = dueAt;
+    if (dueAt !== undefined) {
+      if (vals[1] === 'want' && vals[18]) {
+        sh.getRange(row, 21).setValue(dueAt);
+        vals[20] = dueAt;
+        // a stray own-deadline on a pipeline check is invisible in the edit
+        // window and could never be cleared — drop it
+        if (vals[13]) { sh.getRange(row, 14).setValue(''); vals[13] = ''; }
+        // the check already pushed its job? the new Ready-by follows the parcel
+        if (vals[21]) {
+          var drow2 = findRow_(sh, vals[21]);
+          if (drow2 > 0) sh.getRange(drow2, 14).setValue(dueAt);
+        }
+      } else {
+        sh.getRange(row, 14).setValue(dueAt);
+        vals[13] = dueAt;
+      }
     }
     sh.getRange(row, 16).setValue(jsCount);
     sh.getRange(row, 17).setValue(editCustomer);

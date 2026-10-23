@@ -1975,7 +1975,66 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'typing a NEW customer in Edit actually saves it');
   check((await page.locator('#topcard .foot .cap').textContent()).indexOf('👤 Siti Baru') >= 0,
     'and the deck caption shows it straight away');
+  // accidentally CLEARING the customer field in an edit must not wipe it
+  await clickSafe(page.locator('#topcard .more-btn').first()); await sleep(250);
+  await page.click('#jobmenu-list .jm-edit'); await sleep(400);
+  await page.fill('#upload-customer', '');
+  await page.click('#btn-submit'); await sleep(900);
+  check(await page.evaluate(id => window.__mockdb.jobs.find(x => x.id === id).customer === 'Siti Baru', ekId),
+    'a blanked customer field on Save keeps the existing customer (no silent Unassigned)');
+  // editing an all-jobsheet parcel must NOT re-ask the sticker question
+  await clickSafe(page.locator('#topcard .more-btn').first()); await sleep(250);
+  await page.click('#jobmenu-list .jm-edit'); await sleep(400);
+  await page.setInputFiles('#js-file', [IMG2]); await sleep(600); // now 2 jobsheet pages, no waybill
+  await page.click('#btn-submit'); await sleep(900);
+  check(!await page.locator('#confirm-overlay').isVisible(), "an EDIT never re-asks 'is the last photo the sticker?'");
+  check(await page.evaluate(id => {
+    const j = window.__mockdb.jobs.find(x => x.id === id);
+    return j.jsCount === 2 && j.photoIds.length === 2;
+  }, ekId), 'both pages stay jobsheet pages after the edit');
   await page.evaluate(id => { window.__mockdb.jobs.forEach(j => { if (j.id === id) j.status = 'archived'; }); }, ekId);
+  // a legacy want→delivery job with NO method stored must still be editable
+  await page.evaluate(() => {
+    window.__mockdb.jobs.push({ id: 'legacyD', tab: 'want', category: '', note: 'Legacy no-method',
+      photoIds: ['ph-legacyD'], thumbIds: ['th-legacyD'], status: 'pending', createdAt: Date.now(),
+      doneAt: '', proofPhotoId: '', proofThumbId: '', dueAt: '', pinnedAt: Date.now(), jsCount: 0,
+      customer: 'OldCo', folderId: '', nextTab: 'delivery', nextCategory: '', nextDueAt: '', nextJobId: '',
+      problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '', deliveredAt: '',
+      deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '',
+      sentAt: '', probLog: [] });
+  });
+  await page.evaluate(() => refresh()); await sleep(600);
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; }); await sleep(200);
+  await clickSafe(page.locator('#topcard .more-btn').first()); await sleep(250);
+  await page.click('#jobmenu-list .jm-edit'); await sleep(400);
+  await page.fill('#upload-note', 'Legacy no-method v2');
+  await page.click('#btn-submit'); await sleep(900);
+  check(await page.evaluate(() => window.__mockdb.jobs.some(x => x.note === 'Legacy no-method v2')),
+    'a want→delivery job with no stored method can still be SAVED (chooser is hidden in edits)');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.id === 'legacyD') j.status = 'archived'; }); });
+  // ⏰ YEAR-ROLLOVER GUARD: editing a LATE job without touching the date keeps it LATE
+  await page.evaluate(() => {
+    const now = Date.now();
+    window.__mockdb.jobs.push({ id: 'lateE', tab: 'delivery', category: 'bus', note: 'Late edit test',
+      photoIds: ['ph-lateE'], thumbIds: ['th-lateE'], status: 'pending', createdAt: now - 2 * 86400000,
+      doneAt: '', proofPhotoId: '', proofThumbId: '', dueAt: now - 86400000, pinnedAt: '', jsCount: 0,
+      customer: 'LateCo', folderId: '', nextTab: '', nextCategory: '', nextDueAt: '', nextJobId: '',
+      problem: '', problemAt: '', printedAt: '', printPhotoId: '', printThumbId: '', deliveredAt: '',
+      deliveredPhotoId: '', deliveredThumbId: '', problemNote: '', deliveredVia: '', deliveredBy: '',
+      sentAt: '', probLog: [] });
+  });
+  await page.evaluate(() => refresh()); await sleep(600);
+  await page.click('#nav-delivery'); await sleep(400);
+  await viaMore(page.locator('#delivery-list .card').filter({ hasText: 'Late edit test' }).first(), '.jm-edit');
+  await sleep(300);
+  await page.fill('#upload-note', 'Late edit test v2');
+  await page.click('#btn-submit'); await sleep(900);
+  check(await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Late edit test v2').dueAt < Date.now()),
+    'editing a LATE job without touching the date KEEPS the deadline (no silent +1 year)');
+  check((await page.locator('#delivery-list .card').filter({ hasText: 'Late edit test v2' }).locator('.chip.late').count()) === 1,
+    'the 🚨 LATE chip survives the edit');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.id === 'lateE') j.status = 'archived'; }); });
+  await page.click('#nav-want'); await sleep(300);
   await page.evaluate(r => setRole(r, r === 'admin' ? '1234' : ''), prevRole); await sleep(300);
   await page.evaluate(() => refresh()); await sleep(500);
 

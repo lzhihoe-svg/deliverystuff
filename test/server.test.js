@@ -867,8 +867,17 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
     jsCount: 1, photos: [{ id: keep.photoIds[0] }] }, PIN);
   check(edK.customer === 'Affa' && edK.nextDueAt === 1767225600000 && !edK.dueAt,
     'Checking edit keeps the customer and stores Ready-by in nextDueAt (not dueAt)');
-  check(ctx.updateStatus(keep.id, 'got', null, null, null).pushed.dueAt === 1767225600000,
-    'the edited Ready-by reaches the pushed parcel after ❤️');
+  const pushedK = ctx.updateStatus(keep.id, 'got', null, null, null).pushed;
+  check(pushedK.dueAt === 1767225600000, 'the edited Ready-by reaches the pushed parcel after ❤️');
+  // an edit that OMITS dueAt leaves every deadline untouched
+  const edOmit = ctx.editJob(keep.id, { note: 'keep me v3', customer: 'Affa', jsCount: 1,
+    photos: [{ id: keep.photoIds[0] }] }, PIN);
+  check(edOmit.nextDueAt === 1767225600000, 'editJob WITHOUT dueAt keeps the prepared Ready-by');
+  // an edit AFTER the ❤️ push re-dates the pushed parcel too
+  ctx.editJob(keep.id, { note: 'keep me v4', customer: 'Affa', dueAt: 1770000000000, jsCount: 1,
+    photos: [{ id: keep.photoIds[0] }] }, PIN);
+  check(ctx.getJobs('postage').find(j => j.id === pushedK.id).dueAt === 1770000000000,
+    'editing the check after ❤️ re-dates the pushed parcel');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');
