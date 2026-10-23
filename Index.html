@@ -2127,6 +2127,16 @@
     if (state.prodView) { pvProg.active = true; pvProgSet_(5, 'Updating…'); }
     google.script.run
       .withSuccessHandler(function (res) {
+        // A WRITE IS STILL IN FLIGHT (a swipe saving, a Done uploading its
+        // record…): this answer was read before that write committed, so
+        // applying it would briefly un-push / un-swipe. Wait and re-ask.
+        // (Capped: a stuck call can only defer 5 times, never forever.)
+        if (gsBusy > 0 && refreshDefers < 5) {
+          refreshDefers++;
+          setTimeout(refresh, 1200);
+          return;
+        }
+        refreshDefers = 0;
         // STALE ANSWER: something changed on this phone AFTER this refresh
         // left (a swipe, an undo, a Done…). Applying it would flip that
         // change back for a moment — the "it changed, then changed back"
@@ -2391,7 +2401,7 @@
     saveJobsCache(state.tab);
     renderAll(); updateBadgeLocal();
     toast('🔁 Sent back — staff must swipe again!');
-    google.script.run.withFailureHandler(bgFail).askAgain(id, state.pin);
+    gsFire('askAgain', [id, state.pin]);
   }
 
   /** UNDO a wrong swipe (staff AND admin, no PIN): the jobsheet returns to
@@ -2410,21 +2420,18 @@
     saveJobsCache('want');
     renderAll(); updateBadgeLocal();
     toast('↩️ Swipe undone — please answer again.');
-    google.script.run
-      .withSuccessHandler(function (res) {
-        // pipeline pull-back: the wrong ❤️ had already pushed a job — remove it
-        if (res && (res.pulledBack || res.pulledBackDefect)) {
-          ['delivery', 'postage', 'defect'].forEach(function (tb) {
-            state.jobs[tb] = state.jobs[tb].filter(function (x) {
-              return x.id !== res.pulledBack && x.id !== res.pulledBackDefect;
-            });
-            saveJobsCache(tb);
+    gsFire('undoSwipe', [ls.id], function (res) {
+      // pipeline pull-back: the wrong ❤️ had already pushed a job — remove it
+      if (res && (res.pulledBack || res.pulledBackDefect)) {
+        ['delivery', 'postage', 'defect'].forEach(function (tb) {
+          state.jobs[tb] = state.jobs[tb].filter(function (x) {
+            return x.id !== res.pulledBack && x.id !== res.pulledBackDefect;
           });
-          renderAll();
-        }
-      })
-      .withFailureHandler(bgFail)
-      .undoSwipe(ls.id);
+          saveJobsCache(tb);
+        });
+        renderAll();
+      }
+    });
   }
 
   // ------------------------------------------------------------ TAB 1: checking (swipe)
@@ -3009,11 +3016,23 @@
    * (1.5s apart) by itself before bothering the user. Uploads that used
    * to fail with "undefined" and need re-picking now just quietly recover.
    */
+  // Writes still travelling to the server. While one is in flight, a
+  // refresh answer must NOT be applied: it was read BEFORE the write
+  // committed, so the board would briefly "lose" a ❤️-pushed job or flip
+  // a swipe back — exactly the "check done but nothing on Postage" look.
+  var gsBusy = 0, refreshDefers = 0;
+  function gsBusyStart_() { gsBusy++; }
+  function gsBusyEnd_() { gsBusy = Math.max(0, gsBusy - 1); }
+
   function gsCall(fn, args, ok, fail, tries) {
     tries = (tries == null) ? 2 : tries;
+    gsBusyStart_();
+    var settled = false;
+    function settle() { if (!settled) { settled = true; gsBusyEnd_(); } }
     var r = google.script.run
-      .withSuccessHandler(ok)
+      .withSuccessHandler(function (res) { settle(); if (ok) ok(res); })
       .withFailureHandler(function (e) {
+        settle();
         if (tries > 0) {
           setTimeout(function () { gsCall(fn, args, ok, fail, tries - 1); }, 1500);
         } else if (fail) fail(e);
@@ -3022,6 +3041,17 @@
   }
 
   function bgFail(e) { toast('⚠️ ' + errMsg_(e)); refresh(); }
+
+  /** Counted fire-and-forget WRITE: like google.script.run but gsBusy-
+      tracked, so a racing refresh waits for the server to commit it.
+      Failures toast + re-sync via bgFail. */
+  function gsFire(fn, args, ok) {
+    gsBusyStart_();
+    var r = google.script.run
+      .withSuccessHandler(function (res) { gsBusyEnd_(); if (ok) ok(res); })
+      .withFailureHandler(function (e) { gsBusyEnd_(); bgFail(e); });
+    r[fn].apply(r, args);
+  }
 
   function updateBadgeLocal() {
     var n = state.jobs[state.tab].filter(function (j) { return j.status === 'pending'; }).length;
@@ -3048,35 +3078,32 @@
     if (status === 'got') toast('❤️ Great!');
     if (status === 'notseen') toast('❌ Office will follow up.');
     if (status === 'archived') toast('🗄️ Hidden.');
-    google.script.run
-      .withSuccessHandler(function (res) {
-        // pipeline: a passed check auto-pushed a job to the next board —
-        // and/or a Defect-check job (a job can go to BOTH)
-        if (res && (res.pushed || res.pushedDefect)) {
-          var cj = null;
-          for (var k = 0; k < state.jobs.want.length; k++) {
-            if (state.jobs.want[k].id === res.id) { cj = state.jobs.want[k]; break; }
-          }
-          var where = [];
-          if (res.pushed) {
-            state.jobs[res.pushed.tab].unshift(res.pushed);
-            saveJobsCache(res.pushed.tab);
-            if (cj) cj.nextJobId = res.pushed.id;
-            where.push(res.pushed.tab === 'delivery' ? 'Delivery' : 'Postage');
-          }
-          if (res.pushedDefect) {
-            state.jobs.defect.unshift(res.pushedDefect);
-            saveJobsCache('defect');
-            if (cj) cj.defectJobId = res.pushedDefect.id;
-            where.push('Defect');
-          }
-          saveJobsCache('want');
-          renderAll(); updateBadgeLocal();
-          toast('➡️ Passed check — sent to ' + where.join(' + ') + '!');
+    gsFire('updateStatus', [id, status, null, null, state.pin], function (res) {
+      // pipeline: a passed check auto-pushed a job to the next board —
+      // and/or a Defect-check job (a job can go to BOTH)
+      if (res && (res.pushed || res.pushedDefect)) {
+        var cj = null;
+        for (var k = 0; k < state.jobs.want.length; k++) {
+          if (state.jobs.want[k].id === res.id) { cj = state.jobs.want[k]; break; }
         }
-      })
-      .withFailureHandler(bgFail)
-      .updateStatus(id, status, null, null, state.pin);
+        var where = [];
+        if (res.pushed) {
+          state.jobs[res.pushed.tab].unshift(res.pushed);
+          saveJobsCache(res.pushed.tab);
+          if (cj) cj.nextJobId = res.pushed.id;
+          where.push(res.pushed.tab === 'delivery' ? 'Delivery' : 'Postage');
+        }
+        if (res.pushedDefect) {
+          state.jobs.defect.unshift(res.pushedDefect);
+          saveJobsCache('defect');
+          if (cj) cj.defectJobId = res.pushedDefect.id;
+          where.push('Defect');
+        }
+        saveJobsCache('want');
+        renderAll(); updateBadgeLocal();
+        toast('➡️ Passed check — sent to ' + where.join(' + ') + '!');
+      }
+    });
   }
 
   // generic confirm modal — window.confirm() can be silently blocked
@@ -3116,7 +3143,7 @@
       saveJobsCache(state.tab);
       renderAll(); updateBadgeLocal();
       toast('🗑️ Deleted.');
-      google.script.run.withFailureHandler(bgFail).deleteJob(id, state.pin);
+      gsFire('deleteJob', [id, state.pin]);
     });
   }
 
@@ -3972,7 +3999,7 @@
         renderAll(); updateBadgeLocal();
       }
       toast('🗑️ Proof removed — job is back in To Do.');
-      google.script.run.withFailureHandler(bgFail).deleteProof(id);
+      gsFire('deleteProof', [id]);
     });
   }
 

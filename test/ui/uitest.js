@@ -735,6 +735,31 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
     'the jobsheet did NOT reappear on the swipe deck');
   await page.evaluate(id => { window.__mockdb.jobs.forEach(j => { if (j.id === id) j.status = 'archived'; }); }, raceId);
 
+  console.log('\n-- ⏱️ a refresh must WAIT for a ❤️ still saving (the "pushed job missing" race) --');
+  const race2Id = await page.evaluate(() => {
+    const j = window.__mockapi.addJob({ tab: 'want', category: '', note: 'Race2 pipeline job',
+      customer: 'SN', photos: ['r2p'], thumbs: ['r2t'], jsCount: 1, nextTab: 'postage' });
+    return j.id;
+  });
+  await page.evaluate(() => refresh()); await sleep(800);
+  // the ❤️ takes 2.5s to commit on the server; a refresh fires right after
+  // the swipe and its answer arrives long before the commit
+  await page.evaluate(id => {
+    window.__mocklat = Object.assign(window.__mocklat || {}, { updateStatus: 2500, getAllData: 100 });
+    markJob(id, 'got');
+    refresh();
+  }, race2Id);
+  await sleep(4500); // let the deferred refresh re-ask after the commit
+  await page.evaluate(() => { delete window.__mocklat.updateStatus; delete window.__mocklat.getAllData; });
+  check(await page.evaluate(id => window.__kilang.jobs.want.find(j => j.id === id).status === 'got', race2Id),
+    'the ❤️ survived a refresh whose answer arrived before the server committed');
+  check(await page.evaluate(() =>
+    window.__kilang.jobs.postage.some(j => j.note === 'Race2 pipeline job') &&
+    window.__mockdb.jobs.some(j => j.tab === 'postage' && j.note === 'Race2 pipeline job')),
+    'the pushed parcel is on the Postage board locally AND on the server');
+  await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.note === 'Race2 pipeline job') j.status = 'archived'; }); });
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- 🚨 Checking → Defect AND Postage (one job, two boards) --');
   await page.click('#nav-want'); await sleep(300);
   await page.click('#nav-post'); await sleep(250);
