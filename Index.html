@@ -2522,6 +2522,29 @@
     var notSeen = responded.filter(function (j) { return j.status === 'notseen'; });
     var got = responded.filter(function (j) { return j.status === 'got'; });
 
+    /** The LIVE state of the job this check pushed — so the Got It card
+        answers "6 sent to Postage but only 4 there?" by itself: a parcel
+        can be ✔ out the door, moved to Delivery by 🚌 Sent bus, or taken
+        off the board (cleared / hidden / deleted). */
+    function pushedState_(j) {
+      if (!j.nextJobId) return j.defectJobId ? ' · ➡️ sent to Defect' : '';
+      var base = j.nextTab === 'delivery' ? 'Delivery' : 'Postage';
+      var p = findJobAll(j.nextJobId);
+      var s;
+      if (!p) {
+        s = ' · ➡️ ' + base + ' · 🗂️ no longer on the board (cleared, hidden or deleted — see History)';
+      } else if (p.tab === 'delivery' && j.nextTab === 'postage') {
+        s = ' · ➡️ went by 🚌 Bus — now on Delivery' + (p.deliveredAt ? ' · ✔ Delivered' : '');
+      } else {
+        var st = p.status !== 'done' ? '⏳ To Do'
+          : (p.tab === 'postage'
+            ? (p.sentAt ? '✔ Sent to J&T' : '✅ Done — ready for J&T')
+            : (p.deliveredAt ? '✔ Delivered' : '✅ Done — not delivered yet'));
+        s = ' · ➡️ ' + base + ': ' + st;
+      }
+      return s + (j.defectJobId ? ' · + Defect' : '');
+    }
+
     function statusCard(j, isGot) {
       return '<div class="card">' + carouselHtml(j) +
         '<div class="body">' +
@@ -2529,8 +2552,7 @@
         (j.jobName ? '<div class="note" style="font-size:15px;font-weight:800">🏷️ ' + esc(j.jobName) + '</div>' : '') +
         (j.note ? '<div class="note" style="font-size:15px">📄 ' + esc(j.note) + '</div>' : '') +
         '<div class="meta">' + (isGot ? '❤️ Got it · ' : '❌ Swiped · ') + timeAgo(j.doneAt) +
-        (j.nextJobId ? ' · ➡️ sent to ' + (j.nextTab === 'delivery' ? 'Delivery' : 'Postage') : '') +
-        (j.defectJobId ? (j.nextJobId ? ' + Defect' : ' · ➡️ sent to Defect') : '') + '</div>' +
+        pushedState_(j) + '</div>' +
         (!isGot ? ((j.problem !== 'printed' && !j.printedAt
             ? '<div class="prob-line">🚨 On the Problem page — office will print it</div>' : '') +
           probHistoryHtml_(j)) : '') +

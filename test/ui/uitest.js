@@ -794,8 +794,32 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.click('#nav-postage'); await sleep(500);
   check((await page.locator('#postage-list .card').filter({ hasText: 'Both-boards' }).count()) === 1, 'and on the Postage board too');
   await page.click('#nav-want'); await sleep(400);
-  check((await page.locator('#want-responded .card').filter({ hasText: 'Both-boards' }).locator('.meta').textContent()).indexOf('Postage + Defect') >= 0,
-    'Got It card says sent to Postage + Defect');
+  const bbMeta = await page.locator('#want-responded .card').filter({ hasText: 'Both-boards' }).locator('.meta').textContent();
+  check(bbMeta.indexOf('Postage: ⏳ To Do') >= 0 && bbMeta.indexOf('+ Defect') >= 0,
+    'Got It card shows the pushed parcel LIVE state (Postage: ⏳ To Do · + Defect)');
+  // the pushed parcel finishes, goes by bus, or leaves the board — the
+  // Got It card must SAY so instead of a frozen "sent to Postage"
+  await page.evaluate(() => {
+    const d = window.__mockdb.jobs.find(x => x.tab === 'postage' && x.note === 'Both-boards 8 polo');
+    window.__mockapi.updateStatus(d.id, 'done', 'p', 'pt', null);
+    window.__mockapi.markSentJnt(d.id);
+  });
+  await page.evaluate(() => refresh()); await sleep(600);
+  check((await page.locator('#want-responded .card').filter({ hasText: 'Both-boards' }).locator('.meta').textContent()).indexOf('✔ Sent to J&T') >= 0,
+    '…and updates to ✔ Sent to J&T once the parcel goes out');
+  await page.evaluate(() => {
+    const d = window.__mockdb.jobs.find(x => x.tab === 'postage' && x.note === 'Both-boards 8 polo');
+    d.status = 'archived'; // cleared / hidden
+  });
+  await page.evaluate(() => refresh()); await sleep(600);
+  check((await page.locator('#want-responded .card').filter({ hasText: 'Both-boards' }).locator('.meta').textContent()).indexOf('no longer on the board') >= 0,
+    '…and says "no longer on the board" when the parcel was cleared or hidden');
+  // put the parcel back exactly as pushed, for the UNDO test below
+  await page.evaluate(() => {
+    const d = window.__mockdb.jobs.find(x => x.tab === 'postage' && x.note === 'Both-boards 8 polo');
+    d.status = 'pending'; d.doneAt = ''; d.proofPhotoId = ''; d.proofThumbId = ''; d.sentAt = '';
+  });
+  await page.evaluate(() => refresh()); await sleep(600);
   await clickSafe(page.locator('#undo-bar button')); await sleep(800);
   check(await page.evaluate(() => window.__mockdb.jobs.filter(x => x.note === 'Both-boards 8 polo' && x.tab !== 'want').length === 0),
     'UNDO pulled back BOTH pushed jobs');
