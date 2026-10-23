@@ -857,6 +857,18 @@ console.log('\n== check-first pipeline (prepare → ❤️ → auto-push) ==');
   check(edN.jobName === 'RENAMED JOB' &&
     ctx.getJobs('postage').find(j => j.id === rn.pushed.id).jobName === 'RENAMED JOB',
     '✏️ Edit can change the Job Name (stored on the sheet)');
+
+  // ✏️ editing a Checking job bound for a board writes its Ready-by to
+  // nextDueAt — and an edit sending the same customer keeps it (the old
+  // code wiped it to Unassigned on every Checking edit)
+  const keep = ctx.addJob({ tab: 'want', category: '', note: 'keep me', customer: 'Affa',
+    photos: [B64], thumbs: [B64], jsCount: 1, nextTab: 'postage' });
+  const edK = ctx.editJob(keep.id, { note: 'keep me v2', customer: 'Affa', dueAt: 1767225600000,
+    jsCount: 1, photos: [{ id: keep.photoIds[0] }] }, PIN);
+  check(edK.customer === 'Affa' && edK.nextDueAt === 1767225600000 && !edK.dueAt,
+    'Checking edit keeps the customer and stores Ready-by in nextDueAt (not dueAt)');
+  check(ctx.updateStatus(keep.id, 'got', null, null, null).pushed.dueAt === 1767225600000,
+    'the edited Ready-by reaches the pushed parcel after ❤️');
 }
 
 console.log('\n== 🚌 Sent bus (postage → delivery/bus, proof still required) ==');

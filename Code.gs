@@ -605,7 +605,16 @@ function editJob(id, changes, pin) {
 
     sh.getRange(row, 3, 1, 3).setValues([[changes.category || '', changes.note || '', JSON.stringify(finalIds)]]);
     sh.getRange(row, 12).setValue(JSON.stringify(finalThumbs));
-    sh.getRange(row, 14).setValue(dueAt);
+    // a Checking job bound for Delivery/Postage keeps its Ready-by in
+    // nextDueAt (it is the deadline of the job it BECOMES after ❤️) —
+    // editing must write it there, not give the check itself a deadline
+    if (vals[1] === 'want' && vals[18]) {
+      sh.getRange(row, 21).setValue(dueAt);
+      vals[20] = dueAt;
+    } else {
+      sh.getRange(row, 14).setValue(dueAt);
+      vals[13] = dueAt;
+    }
     sh.getRange(row, 16).setValue(jsCount);
     sh.getRange(row, 17).setValue(editCustomer);
     var editJobName = changes.jobName !== undefined
@@ -616,7 +625,6 @@ function editJob(id, changes, pin) {
     vals[3] = changes.note || '';
     vals[4] = JSON.stringify(finalIds);
     vals[11] = JSON.stringify(finalThumbs);
-    vals[13] = dueAt;
     vals[15] = jsCount;
     vals[16] = editCustomer;
     vals[37] = editJobName;

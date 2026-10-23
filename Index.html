@@ -4440,11 +4440,14 @@
     document.getElementById('upload-customer').value =
       (job && job.customer && job.customer !== 'Unassigned') ? job.customer : '';
     syncPipelineUI();
-    if (job && job.dueAt) {
-      var dd = new Date(Number(job.dueAt));
+    // a Checking job bound for Delivery/Postage carries its Ready-by in
+    // nextDueAt — show THAT one in the edit window
+    var preDue = job ? (job.nextTab ? job.nextDueAt : job.dueAt) : '';
+    if (preDue) {
+      var dd = new Date(Number(preDue));
       document.getElementById('upload-due-day').value = String(dd.getDate());
       document.getElementById('upload-due-month').value = String(dd.getMonth());
-      document.getElementById('upload-due').value = isDateOnly_(job.dueAt) ? '' : msToHHMM(job.dueAt);
+      document.getElementById('upload-due').value = isDateOnly_(preDue) ? '' : msToHHMM(preDue);
     } else {
       document.getElementById('upload-due-day').value = '';
       document.getElementById('upload-due-month').value = '';
@@ -4576,12 +4579,16 @@
   function submitUpload() {
     var note = document.getElementById('upload-note').value.trim();
     var isWant = state.tab === 'want';
-    var nextTab = (isWant && !state.editing) ? (state.upload.nextTab || '') : '';
+    // EDITS too: openUpload seeds state.upload from the job, so an edited
+    // Checking job keeps its pipeline here — treating edits as "no pipeline"
+    // used to silently wipe the customer (→ Unassigned) and the Ready-by
+    // date every time a Checking job was edited.
+    var nextTab = isWant ? (state.upload.nextTab || '') : '';
     var hasDue = state.tab === 'delivery' || state.tab === 'postage' || (isWant && nextTab);
     var dueMs = hasDue ? dueToMs(document.getElementById('upload-due-day').value,
                                  document.getElementById('upload-due-month').value,
                                  document.getElementById('upload-due').value) : '';
-    var alsoDefect = (isWant && !state.editing) ? !!state.upload.alsoDefect : false;
+    var alsoDefect = isWant ? !!state.upload.alsoDefect : false;
     var needName = state.tab !== 'want' || nextTab || alsoDefect;
     var customer = needName ? document.getElementById('upload-customer').value.trim() : '';
     var jobName = document.getElementById('upload-jobname').value.trim().slice(0, 80);

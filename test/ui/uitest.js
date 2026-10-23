@@ -1940,6 +1940,45 @@ async function touchDrag(cdp, x0, y0, x1, y1) {
   await page.evaluate(() => { window.__mockdb.jobs.forEach(j => { if (j.jobName === 'JERSEY MEGA FC 30 PCS') j.status = 'archived'; }); });
   await page.evaluate(() => refresh()); await sleep(500);
 
+  console.log('\n-- ✏️ editing a Checking job must KEEP its customer + Ready-by (the wipe bug) --');
+  const prevRole = await page.evaluate(() => window.__kilang.role);
+  await page.evaluate(() => setRole('admin', '1234')); await sleep(300);
+  await page.click('#nav-want'); await sleep(300);
+  await page.click('#nav-post'); await sleep(250);
+  await page.click('#next-chips button[data-next="postage"]'); await sleep(200);
+  await page.setInputFiles('#js-file', [IMG]); await sleep(600);
+  await page.locator('#agent-chips .agent-chip', { hasText: 'Affa' }).first().click();
+  await openOpts();
+  await page.selectOption('#upload-due-day', '25'); await page.selectOption('#upload-due-month', '11');
+  await page.fill('#upload-note', 'Edit-keep test');
+  await page.click('#btn-submit'); await sleep(1100);
+  const ekId = await page.evaluate(() => window.__mockdb.jobs.find(x => x.note === 'Edit-keep test').id);
+  // edit WITHOUT touching the customer: nothing must be lost
+  await page.evaluate(() => { document.getElementById('scroller').scrollTop = 0; }); await sleep(200);
+  await clickSafe(page.locator('#topcard .more-btn').first()); await sleep(250);
+  await page.click('#jobmenu-list .jm-edit'); await sleep(400);
+  check((await page.inputValue('#upload-customer')) === 'Affa', 'Edit window prefills the customer');
+  check((await page.inputValue('#upload-due-day')) === '25' && (await page.inputValue('#upload-due-month')) === '11',
+    'Edit window prefills the prepared Ready-by (lives in nextDueAt for a check)');
+  await page.fill('#upload-note', 'Edit-keep test v2');
+  await page.click('#btn-submit'); await sleep(900);
+  check(await page.evaluate(id => {
+    const j = window.__mockdb.jobs.find(x => x.id === id);
+    return j.customer === 'Affa' && !!j.nextDueAt;
+  }, ekId), 'plain edit KEEPS customer and the prepared Ready-by (both used to be wiped)');
+  // edit AND change the customer: the new name must save
+  await clickSafe(page.locator('#topcard .more-btn').first()); await sleep(250);
+  await page.click('#jobmenu-list .jm-edit'); await sleep(400);
+  await page.fill('#upload-customer', 'Siti Baru');
+  await page.click('#btn-submit'); await sleep(900);
+  check(await page.evaluate(id => window.__mockdb.jobs.find(x => x.id === id).customer === 'Siti Baru', ekId),
+    'typing a NEW customer in Edit actually saves it');
+  check((await page.locator('#topcard .foot .cap').textContent()).indexOf('👤 Siti Baru') >= 0,
+    'and the deck caption shows it straight away');
+  await page.evaluate(id => { window.__mockdb.jobs.forEach(j => { if (j.id === id) j.status = 'archived'; }); }, ekId);
+  await page.evaluate(r => setRole(r, r === 'admin' ? '1234' : ''), prevRole); await sleep(300);
+  await page.evaluate(() => refresh()); await sleep(500);
+
   console.log('\n-- ⏰ a deadline outranks the "Over 1 day" age warning --');
   await page.evaluate(() => {
     const now = Date.now(), day = 86400000;

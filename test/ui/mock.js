@@ -172,7 +172,8 @@
       if (!ch.photos.length) throw new Error('Photo required');
       j.note = ch.note || ''; j.category = ch.category || '';
       if (ch.jobName !== undefined) j.jobName = String(ch.jobName || '').trim().slice(0, 80);
-      j.dueAt = ch.dueAt || '';
+      if (j.tab === 'want' && j.nextTab) j.nextDueAt = ch.dueAt || '';
+      else j.dueAt = ch.dueAt || '';
       j.jsCount = ch.jsCount || 0;
       if (ch.customer !== undefined) j.customer = (ch.customer || '').trim() || 'Unassigned';
       j.photoIds = ch.photos.map(function (p, i) { return p.b64 ? ('phnew-' + id + '-' + i) : p.id; });
